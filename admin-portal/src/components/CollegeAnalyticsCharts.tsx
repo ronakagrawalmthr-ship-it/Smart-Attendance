@@ -67,35 +67,42 @@ const AdminCustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="rounded-xl border border-purple-500/30 bg-slate-900/95 p-3 shadow-2xl backdrop-blur-md">
-        <div className="text-xs font-bold text-white mb-1">
-          {data.branch || data.week || data.name}
+      <div className="rounded-2xl border border-stone-200/80 bg-white/95 p-3.5 shadow-xl backdrop-blur-md text-xs space-y-1.5 min-w-[170px]">
+        <div className="font-bold text-stone-900 border-b border-stone-100 pb-1 flex items-center justify-between">
+          <span>{data.branch || data.name || label}</span>
+          {data.code && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">{data.code}</span>}
         </div>
-        <div className="space-y-1 text-xs">
-          {data.attendance_percentage !== undefined && (
+        <div className="space-y-1 text-[11px] text-stone-600">
+          {data.total_enrolled && (
             <div className="flex items-center justify-between space-x-4">
-              <span className="text-slate-400">Turnout Rate:</span>
-              <span className="font-extrabold text-purple-400">{data.attendance_percentage}%</span>
+              <span className="text-stone-400">Total Enrolled:</span>
+              <span className="font-semibold text-stone-900">{data.total_enrolled}</span>
             </div>
           )}
           {data.present_count !== undefined && (
             <div className="flex items-center justify-between space-x-4">
-              <span className="text-slate-400">Attended Today:</span>
-              <span className="font-semibold text-slate-200">
-                {data.present_count} / {data.total_enrolled}
+              <span className="text-stone-400">Avg Present:</span>
+              <span className="font-semibold text-emerald-600">{data.present_count}</span>
+            </div>
+          )}
+          {data.attendance_percentage !== undefined && (
+            <div className="flex items-center justify-between space-x-4">
+              <span className="text-stone-400">Turnout Rate:</span>
+              <span className={`font-bold ${data.attendance_percentage >= 75 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {data.attendance_percentage}%
               </span>
             </div>
           )}
           {data.turnout !== undefined && (
             <div className="flex items-center justify-between space-x-4">
-              <span className="text-slate-400">Weekly Avg:</span>
-              <span className="font-extrabold text-pink-400">{data.turnout}%</span>
+              <span className="text-stone-400">Weekly Avg:</span>
+              <span className="font-bold text-indigo-600">{data.turnout}%</span>
             </div>
           )}
           {data.percentage !== undefined && (
             <div className="flex items-center justify-between space-x-4">
-              <span className="text-slate-400">Share:</span>
-              <span className="font-extrabold text-white">{data.percentage}% ({data.value} students)</span>
+              <span className="text-stone-400">Share:</span>
+              <span className="font-bold text-stone-900">{data.percentage}% ({data.value} students)</span>
             </div>
           )}
         </div>
@@ -115,55 +122,57 @@ export default function CollegeAnalyticsCharts({
   const [tab, setTab] = useState<'branches' | 'trajectory' | 'defaulters'>('branches');
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl backdrop-blur-xl mb-8">
+    <div className="rounded-[2rem] border border-stone-200/70 bg-white p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] mb-8">
       {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-stone-100">
         <div>
           <div className="flex items-center space-x-2">
-            <BarChart3 className="h-5 w-5 text-purple-400" />
-            <h3 className="text-base font-bold text-white">Whole-College Attendance Intelligence</h3>
-            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <div className="h-7 w-7 rounded-xl bg-violet-100 flex items-center justify-center">
+              <BarChart3 className="h-4 w-4 text-violet-600" />
+            </div>
+            <h3 className="text-base font-bold text-stone-900">Institutional Analytics</h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
               Cross-Departmental
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Comparative departmental attendance rates, 30-day institutional trajectory, and defaulter risk distributions.
+          <p className="text-xs text-stone-500 mt-1">
+            Comparative departmental attendance rates, 30-day institutional trajectory, and statutory risk distributions.
           </p>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex items-center space-x-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 shrink-0">
+        <div className="flex items-center space-x-1 bg-stone-100/80 p-1 rounded-full border border-stone-200/50 shrink-0">
           <button
             onClick={() => setTab('branches')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
               tab === 'branches'
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+                : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <BarChart3 className="h-3.5 w-3.5" />
-            <span>Branch Comparison</span>
+            <BarChart3 className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Branch Breakdown</span>
           </button>
           <button
             onClick={() => setTab('trajectory')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
               tab === 'trajectory'
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+                : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <TrendingUp className="h-3.5 w-3.5" />
+            <TrendingUp className="h-3.5 w-3.5 text-violet-600" />
             <span>Monthly Curve</span>
           </button>
           <button
             onClick={() => setTab('defaulters')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
               tab === 'defaulters'
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+                : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <PieIcon className="h-3.5 w-3.5" />
+            <PieIcon className="h-3.5 w-3.5 text-rose-500" />
             <span>Defaulter Risk</span>
           </button>
         </div>
@@ -174,20 +183,20 @@ export default function CollegeAnalyticsCharts({
         {tab === 'branches' && (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={branches} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis 
                 dataKey="code" 
-                stroke="#64748b" 
+                stroke="#94a3b8" 
                 fontSize={11} 
                 tickLine={false}
-                axisLine={{ stroke: '#334155' }} 
+                axisLine={{ stroke: '#e2e8f0' }} 
               />
               <YAxis 
                 domain={[50, 100]} 
-                stroke="#64748b" 
+                stroke="#94a3b8" 
                 fontSize={11} 
                 tickLine={false}
-                axisLine={{ stroke: '#334155' }}
+                axisLine={{ stroke: '#e2e8f0' }}
                 tickFormatter={(val) => `${val}%`}
               />
               <Tooltip content={<AdminCustomTooltip />} />
@@ -195,15 +204,15 @@ export default function CollegeAnalyticsCharts({
                 y={75} 
                 stroke="#f43f5e" 
                 strokeDasharray="4 4" 
-                label={{ value: '75% Institutional Cutoff', fill: '#fb7185', fontSize: 10, position: 'insideBottomRight' }} 
+                label={{ value: '75% Institutional Cutoff', fill: '#f43f5e', fontSize: 10, position: 'insideBottomRight' }} 
               />
               <Bar dataKey="attendance_percentage" radius={[8, 8, 0, 0]} maxBarSize={48}>
                 {branches.map((entry, index) => {
                   const color = entry.attendance_percentage >= 85 
-                    ? '#a855f7' 
-                    : entry.attendance_percentage >= 75 
                     ? '#6366f1' 
-                    : '#f43f5e';
+                    : entry.attendance_percentage >= 75 
+                    ? '#8b5cf6' 
+                    : '#fb7185';
                   return <Cell key={`cell-${index}`} fill={color} />;
                 })}
               </Bar>
@@ -216,24 +225,24 @@ export default function CollegeAnalyticsCharts({
             <AreaChart data={monthly} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
               <defs>
                 <linearGradient id="collegeGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#c084fc" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#c084fc" stopOpacity={0.0} />
+                  <stop offset="5%" stopColor="#818cf8" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#818cf8" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis 
                 dataKey="week" 
-                stroke="#64748b" 
+                stroke="#94a3b8" 
                 fontSize={11} 
                 tickLine={false}
-                axisLine={{ stroke: '#334155' }} 
+                axisLine={{ stroke: '#e2e8f0' }} 
               />
               <YAxis 
                 domain={[60, 100]} 
-                stroke="#64748b" 
+                stroke="#94a3b8" 
                 fontSize={11} 
                 tickLine={false}
-                axisLine={{ stroke: '#334155' }}
+                axisLine={{ stroke: '#e2e8f0' }}
                 tickFormatter={(val) => `${val}%`}
               />
               <Tooltip content={<AdminCustomTooltip />} />
@@ -241,16 +250,16 @@ export default function CollegeAnalyticsCharts({
                 y={75} 
                 stroke="#ef4444" 
                 strokeDasharray="4 4" 
-                label={{ value: '75% Cutoff', fill: '#f87171', fontSize: 10, position: 'insideBottomRight' }} 
+                label={{ value: '75% Cutoff', fill: '#ef4444', fontSize: 10, position: 'insideBottomRight' }} 
               />
               <Area 
                 type="monotone" 
                 dataKey="turnout" 
-                stroke="#c084fc" 
+                stroke="#6366f1" 
                 strokeWidth={3} 
                 fillOpacity={1} 
                 fill="url(#collegeGradient)" 
-                activeDot={{ r: 6, fill: '#e879f9', stroke: '#3b0764', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#4f46e5', stroke: '#ffffff', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -276,21 +285,21 @@ export default function CollegeAnalyticsCharts({
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xl font-extrabold text-white">1,735</span>
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Students</span>
+                <span className="text-xl font-extrabold text-stone-900">1,735</span>
+                <span className="text-[10px] text-stone-400 uppercase font-bold tracking-wider">Students</span>
               </div>
             </div>
 
             {/* Legend & Breakdown Cards */}
-            <div className="space-y-3 w-full max-w-sm">
+            <div className="space-y-2.5 w-full max-w-sm">
               {RISK_DISTRIBUTION_DATA.map((tier, idx) => (
-                <div key={idx} className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
+                <div key={idx} className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3">
                   <div className="flex items-center space-x-2.5">
                     <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: tier.color }} />
-                    <span className="text-xs font-semibold text-slate-300">{tier.name}</span>
+                    <span className="text-xs font-semibold text-stone-700">{tier.name}</span>
                   </div>
-                  <div className="text-xs font-bold text-white">
-                    {tier.value} <span className="text-slate-500 font-normal">({tier.percentage}%)</span>
+                  <div className="text-xs font-bold text-stone-900">
+                    {tier.value} <span className="text-stone-400 font-normal">({tier.percentage}%)</span>
                   </div>
                 </div>
               ))}
@@ -300,13 +309,13 @@ export default function CollegeAnalyticsCharts({
       </div>
 
       {/* Footer Insight */}
-      <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+      <div className="mt-4 pt-3.5 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
         <div className="flex items-center space-x-2">
-          <span className="h-2 w-2 rounded-full bg-purple-400" />
-          <span>CSE and IT lead institutional turnout; ECE is 2.5% below eligibility standard.</span>
+          <span className="h-2 w-2 rounded-full bg-indigo-500" />
+          <span>CSE and IT lead institutional turnout; ECE is 2.5% below statutory cutoff.</span>
         </div>
-        <div className="hidden sm:block text-slate-500 font-mono text-[11px]">
-          Live AI telemetry refreshed
+        <div className="hidden sm:block text-stone-400 font-mono text-[11px]">
+          Live AI telemetry synchronized
         </div>
       </div>
     </div>

@@ -280,73 +280,68 @@ export default function DirectoryManagementPage() {
       {/* Toast Notification */}
       <AnimatePresence>
         {toastMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-6 right-6 z-50 rounded-2xl bg-emerald-600 text-white px-5 py-3 shadow-2xl flex items-center space-x-2 text-xs font-semibold"
-          >
-            <CheckCircle2 className="h-4 w-4" />
+          <div className="fixed top-6 right-6 z-50 px-4 py-3 rounded-2xl bg-stone-900 text-white shadow-xl border border-stone-800 text-xs flex items-center space-x-2 animate-bounce">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
             <span>{toastMessage}</span>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <header className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* Header Container */}
+      <header className="rounded-[2rem] bg-white border border-stone-200/70 p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
         <div>
-          <div className="flex items-center space-x-2">
-            <Link 
+          <div className="flex items-center space-x-2.5 mb-1.5">
+            <Link
               href="/dashboard"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition mr-2"
+              className="p-2 rounded-xl bg-stone-100/80 hover:bg-stone-200/80 text-stone-600 transition"
               title="Return to Dashboard"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold uppercase tracking-wider">
-              College Authority Control Center
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60 uppercase tracking-wider">
+              Authority Center
             </span>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Institutional Directory & CRUD Operations</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">Academic Directory & Records</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1">
             Create, manage, edit, and decommission Department Heads (HODs), Faculty, Students, and Curriculum Subjects.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button 
             onClick={fetchAllData}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            className="p-3 rounded-2xl bg-stone-100/80 hover:bg-stone-200/80 text-stone-600 transition"
             title="Refresh All Records"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
           </button>
           
           {activeTab === 'students' && (
             <button
               onClick={() => setShowPromoteModal(true)}
-              className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/40 text-xs font-bold transition flex items-center space-x-2"
+              className="py-2.5 px-4 rounded-full bg-stone-100 hover:bg-stone-200/80 text-violet-700 text-xs font-bold transition flex items-center space-x-2"
               title="Promote all students to next academic year & archive final year"
             >
-              <Sparkles className="h-4 w-4 text-purple-400" />
-              <span>Annual Batch Progression</span>
+              <Sparkles className="h-4 w-4 text-violet-600" />
+              <span>Batch Progression</span>
             </button>
           )}
 
           {activeTab === 'teachers' && (
             <button
               onClick={() => setShowTransferModal(true)}
-              className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center space-x-2"
+              className="py-2.5 px-4 rounded-full bg-stone-100 hover:bg-stone-200/80 text-indigo-700 text-xs font-bold transition flex items-center space-x-2"
               title="Transfer classes and academic sessions to a replacement teacher"
             >
-              <ArrowRightLeft className="h-4 w-4 text-indigo-400" />
+              <ArrowRightLeft className="h-4 w-4 text-indigo-600" />
               <span>Handover Classes</span>
             </button>
           )}
 
           <button
             onClick={openCreateModal}
-            className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition flex items-center space-x-2"
+            className="py-2.5 px-5 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition flex items-center space-x-2"
           >
             <Plus className="h-4 w-4" />
             <span>Add New {activeTab === 'hods' ? 'HOD' : (activeTab === 'teachers' ? 'Teacher' : (activeTab === 'students' ? 'Student' : 'Subject'))}</span>
@@ -354,78 +349,78 @@ export default function DirectoryManagementPage() {
         </div>
       </header>
 
-      {/* Tabs Navigation */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Tabs Navigation (Apple Pill Style) */}
+      <div className="flex flex-wrap items-center gap-2.5">
         <button
           onClick={() => setActiveTab('hods')}
-          className={`px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center space-x-2 ${
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition flex items-center space-x-2 ${
             activeTab === 'hods'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white'
+              ? 'bg-stone-900 text-white shadow-sm'
+              : 'bg-white border border-stone-200/70 text-stone-600 hover:text-stone-900 shadow-sm'
           }`}
         >
-          <Building2 className="h-4 w-4" />
+          <Building2 className="h-4 w-4 text-indigo-400" />
           <span>Department HODs</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px]">{hods.length}</span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px]">{hods.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('teachers')}
-          className={`px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center space-x-2 ${
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition flex items-center space-x-2 ${
             activeTab === 'teachers'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white'
+              ? 'bg-stone-900 text-white shadow-sm'
+              : 'bg-white border border-stone-200/70 text-stone-600 hover:text-stone-900 shadow-sm'
           }`}
         >
-          <UserCheck className="h-4 w-4" />
+          <UserCheck className="h-4 w-4 text-violet-400" />
           <span>Teachers & Faculty</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px]">{teachers.length}</span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px]">{teachers.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('students')}
-          className={`px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center space-x-2 ${
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition flex items-center space-x-2 ${
             activeTab === 'students'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white'
+              ? 'bg-stone-900 text-white shadow-sm'
+              : 'bg-white border border-stone-200/70 text-stone-600 hover:text-stone-900 shadow-sm'
           }`}
         >
-          <GraduationCap className="h-4 w-4" />
+          <GraduationCap className="h-4 w-4 text-sky-400" />
           <span>Students Roster</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px]">{students.length}</span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px]">{students.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('subjects')}
-          className={`px-5 py-3 rounded-2xl text-xs font-bold transition flex items-center space-x-2 ${
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition flex items-center space-x-2 ${
             activeTab === 'subjects'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-white'
+              ? 'bg-stone-900 text-white shadow-sm'
+              : 'bg-white border border-stone-200/70 text-stone-600 hover:text-stone-900 shadow-sm'
           }`}
         >
-          <BookOpen className="h-4 w-4" />
+          <BookOpen className="h-4 w-4 text-amber-400" />
           <span>Classes & Subjects</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px]">{subjects.length}</span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[10px]">{subjects.length}</span>
         </button>
       </div>
 
       {/* Main Table Container */}
-      <div className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 backdrop-blur-xl space-y-6">
+      <div className="rounded-[2rem] bg-white border border-stone-200/70 p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] space-y-6">
         {/* Search Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-stone-100 pb-4">
           <div className="relative w-full sm:w-96">
-            <Search className="h-4 w-4 text-slate-500 absolute left-3.5 top-3" />
+            <Search className="h-4 w-4 text-stone-400 absolute left-3.5 top-3" />
             <input
               type="text"
-              placeholder={`Search ${activeTab}...`}
+              placeholder={`Search ${activeTab} by name, roll no, email...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+              className="w-full bg-stone-50 border border-stone-200 rounded-full pl-10 pr-4 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
             />
           </div>
 
-          <div className="text-xs text-slate-400">
-            Showing <span className="text-white font-bold">{filteredList.length}</span> entries
+          <div className="text-xs text-stone-500">
+            Showing <span className="text-stone-900 font-bold">{filteredList.length}</span> verified entries
           </div>
         </div>
 
@@ -446,7 +441,7 @@ export default function DirectoryManagementPage() {
             {activeTab === 'hods' && (
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <tr className="border-b border-stone-100 text-stone-400 uppercase tracking-wider font-semibold text-[11px]">
                     <th className="py-3 px-4">HOD Name</th>
                     <th className="py-3 px-4">Department</th>
                     <th className="py-3 px-4">Email Login</th>
@@ -454,35 +449,37 @@ export default function DirectoryManagementPage() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                <tbody className="divide-y divide-stone-100 text-stone-700">
                   {filteredList.map((h) => (
-                    <tr key={h.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-3.5 px-4 font-bold text-white flex items-center space-x-2">
-                        <Building2 className="h-4 w-4 text-purple-400" />
+                    <tr key={h.id} className="hover:bg-stone-50/70 transition">
+                      <td className="py-3.5 px-4 font-bold text-stone-900 flex items-center space-x-2">
+                        <div className="h-7 w-7 rounded-xl bg-violet-100 flex items-center justify-center">
+                          <Building2 className="h-4 w-4 text-violet-700" />
+                        </div>
                         <span>{h.full_name}</span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300">
-                        <span className="px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 font-semibold">
+                      <td className="py-3.5 px-4">
+                        <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200/60 text-violet-700 font-semibold text-xs">
                           {h.department}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-400">{h.email}</td>
+                      <td className="py-3.5 px-4 font-mono text-stone-500">{h.email}</td>
                       <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${h.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${h.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-rose-50 text-rose-700 border border-rose-200/60'}`}>
                           {h.is_active ? 'Active' : 'Suspended'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-2">
                         <button 
                           onClick={() => openEditModal(h)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                          className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
                           title="Edit HOD"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
                         <button 
                           onClick={() => handleDelete(h.id, h.full_name)}
-                          className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 transition"
+                          className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
                           title="Delete HOD"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -498,7 +495,7 @@ export default function DirectoryManagementPage() {
             {activeTab === 'teachers' && (
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <tr className="border-b border-stone-100 text-stone-400 uppercase tracking-wider font-semibold text-[11px]">
                     <th className="py-3 px-4">Faculty Name</th>
                     <th className="py-3 px-4">Department</th>
                     <th className="py-3 px-4">Email</th>
@@ -506,30 +503,32 @@ export default function DirectoryManagementPage() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                <tbody className="divide-y divide-stone-100 text-stone-700">
                   {filteredList.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-3.5 px-4 font-bold text-white flex items-center space-x-2">
-                        <UserCheck className="h-4 w-4 text-cyan-400" />
+                    <tr key={t.id} className="hover:bg-stone-50/70 transition">
+                      <td className="py-3.5 px-4 font-bold text-stone-900 flex items-center space-x-2">
+                        <div className="h-7 w-7 rounded-xl bg-sky-100 flex items-center justify-center">
+                          <UserCheck className="h-4 w-4 text-sky-700" />
+                        </div>
                         <span>{t.full_name}</span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300 font-semibold">{t.department}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-400">{t.email}</td>
+                      <td className="py-3.5 px-4 text-stone-700 font-semibold">{t.department}</td>
+                      <td className="py-3.5 px-4 font-mono text-stone-500">{t.email}</td>
                       <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${t.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-rose-50 text-rose-700 border border-rose-200/60'}`}>
                           {t.is_active ? 'Active' : 'Suspended'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-2">
                         <button 
                           onClick={() => openEditModal(t)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                          className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
                         <button 
                           onClick={() => handleDelete(t.id, t.full_name)}
-                          className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 transition"
+                          className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -544,7 +543,7 @@ export default function DirectoryManagementPage() {
             {activeTab === 'students' && (
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <tr className="border-b border-stone-100 text-stone-400 uppercase tracking-wider font-semibold text-[11px]">
                     <th className="py-3 px-4">Roll Number</th>
                     <th className="py-3 px-4">Student Name</th>
                     <th className="py-3 px-4">Class & Section</th>
@@ -553,22 +552,27 @@ export default function DirectoryManagementPage() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                <tbody className="divide-y divide-stone-100 text-stone-700">
                   {filteredList.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-3.5 px-4 font-mono font-bold text-white">{s.roll_number}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-100">{s.full_name}</td>
+                    <tr key={s.id} className="hover:bg-stone-50/70 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-stone-900">{s.roll_number}</td>
+                      <td className="py-3.5 px-4 font-medium text-stone-900 flex items-center space-x-2">
+                        <div className="h-7 w-7 rounded-xl bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-xs">
+                          {s.full_name.charAt(0)}
+                        </div>
+                        <span>{s.full_name}</span>
+                      </td>
                       <td className="py-3.5 px-4">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 font-semibold text-[11px]">
+                        <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px]">
                           Sem {s.semester} • Sec {s.section}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300">{s.branch}</td>
+                      <td className="py-3.5 px-4 text-stone-600 font-medium">{s.branch}</td>
                       <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                           s.has_face_encoding
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200/60'
                         }`}>
                           {s.has_face_encoding ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
                           <span>{s.has_face_encoding ? 'Biometrics Enrolled' : 'Pending Selfie'}</span>
@@ -577,13 +581,13 @@ export default function DirectoryManagementPage() {
                       <td className="py-3.5 px-4 text-right space-x-2">
                         <button 
                           onClick={() => openEditModal(s)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                          className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
                         <button 
                           onClick={() => handleDelete(s.id, s.full_name)}
-                          className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 transition"
+                          className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -598,7 +602,7 @@ export default function DirectoryManagementPage() {
             {activeTab === 'subjects' && (
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <tr className="border-b border-stone-100 text-stone-400 uppercase tracking-wider font-semibold text-[11px]">
                     <th className="py-3 px-4">Course Code</th>
                     <th className="py-3 px-4">Subject Title</th>
                     <th className="py-3 px-4">Academic Semester</th>
@@ -606,27 +610,27 @@ export default function DirectoryManagementPage() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                <tbody className="divide-y divide-stone-100 text-stone-700">
                   {filteredList.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-800/30 transition">
-                      <td className="py-3.5 px-4 font-mono font-bold text-white">{sub.code}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-100">{sub.name}</td>
-                      <td className="py-3.5 px-4 text-slate-300">Semester {sub.semester}</td>
+                    <tr key={sub.id} className="hover:bg-stone-50/70 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-stone-900">{sub.code}</td>
+                      <td className="py-3.5 px-4 font-medium text-stone-900">{sub.name}</td>
+                      <td className="py-3.5 px-4 text-stone-600">Semester {sub.semester}</td>
                       <td className="py-3.5 px-4">
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[11px]">
+                        <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px]">
                           {sub.branch}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-2">
                         <button 
                           onClick={() => openEditModal(sub)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                          className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
                         <button 
                           onClick={() => handleDelete(sub.id, sub.name)}
-                          className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 transition"
+                          className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -637,27 +641,28 @@ export default function DirectoryManagementPage() {
               </table>
             )}
           </div>
+
         )}
       </div>
 
       {/* CRUD Modal Form */}
       <AnimatePresence>
         {modalMode && (
-          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-md flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
+              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
             >
-              <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+              <div className="flex justify-between items-center border-b border-stone-100 pb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-stone-900">
                     {modalMode === 'create' ? 'Add New' : 'Edit'} {activeTab === 'hods' ? 'HOD' : (activeTab === 'teachers' ? 'Faculty Member' : (activeTab === 'students' ? 'Student Record' : 'Subject'))}
                   </h3>
-                  <p className="text-xs text-slate-400">Institutional Database Operation</p>
+                  <p className="text-xs text-stone-500">Institutional Database Operation</p>
                 </div>
-                <button onClick={closeModal} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition">
+                <button onClick={closeModal} className="p-2 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-800 transition">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -667,33 +672,33 @@ export default function DirectoryManagementPage() {
                 {activeTab === 'hods' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">HOD Full Name</label>
+                      <label className="text-stone-700 font-semibold">HOD Full Name</label>
                       <input
                         type="text"
                         required
                         value={formData.full_name || ''}
                         onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="Dr. Rajesh Sharma"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Institutional Email</label>
+                      <label className="text-stone-700 font-semibold">Institutional Email</label>
                       <input
                         type="email"
                         required
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="hod.cse@college.edu"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Department Authority</label>
+                      <label className="text-stone-700 font-semibold">Department Authority</label>
                       <select
                         value={formData.department || 'Computer Science'}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                       >
                         <option value="Computer Science">Computer Science</option>
                         <option value="Information Technology">Information Technology</option>
@@ -705,12 +710,12 @@ export default function DirectoryManagementPage() {
                     </div>
                     {modalMode === 'create' && (
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Temporary Password</label>
+                        <label className="text-stone-700 font-semibold">Temporary Password</label>
                         <input
                           type="password"
                           value={formData.password || ''}
                           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono focus:outline-none focus:ring-2 focus:ring-stone-400"
                           placeholder="AdminPass123!"
                         />
                       </div>
@@ -722,33 +727,33 @@ export default function DirectoryManagementPage() {
                 {activeTab === 'teachers' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Faculty Name</label>
+                      <label className="text-stone-700 font-semibold">Faculty Name</label>
                       <input
                         type="text"
                         required
                         value={formData.full_name || ''}
                         onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="Prof. Priya Nair"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Email Address</label>
+                      <label className="text-stone-700 font-semibold">Email Address</label>
                       <input
                         type="email"
                         required
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="teacher@college.edu"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Department</label>
+                      <label className="text-stone-700 font-semibold">Department</label>
                       <select
                         value={formData.department || 'Computer Science'}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                       >
                         <option value="Computer Science">Computer Science</option>
                         <option value="Information Technology">Information Technology</option>
@@ -764,24 +769,24 @@ export default function DirectoryManagementPage() {
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Roll Number</label>
+                        <label className="text-stone-700 font-semibold">Roll Number</label>
                         <input
                           type="text"
                           required
                           value={formData.roll_number || ''}
                           onChange={(e) => setFormData({ ...formData, roll_number: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono focus:outline-none focus:ring-2 focus:ring-stone-400"
                           placeholder="23CSE001"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Student Name</label>
+                        <label className="text-stone-700 font-semibold">Student Name</label>
                         <input
                           type="text"
                           required
                           value={formData.full_name || ''}
                           onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                           placeholder="Rahul Verma"
                         />
                       </div>
@@ -789,11 +794,11 @@ export default function DirectoryManagementPage() {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Semester</label>
+                        <label className="text-stone-700 font-semibold">Semester</label>
                         <select
                           value={formData.semester || 6}
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
                           <option value="2">Sem 2</option>
                           <option value="4">Sem 4</option>
@@ -802,11 +807,11 @@ export default function DirectoryManagementPage() {
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Section</label>
+                        <label className="text-stone-700 font-semibold">Section</label>
                         <select
                           value={formData.section || 'A'}
                           onChange={(e) => setFormData({ ...formData, section: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
                           <option value="A">Sec A</option>
                           <option value="B">Sec B</option>
@@ -814,12 +819,12 @@ export default function DirectoryManagementPage() {
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Branch</label>
+                        <label className="text-stone-700 font-semibold">Branch</label>
                         <input
                           type="text"
                           value={formData.branch || 'Computer Science'}
                           onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         />
                       </div>
                     </div>
@@ -830,34 +835,34 @@ export default function DirectoryManagementPage() {
                 {activeTab === 'subjects' && (
                   <>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Course Code</label>
+                      <label className="text-stone-700 font-semibold">Course Code</label>
                       <input
                         type="text"
                         required
                         value={formData.code || ''}
                         onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono uppercase"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="CS405"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-slate-300 font-semibold">Course Title</label>
+                      <label className="text-stone-700 font-semibold">Course Title</label>
                       <input
                         type="text"
                         required
                         value={formData.name || ''}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         placeholder="Cloud Computing & DevOps"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Semester</label>
+                        <label className="text-stone-700 font-semibold">Semester</label>
                         <select
                           value={formData.semester || 6}
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
                           <option value="2">Semester 2</option>
                           <option value="4">Semester 4</option>
@@ -866,30 +871,30 @@ export default function DirectoryManagementPage() {
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-slate-300 font-semibold">Branch</label>
+                        <label className="text-stone-700 font-semibold">Branch</label>
                         <input
                           type="text"
                           value={formData.branch || 'Computer Science'}
                           onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         />
                       </div>
                     </div>
                   </>
                 )}
 
-                <div className="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+                <div className="flex justify-end space-x-3 pt-4 border-t border-stone-100">
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                    className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold transition flex items-center space-x-1.5"
+                    className="px-5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold transition flex items-center space-x-1.5 shadow-sm"
                   >
                     {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                     <span>{modalMode === 'create' ? 'Save Record' : 'Apply Changes'}</span>
@@ -902,46 +907,46 @@ export default function DirectoryManagementPage() {
 
         {/* Annual Batch Progression Modal */}
         {showPromoteModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-purple-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
+              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
             >
               <button 
                 onClick={() => setShowPromoteModal(false)}
-                className="absolute top-6 right-6 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="absolute top-6 right-6 p-2 rounded-xl bg-stone-100 text-stone-400 hover:text-stone-800 transition"
               >
                 <X className="h-4 w-4" />
               </button>
 
               <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <div className="h-10 w-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Annual Academic Progression</h3>
-                  <p className="text-xs text-slate-400">Promote entire college/branch to next academic year</p>
+                  <h3 className="text-lg font-bold text-stone-900">Annual Academic Progression</h3>
+                  <p className="text-xs text-stone-500">Promote entire college/branch to next academic year</p>
                 </div>
               </div>
 
-              <div className="space-y-3 text-xs text-slate-300 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
-                <p className="font-semibold text-purple-300">How Academic Progression Works:</p>
-                <ul className="space-y-1.5 list-disc list-inside text-slate-400">
-                  <li><strong className="text-white">1st Year (Sem 1/2)</strong> &rarr; Promoted to 2nd Year (Sem 3/4)</li>
-                  <li><strong className="text-white">2nd Year (Sem 3/4)</strong> &rarr; Promoted to 3rd Year (Sem 5/6)</li>
-                  <li><strong className="text-white">3rd Year (Sem 5/6)</strong> &rarr; Promoted to 4th Year (Sem 7/8)</li>
-                  <li><strong className="text-white">4th Year (Sem 7/8)</strong> &rarr; Archived as <span className="text-emerald-400 font-bold">Graduated Alumni</span> (Historical attendance logs & biometrics preserved permanently).</li>
+              <div className="space-y-3 text-xs text-stone-700 bg-amber-50/50 p-4 rounded-2xl border border-amber-200/60">
+                <p className="font-semibold text-amber-900">How Academic Progression Works:</p>
+                <ul className="space-y-1.5 list-disc list-inside text-stone-600">
+                  <li><strong className="text-stone-900">1st Year (Sem 1/2)</strong> &rarr; Promoted to 2nd Year (Sem 3/4)</li>
+                  <li><strong className="text-stone-900">2nd Year (Sem 3/4)</strong> &rarr; Promoted to 3rd Year (Sem 5/6)</li>
+                  <li><strong className="text-stone-900">3rd Year (Sem 5/6)</strong> &rarr; Promoted to 4th Year (Sem 7/8)</li>
+                  <li><strong className="text-stone-900">4th Year (Sem 7/8)</strong> &rarr; Archived as <span className="text-emerald-700 font-bold">Graduated Alumni</span> (Historical attendance logs & biometrics preserved permanently).</li>
                 </ul>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">Select Target Department</label>
+                <label className="text-xs font-semibold text-stone-700">Select Target Department</label>
                 <select
                   value={promoteBranch}
                   onChange={(e) => setPromoteBranch(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                 >
                   <option value="all">All Departments (Entire College)</option>
                   <option value="Computer Science">Computer Science & Engineering</option>
@@ -956,7 +961,7 @@ export default function DirectoryManagementPage() {
                 <button
                   type="button"
                   onClick={() => setShowPromoteModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition"
                 >
                   Cancel
                 </button>
@@ -964,7 +969,7 @@ export default function DirectoryManagementPage() {
                   type="button"
                   disabled={isPromoting}
                   onClick={handleBatchPromotion}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white text-xs font-bold transition flex items-center space-x-2"
+                  className="px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition flex items-center space-x-2 shadow-sm"
                 >
                   {isPromoting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
                   <span>{isPromoting ? 'Promoting...' : 'Execute Annual Progression'}</span>
@@ -976,44 +981,44 @@ export default function DirectoryManagementPage() {
 
         {/* Faculty Handover & Class Transfer Modal */}
         {showTransferModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-indigo-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
+              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
             >
               <button 
                 onClick={() => setShowTransferModal(false)}
-                className="absolute top-6 right-6 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                className="absolute top-6 right-6 p-2 rounded-xl bg-stone-100 text-stone-400 hover:text-stone-800 transition"
               >
                 <X className="h-4 w-4" />
               </button>
 
               <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <div className="h-10 w-10 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700">
                   <ArrowRightLeft className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Faculty Handover & Class Transfer</h3>
-                  <p className="text-xs text-slate-400">Reassign academic sessions from outgoing to replacement teacher</p>
+                  <h3 className="text-lg font-bold text-stone-900">Faculty Handover & Class Transfer</h3>
+                  <p className="text-xs text-stone-500">Reassign academic sessions from outgoing to replacement teacher</p>
                 </div>
               </div>
 
-              <div className="space-y-3 text-xs text-slate-300 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
-                <p className="font-semibold text-indigo-300">Class Handover Architecture:</p>
-                <p className="text-slate-400 leading-relaxed">
+              <div className="space-y-3 text-xs text-stone-700 bg-sky-50/50 p-4 rounded-2xl border border-sky-200/60">
+                <p className="font-semibold text-sky-900">Class Handover Architecture:</p>
+                <p className="text-stone-600 leading-relaxed">
                   When a teacher leaves or is replaced, their active subject timetable and academic sessions are instantly transferred to the new teacher. Past student attendance logs taken by the previous teacher remain untouched and audit-compliant.
                 </p>
               </div>
 
               <div className="space-y-4 text-xs">
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-slate-300">Outgoing / Leaving Faculty</label>
+                  <label className="font-semibold text-stone-700">Outgoing / Leaving Faculty</label>
                   <select
                     value={transferFromTeacher || ''}
                     onChange={(e) => setTransferFromTeacher(parseInt(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                   >
                     <option value="">-- Select Outgoing Faculty --</option>
                     {teachers.map((t) => (
@@ -1025,11 +1030,11 @@ export default function DirectoryManagementPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-slate-300">Incoming Replacement Faculty</label>
+                  <label className="font-semibold text-stone-700">Incoming Replacement Faculty</label>
                   <select
                     value={transferToTeacher || ''}
                     onChange={(e) => setTransferToTeacher(parseInt(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                   >
                     <option value="">-- Select Replacement Faculty --</option>
                     {teachers
@@ -1047,7 +1052,7 @@ export default function DirectoryManagementPage() {
                 <button
                   type="button"
                   onClick={() => setShowTransferModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition"
                 >
                   Cancel
                 </button>
@@ -1055,7 +1060,7 @@ export default function DirectoryManagementPage() {
                   type="button"
                   disabled={isTransferring}
                   onClick={handleTransferClasses}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 text-white text-xs font-bold transition flex items-center space-x-2"
+                  className="px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition flex items-center space-x-2 shadow-sm"
                 >
                   {isTransferring ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
                   <span>{isTransferring ? 'Transferring...' : 'Execute Class Handover'}</span>

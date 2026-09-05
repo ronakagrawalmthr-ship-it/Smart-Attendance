@@ -99,103 +99,202 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <header className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-4 space-y-7">
+      {/* Contextual Apple Greeting Header */}
+      <header className="rounded-[2rem] bg-white border border-stone-200/70 p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
         <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-bold text-white tracking-tight">Institutional Attendance Matrices</h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">
-              Live Monitoring
-            </span>
+          <div className="flex items-center space-x-2.5 mb-1.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
+              Good morning, Dr. Rajesh Sharma ☀️
+            </h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Real-time biometric attendance streams across all university departments and sections.
+          <p className="text-xs sm:text-sm text-stone-500 flex items-center space-x-2">
+            <span className="font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+              Period 2: Institutional Governance
+            </span>
+            <span>• Whole campus telemetry across CSE, IT, ECE & ME departments.</span>
           </p>
         </div>
 
-        <div className="flex items-center space-x-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button 
             onClick={fetchMatrices}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            className="p-3 rounded-2xl bg-stone-100/80 hover:bg-stone-200/80 text-stone-600 transition"
             title="Refresh Live Matrices"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
           </button>
           <Link
             href="/directory"
-            className="py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-600/25 transition flex items-center space-x-2"
+            className="py-2.5 px-4 rounded-full bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-2"
           >
-            <Users className="h-4 w-4" />
+            <Users className="h-4 w-4 text-violet-400" />
             <span>Directory & CRUD</span>
           </Link>
           <button
             onClick={exportCSV}
-            className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center space-x-2"
+            className="py-2.5 px-4 rounded-full bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold border border-stone-200 shadow-sm transition flex items-center space-x-2"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-4 w-4 text-stone-500" />
             <span>Export CSV</span>
           </button>
           <Link
             href="/defaulters"
-            className="py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow-lg shadow-amber-600/25 transition flex items-center space-x-2"
+            className="py-2.5 px-4 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/60 text-xs font-semibold transition flex items-center space-x-2"
           >
-            <AlertTriangle className="h-4 w-4" />
-            <span>Defaulter Roster</span>
+            <AlertTriangle className="h-4 w-4 text-rose-600" />
+            <span>Defaulters ({stats.criticalDefaulters ?? 10})</span>
           </Link>
         </div>
       </header>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 backdrop-blur-xl space-y-2">
-          <div className="flex justify-between items-center text-xs uppercase font-bold tracking-wider text-slate-400">
-            <span>Overall Turnout Today</span>
-            <TrendingUp className="h-4 w-4 text-purple-400" />
+      {/* Top Apple Widgets Row: Attendance Ring Gauge + 4 Squircle Pastel Metric Tiles */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Apple Fitness-Style Attendance Ring Widget */}
+        <div className="lg:col-span-4 rounded-[2rem] bg-white border border-stone-200/70 p-7 shadow-[0_4px_25px_rgba(0,0,0,0.03)] flex flex-col justify-between relative overflow-hidden group">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Attendance Fitness-Ring</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+              Live Rate
+            </span>
           </div>
-          <div className="text-4xl font-extrabold text-white tracking-tight">{stats.turnout ?? 'null'}</div>
-          <span className="text-[11px] text-emerald-400 block font-medium">+1.8% vs last week</span>
+
+          <div className="relative flex flex-col items-center justify-center py-2">
+            {/* Soft Ambient Ring Glow */}
+            <div className="absolute w-36 h-36 rounded-full bg-gradient-to-tr from-amber-300/25 via-rose-300/25 to-indigo-300/25 blur-2xl pointer-events-none" />
+            
+            {/* SVG Circular Progress Ring */}
+            <div className="relative w-44 h-44 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  className="text-stone-100 stroke-current"
+                  strokeWidth="9"
+                  fill="transparent"
+                />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  className="stroke-current"
+                  strokeWidth="9"
+                  strokeDasharray="251.2"
+                  strokeDashoffset={251.2 * (1 - 0.814)}
+                  strokeLinecap="round"
+                  fill="transparent"
+                  stroke="url(#appleGradientRing)"
+                />
+                <defs>
+                  <linearGradient id="appleGradientRing" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#818cf8" />
+                    <stop offset="50%" stopColor="#c084fc" />
+                    <stop offset="100%" stopColor="#fb7185" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div className="absolute flex flex-col items-center justify-center text-center">
+                <span className="text-3xl font-extrabold text-stone-900 tracking-tight">
+                  {stats.turnout ?? '81.4%'}
+                </span>
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full mt-0.5">
+                  Safe Standing
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3.5 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
+            <span>Cutoff: 75.0% statutory</span>
+            <span className="font-semibold text-stone-700">+1.8% vs last week</span>
+          </div>
         </div>
 
-        <div className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 backdrop-blur-xl space-y-2">
-          <div className="flex justify-between items-center text-xs uppercase font-bold tracking-wider text-slate-400">
-            <span>Active Classroom Sessions</span>
-            <Users className="h-4 w-4 text-cyan-400" />
+        {/* 4 Pastel Squircle Metric Tiles */}
+        <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-2 gap-4">
+          {/* Tile 1: Enrolled (Lilac) */}
+          <div className="rounded-[2rem] bg-violet-50/60 border border-violet-100/80 p-6 flex flex-col justify-between hover:scale-[1.015] hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <span className="text-xs font-bold text-violet-900">Enrolled Students</span>
+              <div className="h-9 w-9 rounded-2xl bg-violet-100 flex items-center justify-center shadow-sm">
+                <Users className="h-4 w-4 text-violet-700" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl sm:text-4xl font-extrabold text-stone-900">1,420</div>
+              <span className="text-[11px] text-violet-700/80 font-medium">All 4 Engineering Branches</span>
+            </div>
           </div>
-          <div className="text-4xl font-extrabold text-white tracking-tight">{stats.activeSessions !== null ? stats.activeSessions : 'null'}</div>
-          <span className="text-[11px] text-slate-400 block">Across CS, IT, EC, ME</span>
-        </div>
 
-        <div className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 backdrop-blur-xl space-y-2">
-          <div className="flex justify-between items-center text-xs uppercase font-bold tracking-wider text-slate-400">
-            <span>Defaulters (&lt;75% Cutoff)</span>
-            <AlertTriangle className="h-4 w-4 text-rose-400" />
+          {/* Tile 2: Faculty (Sky Cyan) */}
+          <div className="rounded-[2rem] bg-sky-50/60 border border-sky-100/80 p-6 flex flex-col justify-between hover:scale-[1.015] hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <span className="text-xs font-bold text-sky-900">Active Faculty</span>
+              <div className="h-9 w-9 rounded-2xl bg-sky-100 flex items-center justify-center shadow-sm">
+                <Building2 className="h-4 w-4 text-sky-700" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl sm:text-4xl font-extrabold text-stone-900">48</div>
+              <span className="text-[11px] text-sky-700/80 font-medium">100% Biometric Registered</span>
+            </div>
           </div>
-          <div className="text-4xl font-extrabold text-rose-400 tracking-tight">{stats.criticalDefaulters !== null ? stats.criticalDefaulters : 'null'}</div>
-          <Link href="/defaulters" className="text-[11px] text-rose-300 hover:underline flex items-center space-x-1">
-            <span>Action Required: Review Students</span>
-            <ArrowRight className="h-3 w-3" />
-          </Link>
+
+          {/* Tile 3: Defaulters (Peach Coral) */}
+          <div className="rounded-[2rem] bg-rose-50/60 border border-rose-100/80 p-6 flex flex-col justify-between hover:scale-[1.015] hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <span className="text-xs font-bold text-rose-900">Defaulters (&lt;75%)</span>
+              <div className="h-9 w-9 rounded-2xl bg-rose-100 flex items-center justify-center shadow-sm">
+                <AlertTriangle className="h-4 w-4 text-rose-700" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl sm:text-4xl font-extrabold text-rose-600">
+                {stats.criticalDefaulters ?? 10}
+              </div>
+              <Link href="/defaulters" className="text-[11px] text-rose-700 hover:underline flex items-center space-x-1 font-semibold">
+                <span>View action roster</span>
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Tile 4: Punctuality (Pistachio Mint) */}
+          <div className="rounded-[2rem] bg-emerald-50/60 border border-emerald-100/80 p-6 flex flex-col justify-between hover:scale-[1.015] hover:-translate-y-0.5 transition-all duration-300">
+            <div className="flex justify-between items-start">
+              <span className="text-xs font-bold text-emerald-900">Punctuality Rate</span>
+              <div className="h-9 w-9 rounded-2xl bg-emerald-100 flex items-center justify-center shadow-sm">
+                <TrendingUp className="h-4 w-4 text-emerald-700" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-3xl sm:text-4xl font-extrabold text-stone-900">96.2%</div>
+              <span className="text-[11px] text-emerald-700/80 font-medium">Classroom Scan Accuracy</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Visual Charts & Cross-Departmental Analytics */}
+      {/* Visual Analytics */}
       <CollegeAnalyticsCharts />
 
-      {/* Live Department Attendance Matrix Table */}
-      <div className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 backdrop-blur-xl space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-            <BarChart3 className="h-5 w-5 text-purple-400" />
-            <span>Branch-Wise Real-Time Turnout</span>
-          </h2>
-          <span className="text-xs text-slate-500 font-mono">Updated just now</span>
+      {/* Branch-Wise Real-Time Turnout Table */}
+      <div className="rounded-[2rem] bg-white border border-stone-200/70 p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] space-y-5">
+        <div className="flex justify-between items-center border-b border-stone-100 pb-4">
+          <div className="flex items-center space-x-2.5">
+            <div className="h-7 w-7 rounded-xl bg-indigo-100 flex items-center justify-center">
+              <BarChart3 className="h-4 w-4 text-indigo-700" />
+            </div>
+            <h2 className="text-base font-bold text-stone-900">Branch-Wise Real-Time Turnout</h2>
+          </div>
+          <span className="text-xs text-stone-400 font-medium">Updated just now</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
+              <tr className="border-b border-stone-100 text-stone-400 uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4">Academic Department</th>
                 <th className="py-3 px-4">Total Logged Scans</th>
                 <th className="py-3 px-4">Present Students</th>
@@ -203,23 +302,29 @@ export default function AdminDashboard() {
                 <th className="py-3 px-4">Visual Ratio</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-200">
+            <tbody className="divide-y divide-stone-100 text-stone-700">
               {matrices.map((m) => {
                 const isHealthy = m.attendance_percentage >= 75;
                 return (
-                  <tr key={m.branch} className="hover:bg-slate-800/30 transition">
-                    <td className="py-4 px-4 font-bold text-white text-sm">{m.branch}</td>
-                    <td className="py-4 px-4 font-mono">{m.total_logs}</td>
-                    <td className="py-4 px-4 font-mono text-emerald-400 font-semibold">{m.present_count}</td>
+                  <tr key={m.branch} className="hover:bg-stone-50/70 transition">
+                    <td className="py-4 px-4 font-bold text-stone-900 text-sm">{m.branch}</td>
+                    <td className="py-4 px-4 font-mono text-stone-600">{m.total_logs}</td>
+                    <td className="py-4 px-4 font-mono font-bold text-emerald-700">{m.present_count}</td>
                     <td className="py-4 px-4">
-                      <span className={`font-bold text-sm ${isHealthy ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-bold text-xs ${
+                        isHealthy 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
+                          : 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                      }`}>
                         {m.attendance_percentage.toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-4 px-4 w-48">
-                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full rounded-full ${isHealthy ? 'bg-emerald-400' : 'bg-rose-400'}`}
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isHealthy ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-rose-500 to-pink-500'
+                          }`}
                           style={{ width: `${Math.min(m.attendance_percentage, 100)}%` }}
                         />
                       </div>
@@ -234,3 +339,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

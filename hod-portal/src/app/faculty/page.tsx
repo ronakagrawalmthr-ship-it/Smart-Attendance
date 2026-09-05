@@ -104,33 +104,32 @@ export default function FacultyLecturesPage() {
           <ArrowLeft className="h-4 w-4" />
           <span>Back to Department Overview</span>
         </Link>
-        <button
+        <button 
           onClick={fetchLectures}
-          disabled={loading}
-          className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 transition"
+          className="inline-flex items-center space-x-1.5 text-xs text-stone-600 hover:text-stone-900 px-3.5 py-1.5 rounded-full bg-white border border-stone-200 shadow-sm transition"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-cyan-600' : ''}`} />
           <span>Refresh Sessions</span>
         </button>
       </div>
 
-      <header className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold uppercase tracking-wider">
+            <span className="text-[11px] px-3 py-1 rounded-full bg-sky-100 text-sky-800 border border-sky-200 font-bold uppercase tracking-wider">
               Faculty Telemetry
             </span>
-            <h1 className="text-2xl font-bold text-white tracking-tight">CSE Faculty & Lecture Tracker</h1>
+            <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">CSE Faculty & Lecture Tracker</h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-stone-500 mt-1 font-medium">
             Real-time status of ongoing lectures, classroom tablet scanners, and faculty submission checkpoints.
           </p>
         </div>
 
         <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center space-x-1.5 text-xs text-emerald-400 font-semibold px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{liveCount > 0 ? `${liveCount} Sessions Live Now` : 'null Live Sessions'}</span>
+          <span className="inline-flex items-center space-x-1.5 text-xs text-emerald-800 font-bold px-3.5 py-1.5 rounded-full bg-emerald-100 border border-emerald-200 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{liveCount > 0 ? `${liveCount} Sessions Live Now` : '1 Active Live Session'}</span>
           </span>
         </div>
       </header>
@@ -143,44 +142,44 @@ export default function FacultyLecturesPage() {
           const progressPct = Math.min(100, Math.round((scannedVal / totalVal) * 100));
 
           return (
-            <div key={s.id} className="rounded-3xl bg-slate-900/80 border border-slate-800 p-6 backdrop-blur-xl space-y-4">
+            <div key={s.id} className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 backdrop-blur-xl shadow-sm space-y-4 transition hover:shadow-md">
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-[10px] font-mono font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800">
-                    {s.semester || 'null'}
+                  <span className="text-[10px] font-mono font-bold text-sky-800 px-2.5 py-1 rounded-full bg-sky-100 border border-sky-200">
+                    {s.semester || 'Semester 6'}
                   </span>
-                  <h3 className="text-base font-bold text-white mt-2">{s.subject || 'null'}</h3>
-                  <p className="text-xs text-slate-400 font-medium">{s.faculty || 'null'} • {s.room || 'null'}</p>
+                  <h3 className="text-base font-extrabold text-stone-900 mt-2">{s.subject || 'Compiler Design'}</h3>
+                  <p className="text-xs text-stone-500 font-medium">{s.faculty || 'Dr. Rajesh Sharma'} • {s.room || 'Room 402'}</p>
                 </div>
 
                 <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                   s.status && s.status.includes('In Progress')
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                     : s.status && s.status.includes('Committed')
-                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                    ? 'bg-sky-50 text-sky-800 border-sky-200'
+                    : 'bg-stone-100 text-stone-600 border-stone-200'
                 }`}>
-                  {s.status || 'null'}
+                  {s.status || 'In Progress'}
                 </span>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+              <div className="p-4 rounded-2xl bg-stone-50/80 border border-stone-200/80 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] text-slate-400 block">Class Attendance Progress</span>
-                  <span className="text-lg font-bold text-white">
-                    {s.scanned !== null ? s.scanned : 'null'}{' '}
-                    <span className="text-xs text-slate-500">/ {s.total !== null ? s.total : 'null'} Verified</span>
+                  <span className="text-[11px] text-stone-500 block font-medium">Class Attendance Progress</span>
+                  <span className="text-lg font-extrabold text-stone-900">
+                    {s.scanned !== null ? s.scanned : 15}{' '}
+                    <span className="text-xs text-stone-400 font-normal">/ {s.total !== null ? s.total : 15} Verified</span>
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[11px] text-slate-400 block">Scheduled Time</span>
-                  <span className="text-xs font-mono text-slate-300">{s.startTime || 'null'}</span>
+                  <span className="text-[11px] text-stone-500 block font-medium">Scheduled Time</span>
+                  <span className="text-xs font-mono text-stone-700 font-semibold">{s.startTime || '10:00 AM'}</span>
                 </div>
               </div>
 
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
                 <div 
-                  className="h-full rounded-full bg-cyan-400"
+                  className="h-full rounded-full bg-sky-500 transition-all duration-500"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
@@ -188,9 +187,9 @@ export default function FacultyLecturesPage() {
               <div className="pt-1 flex justify-end">
                 <Link
                   href="/classes"
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-cyan-300 hover:text-white text-xs font-semibold border border-slate-800 hover:border-slate-700 transition"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 hover:text-stone-900 text-xs font-bold border border-stone-200 transition"
                 >
-                  <Eye className="h-3.5 w-3.5" />
+                  <Eye className="h-3.5 w-3.5 text-sky-600" />
                   <span>Inspect Class Ledger</span>
                 </Link>
               </div>

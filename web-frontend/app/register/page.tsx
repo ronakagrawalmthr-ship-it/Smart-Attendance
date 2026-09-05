@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, User, CheckCircle, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { Camera, Upload, User, CheckCircle, AlertCircle, ArrowLeft, ScanFace, Sparkles, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function RegisterStudent() {
@@ -117,82 +118,105 @@ export default function RegisterStudent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-[#FAF7F2] text-stone-900 py-10 px-4 sm:px-6 lg:px-8 font-sans selection:bg-stone-200 selection:text-stone-900 antialiased">
+      {/* Top Dynamic Island Pill */}
+      <div className="flex justify-center mb-6">
+        <div className="bg-stone-900/90 text-white px-5 py-2 rounded-full text-xs font-semibold shadow-md flex items-center space-x-2.5 backdrop-blur-md border border-stone-800">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Biometric Enrollment Kiosk • 128-D Cryptographic Vectors</span>
+        </div>
+      </div>
+
       <div className="max-w-4xl mx-auto">
+        <div className="mb-6 flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center space-x-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-white border border-stone-200 px-3.5 py-2 rounded-2xl shadow-sm transition"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to Portal Launchpad</span>
+          </Link>
+          <div className="flex items-center space-x-2 text-xs text-stone-500 font-medium">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <span>Zero Raw Image Storage Policy</span>
+          </div>
+        </div>
+
         <motion.div 
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="text-center mb-10"
         >
-          <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500">
-            Student Onboarding
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-stone-900">
+            Student Identity Onboarding
           </h1>
-          <p className="mt-4 text-lg text-slate-400">
-            Secure Biometric Registration & Identity Profiling
+          <p className="mt-2 text-sm text-stone-600 max-w-lg mx-auto leading-relaxed">
+            Secure Biometric Registration with autonomous face descriptor extraction.
           </p>
         </motion.div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+        <div className="bg-white/90 border border-stone-200/80 rounded-3xl shadow-sm overflow-hidden flex flex-col md:flex-row backdrop-blur-xl">
           
           {/* Form Section */}
-          <div className="flex-1 p-8">
-            <h2 className="text-2xl font-bold mb-6 flex items-center">
-              <User className="mr-3 text-indigo-400" /> Identity Details
+          <div className="flex-1 p-8 sm:p-10">
+            <h2 className="text-xl font-bold mb-6 flex items-center text-stone-900">
+              <User className="mr-3 text-stone-700 h-5 w-5" /> Academic Identity Details
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300">Full Legal Name</label>
-                <input required type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} className="mt-1 block w-full rounded-lg bg-slate-800 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3" placeholder="e.g. Aarav Sharma" />
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Full Legal Name</label>
+                <input required type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="e.g. Aarav Sharma" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300">Roll Number</label>
-                  <input required type="text" name="rollNumber" value={formData.rollNumber} onChange={handleInputChange} className="mt-1 block w-full rounded-lg bg-slate-800 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3" placeholder="23CSE001" />
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Roll Number</label>
+                  <input required type="text" name="rollNumber" value={formData.rollNumber} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="23CSE001" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300">Semester</label>
-                  <select required name="semester" value={formData.semester} onChange={handleInputChange} className="mt-1 block w-full rounded-lg bg-slate-800 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Semester</label>
+                  <select required name="semester" value={formData.semester} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition">
                     <option value="">Select</option>
                     {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Semester {s}</option>)}
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300">Branch</label>
-                  <select required name="branch" value={formData.branch} onChange={handleInputChange} className="mt-1 block w-full rounded-lg bg-slate-800 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3">
-                    <option value="">Select</option>
-                    <option value="Computer Science">Computer Science</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Mechanical">Mechanical</option>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Branch</label>
+                  <select required name="branch" value={formData.branch} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition">
+                    <option value="">Select Branch</option>
+                    <option value="Computer Science & Engineering">Computer Science & Engineering</option>
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Electronics & Communication">Electronics & Communication</option>
+                    <option value="Mechanical Engineering">Mechanical Engineering</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300">Section</label>
-                  <input required type="text" name="section" value={formData.section} onChange={handleInputChange} className="mt-1 block w-full rounded-lg bg-slate-800 border-slate-700 text-white focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3" placeholder="A" />
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Section</label>
+                  <input required type="text" name="section" value={formData.section} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="A" />
                 </div>
               </div>
               
-              <div className="pt-6">
+              <div className="pt-4">
                 <button 
                   type="submit" 
                   disabled={isSubmitting || !capturedImage}
-                  className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white transition-all ${!capturedImage ? 'bg-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500'}`}
+                  className={`w-full flex justify-center py-3.5 px-4 rounded-2xl shadow-sm text-sm font-bold transition-all ${!capturedImage ? 'bg-stone-200 text-stone-400 cursor-not-allowed' : 'bg-stone-900 hover:bg-stone-800 text-white'}`}
                 >
-                  {isSubmitting ? 'Processing Biometrics...' : 'Complete Registration'}
+                  {isSubmitting ? 'Extracting Vector Embeddings...' : 'Complete Biometric Registration'}
                 </button>
               </div>
 
               {status === 'success' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-emerald-900/30 border border-emerald-800 rounded-lg flex items-center text-emerald-400">
-                  <CheckCircle className="mr-3 h-5 w-5 flex-shrink-0" />
-                  Successfully registered student & encrypted face vector.
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center text-emerald-800 text-xs font-semibold">
+                  <CheckCircle className="mr-2.5 h-5 w-5 text-emerald-600 flex-shrink-0" />
+                  Successfully registered student & encrypted face vector into database.
                 </motion.div>
               )}
 
               {status === 'error' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-rose-900/30 border border-rose-800 rounded-lg flex items-center text-rose-400">
-                  <AlertCircle className="mr-3 h-5 w-5 flex-shrink-0" />
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center text-rose-800 text-xs font-semibold">
+                  <AlertCircle className="mr-2.5 h-5 w-5 text-rose-600 flex-shrink-0" />
                   {errorMessage || 'Registration failed. Please check inputs and retry.'}
                 </motion.div>
               )}
@@ -200,77 +224,70 @@ export default function RegisterStudent() {
           </div>
 
           {/* Biometric Section */}
-          <div className="flex-1 bg-slate-800/50 p-8 border-t md:border-t-0 md:border-l border-slate-800">
-            <h2 className="text-2xl font-bold mb-6 flex items-center">
-              <Camera className="mr-3 text-blue-400" /> Biometric Capture
-            </h2>
-            
-            <div className="bg-slate-900 rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center relative border-2 border-dashed border-slate-700">
+          <div className="flex-1 bg-stone-50/70 p-8 sm:p-10 border-t md:border-t-0 md:border-l border-stone-200 flex flex-col justify-between">
+            <div>
+              <h2 className="text-xl font-bold mb-6 flex items-center text-stone-900">
+                <Camera className="mr-3 text-stone-700 h-5 w-5" /> Camera Viewfinder
+              </h2>
               
-              {!streamActive && !capturedImage && (
-                <div className="text-center p-6">
-                  <div className="mx-auto h-16 w-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400">
-                    <User size={32} />
+              <div className="bg-stone-900 rounded-3xl overflow-hidden aspect-[4/3] flex items-center justify-center relative border border-stone-300 shadow-inner">
+                
+                {!streamActive && !capturedImage && (
+                  <div className="text-center p-6 bg-stone-100 w-full h-full flex flex-col items-center justify-center">
+                    <div className="h-16 w-16 bg-white border border-stone-200 rounded-2xl flex items-center justify-center mb-4 text-stone-500 shadow-sm">
+                      <User size={32} />
+                    </div>
+                    <p className="text-xs text-stone-500 mb-4 max-w-xs">A clear, well-lit selfie is required to compute the 128-dimensional embedding.</p>
+                    <button onClick={startCamera} type="button" className="inline-flex items-center px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white rounded-2xl text-xs font-bold transition-all shadow-sm">
+                      <Camera size={16} className="mr-2" /> Start Camera
+                    </button>
                   </div>
-                  <p className="text-sm text-slate-400 mb-4">A clear, well-lit selfie is required to extract the 128-d face vector.</p>
-                  <button onClick={startCamera} type="button" className="inline-flex items-center px-4 py-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/30 transition-colors">
-                    <Camera size={18} className="mr-2" /> Start Camera
-                  </button>
-                </div>
-              )}
+                )}
 
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                className={`w-full h-full object-cover ${!streamActive ? 'hidden' : 'block'}`} 
-              />
-              <canvas ref={canvasRef} className="hidden" />
-              
-              {capturedImage && (
-                <div className="absolute inset-0 z-10">
-                  <img src={capturedImage} alt="Captured face" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-4">
-                    <div className="w-full flex justify-between items-center">
-                      <span className="text-emerald-400 font-medium flex items-center text-sm">
-                        <CheckCircle size={16} className="mr-1" /> Vector Extracted
-                      </span>
-                      <button type="button" onClick={resetCapture} className="text-sm text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-md transition-colors">
-                        Retake
-                      </button>
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  className={`w-full h-full object-cover ${!streamActive ? 'hidden' : 'block'}`} 
+                />
+                <canvas ref={canvasRef} className="hidden" />
+                
+                {capturedImage && (
+                  <div className="absolute inset-0 z-10">
+                    <img src={capturedImage} alt="Captured face" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end p-4">
+                      <div className="w-full flex justify-between items-center">
+                        <span className="text-emerald-400 font-bold flex items-center text-xs bg-stone-900/80 px-2.5 py-1 rounded-full border border-emerald-500/30">
+                          <CheckCircle size={14} className="mr-1.5 text-emerald-400" /> Vector Extracted
+                        </span>
+                        <button type="button" onClick={resetCapture} className="text-xs text-stone-900 bg-white hover:bg-stone-100 font-bold px-3 py-1.5 rounded-xl shadow-md transition">
+                          Retake
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {streamActive && (
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
-                  <button type="button" onClick={capturePhoto} className="h-14 w-14 rounded-full bg-white border-4 border-slate-300 hover:scale-105 transition-transform shadow-lg shadow-black/50"></button>
-                </div>
-              )}
+                {streamActive && (
+                  <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
+                    <button type="button" onClick={capturePhoto} className="h-14 w-14 rounded-full bg-white border-4 border-stone-300 hover:scale-105 transition-transform shadow-lg shadow-black/50"></button>
+                  </div>
+                )}
 
-              {/* Grid Overlay to look technical */}
-              {streamActive && (
-                <div className="absolute inset-0 pointer-events-none opacity-20">
-                  <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="1" className="text-blue-500"/>
-                      </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#grid)" />
-                    {/* Face align guide */}
-                    <ellipse cx="50%" cy="50%" rx="30%" ry="45%" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="10 5" className="text-blue-400" />
-                  </svg>
-                </div>
-              )}
+                {/* Face align guide */}
+                {streamActive && (
+                  <div className="absolute inset-0 pointer-events-none opacity-40 flex items-center justify-center">
+                    <div className="w-48 h-64 border-2 border-dashed border-white/80 rounded-[45%]" />
+                  </div>
+                )}
+              </div>
             </div>
             
-            <div className="mt-6">
+            <div className="mt-6 p-4 rounded-2xl bg-white border border-stone-200/80 shadow-sm">
               <div className="flex items-start">
-                <AlertCircle className="text-amber-400 mt-0.5 mr-2 flex-shrink-0" size={18} />
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  <strong>Privacy Guarantee:</strong> Your raw photo is analyzed in real-time to extract a cryptographic facial embedding and is <span className="text-white">instantly purged</span> from our servers. Only the mathematical vector is stored in the cloud database.
+                <ShieldCheck className="text-emerald-600 mt-0.5 mr-2.5 flex-shrink-0" size={18} />
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  <strong className="text-stone-900">Privacy Guarantee:</strong> Raw selfies are converted into 128 mathematical numbers and immediately purged from memory. No photo is stored on disk or server.
                 </p>
               </div>
             </div>

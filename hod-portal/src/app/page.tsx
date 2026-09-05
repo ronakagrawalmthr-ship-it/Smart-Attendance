@@ -45,19 +45,19 @@ export default function HODLogin() {
   };
 
   return (
-    <div className="min-h-[85vh] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-emerald-600/15 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-[85vh] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden bg-[#FAF7F2]">
+      {/* Apple Soft Ambient Glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-emerald-200/35 blur-[130px] rounded-full pointer-events-none" />
 
       <div className="max-w-md w-full mx-auto space-y-8 relative z-10">
         <div className="text-center space-y-3">
-          <div className="inline-flex h-16 w-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 items-center justify-center shadow-xl shadow-emerald-500/20 mb-2">
-            <Laptop className="h-9 w-9 text-white" />
+          <div className="inline-flex h-16 w-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-600 items-center justify-center shadow-xl shadow-emerald-500/20 mb-2 transform hover:scale-105 transition-transform duration-300">
+            <Laptop className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
+          <h1 className="text-3xl font-extrabold text-stone-900 tracking-tight">
             Head of Department Deck
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-stone-500 leading-relaxed">
             Sign in to access your department-exclusive attendance matrices, class turnouts, faculty sessions, and student grievance appeals.
           </p>
         </div>
@@ -65,24 +65,24 @@ export default function HODLogin() {
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl bg-slate-900/80 border border-slate-800 p-8 backdrop-blur-xl shadow-2xl"
+          className="rounded-3xl bg-white/85 border border-stone-200/80 p-8 backdrop-blur-2xl shadow-xl shadow-stone-900/5"
         >
           {errorMessage && (
-            <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center space-x-3 text-rose-400 text-xs">
-              <AlertCircle className="h-5 w-5 shrink-0" />
+            <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-center space-x-3 text-rose-700 text-xs">
+              <AlertCircle className="h-5 w-5 shrink-0 text-rose-500" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-2">
                 Select Your Department
               </label>
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:border-emerald-500 transition"
+                className="w-full px-4 py-3 rounded-2xl bg-stone-50/70 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 transition"
               >
                 <option value="Computer Science">Computer Science & Engineering</option>
                 <option value="Information Tech">Information Technology</option>
@@ -92,39 +92,39 @@ export default function HODLogin() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-2">
                 HOD Institutional Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
+                <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-stone-400" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="hod.cse@college.edu"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:border-emerald-500 transition"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/70 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm font-medium focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 transition"
                 />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-2">
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider">
                   Department Access Key
                 </label>
-                <Link href="/forgot-password" className="text-xs text-emerald-400 hover:text-emerald-300 transition">
+                <Link href="/forgot-password" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition">
                   Forgot Password?
                 </Link>
               </div>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
+                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-stone-400" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:border-emerald-500 transition"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/70 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 transition"
                 />
               </div>
             </div>
@@ -132,7 +132,7 @@ export default function HODLogin() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:opacity-95 text-white shadow-lg shadow-emerald-600/25 transition duration-200 flex items-center justify-center space-x-2"
+              className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:opacity-95 text-white shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition duration-200 flex items-center justify-center space-x-2"
             >
               <span>{isLoading ? 'Authenticating HOD...' : 'Enter Department Control Center'}</span>
               <ArrowRight className="h-4 w-4" />
@@ -140,21 +140,21 @@ export default function HODLogin() {
           </form>
 
           {/* Demo Credentials Quick-Select Pill */}
-          <div className="mt-5 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-between text-xs text-emerald-300">
+          <div className="mt-5 p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-between text-xs text-emerald-900">
             <div>
-              <span className="font-semibold text-white">Demo HOD:</span> hod.cse@college.edu / AdminPass123!
+              <span className="font-bold text-emerald-950">Demo HOD:</span> hod.cse@college.edu / AdminPass123!
             </div>
             <button
               type="button"
               onClick={() => { setEmail('hod.cse@college.edu'); setPassword('AdminPass123!'); }}
-              className="px-2 py-1 rounded bg-emerald-600/50 hover:bg-emerald-600 text-white font-medium text-[11px] transition"
+              className="px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-sm transition"
             >
               Fill
             </button>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-800 text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          <div className="mt-5 pt-4 border-t border-stone-200/80 text-center text-xs text-stone-500 flex items-center justify-center space-x-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
             <span>Strict Department Isolation Active</span>
           </div>
         </motion.div>

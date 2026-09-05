@@ -46,70 +46,70 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-[85vh] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-[80vh] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
+      {/* Soft warm ambient glow behind the card */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-gradient-to-tr from-amber-200/30 via-rose-200/30 to-indigo-200/30 blur-[100px] rounded-full pointer-events-none" />
 
-      <div className="max-w-md w-full mx-auto space-y-8 relative z-10">
-        <div className="text-center space-y-3">
-          <div className="inline-flex h-16 w-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-600 items-center justify-center shadow-xl shadow-purple-600/20 mb-2">
-            <Building2 className="h-9 w-9 text-white" />
+      <div className="max-w-md w-full mx-auto space-y-7 relative z-10">
+        <div className="text-center space-y-2">
+          <div className="inline-flex h-16 w-16 rounded-3xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 items-center justify-center shadow-xl shadow-indigo-500/20 mb-1">
+            <Building2 className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Governance & HOD Console
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
+            Institutional Console
           </h1>
-          <p className="text-sm text-slate-400">
-            Sign in with institutional administrative credentials to access department matrices, defaulter alerts, and emergency broadcasts.
+          <p className="text-xs sm:text-sm text-stone-500 max-w-sm mx-auto">
+            Sign in with institutional credentials to access academic directories, defaulter matrices, and emergency governance.
           </p>
         </div>
 
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl bg-slate-900/80 border border-slate-800 p-8 backdrop-blur-xl shadow-2xl"
+          className="rounded-[2rem] bg-white/95 border border-stone-200/80 p-8 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.05)]"
         >
           {errorMessage && (
-            <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center space-x-3 text-rose-400 text-xs">
-              <AlertCircle className="h-5 w-5 shrink-0" />
+            <div className="mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center space-x-3 text-rose-700 text-xs">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5 pl-1">
                 Administrator / HOD Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
+                <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-stone-400" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@college.edu or hod@college.edu"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:border-purple-500 transition"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              <div className="flex justify-between items-center mb-1.5 pl-1">
+                <label className="block text-xs font-semibold text-stone-600">
                   Password
                 </label>
-                <Link href="/forgot-password" className="text-xs text-purple-400 hover:text-purple-300 transition">
+                <Link href="/forgot-password" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium transition">
                   Forgot Password?
                 </Link>
               </div>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
+                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-stone-400" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:border-purple-500 transition"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
                 />
               </div>
             </div>
@@ -117,33 +117,34 @@ export default function AdminLogin() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:opacity-95 text-white shadow-lg shadow-purple-600/25 transition duration-200 flex items-center justify-center space-x-2"
+              className="w-full mt-2 py-3.5 px-4 rounded-full font-bold text-sm bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white shadow-lg shadow-indigo-600/25 transition duration-200 flex items-center justify-center space-x-2"
             >
-              <span>{isLoading ? 'Verifying Credentials...' : 'Sign In to Command Deck'}</span>
+              <span>{isLoading ? 'Verifying...' : 'Sign In to Console'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
 
-          {/* Demo Credentials Quick-Select Pill */}
-          <div className="mt-5 p-3 rounded-xl bg-purple-950/40 border border-purple-800/40 flex items-center justify-between text-xs text-purple-300">
-            <div>
-              <span className="font-semibold text-white">Demo Admin:</span> admin@college.edu / AdminPass123!
+          {/* Quick Demo Fill Pill */}
+          <div className="mt-5 p-3 rounded-2xl bg-stone-50 border border-stone-200/80 flex items-center justify-between text-xs text-stone-600">
+            <div className="truncate mr-2">
+              <span className="font-semibold text-stone-900">Demo Admin:</span> admin@college.edu
             </div>
             <button
               type="button"
               onClick={() => { setEmail('admin@college.edu'); setPassword('AdminPass123!'); }}
-              className="px-2 py-1 rounded bg-purple-600/50 hover:bg-purple-600 text-white font-medium text-[11px] transition"
+              className="px-3 py-1 rounded-full bg-white border border-stone-200 hover:border-stone-300 text-stone-800 font-semibold text-[11px] shadow-sm transition"
             >
               Fill
             </button>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-800 text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span>Role-Based Access Guard Active (RBAC)</span>
+          <div className="mt-4 pt-4 border-t border-stone-100 text-center text-xs text-stone-400 flex items-center justify-center space-x-1.5">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <span>Encrypted Institutional Security (RBAC)</span>
           </div>
         </motion.div>
       </div>
     </div>
   );
 }
+

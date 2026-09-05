@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { BarChart3, AlertTriangle, Calendar, Download, Users, TrendingUp, CheckCircle, RefreshCw, Settings, ExternalLink } from 'lucide-react';
+import { BarChart3, AlertTriangle, Calendar, Download, Users, TrendingUp, CheckCircle, RefreshCw, Settings, ExternalLink, ArrowLeft } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 
 export default function HODDashboard() {
@@ -19,9 +19,9 @@ export default function HODDashboard() {
   ]);
 
   const [stats, setStats] = useState([
-    { name: 'Overall Turnout Today', stat: '85.7%', icon: TrendingUp, change: '+1.5%' },
-    { name: 'Active Classes', stat: '4', icon: Users, change: '0' },
-    { name: 'Defaulters (<75%)', stat: '2', icon: AlertTriangle, change: 'Critical' },
+    { name: 'Overall Turnout Today', stat: '85.7%', icon: TrendingUp, change: '+1.5%', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { name: 'Active Classes', stat: '4', icon: Users, change: 'Running', bg: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { name: 'Defaulters (<75%)', stat: '2', icon: AlertTriangle, change: 'Critical', bg: 'bg-rose-50 text-rose-700 border-rose-200' },
   ]);
 
   const fetchLiveManagementData = async () => {
@@ -37,7 +37,7 @@ export default function HODDashboard() {
           setStats(prev => [
             prev[0],
             prev[1],
-            { name: 'Defaulters (<75%)', stat: `${data.defaulters.length}`, icon: AlertTriangle, change: 'Active' }
+            { name: 'Defaulters (<75%)', stat: `${data.defaulters.length}`, icon: AlertTriangle, change: 'Active', bg: 'bg-rose-50 text-rose-700 border-rose-200' }
           ]);
         }
       }
@@ -101,142 +101,141 @@ export default function HODDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      <header className="bg-slate-900 border-b border-slate-800 p-6 flex flex-wrap justify-between items-center gap-4">
+    <div className="min-h-screen bg-[#FAF7F2] text-stone-900 flex flex-col font-sans selection:bg-stone-200 selection:text-stone-900 antialiased">
+      {/* Top Dynamic Island Pill */}
+      <div className="pt-3 px-4 flex justify-center sticky top-0 z-50 pointer-events-none">
+        <div className="pointer-events-auto bg-stone-900/90 text-white px-5 py-2 rounded-full text-xs font-semibold shadow-lg backdrop-blur-xl border border-stone-800 flex items-center space-x-3">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>HOD Control Deck • CSE Department Active</span>
+        </div>
+      </div>
+
+      <header className="bg-white/80 backdrop-blur-xl border-b border-stone-200/80 px-6 py-4 flex flex-wrap justify-between items-center gap-4 sticky top-12 z-40">
         <div>
           <div className="flex items-center space-x-2">
-            <Link href="/" className="text-xs text-slate-400 hover:text-white transition">← Home</Link>
-            <span className="text-slate-600">/</span>
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-500">
+            <Link href="/" className="text-xs font-semibold text-stone-500 hover:text-stone-900 transition flex items-center space-x-1">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Launchpad</span>
+            </Link>
+            <span className="text-stone-300">/</span>
+            <h1 className="text-xl font-extrabold text-stone-900">
               HOD Control Center
             </h1>
           </div>
-          <p className="text-sm text-slate-400 mt-1">Computer Science & Engineering Department</p>
+          <p className="text-xs text-stone-500 mt-0.5">Computer Science & Engineering Department</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button onClick={fetchLiveManagementData} className="flex items-center text-sm bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-colors border border-slate-700">
-            <RefreshCw size={14} className="mr-2" /> Refresh Data
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button onClick={fetchLiveManagementData} className="flex items-center text-xs font-semibold bg-stone-50 hover:bg-stone-100 text-stone-700 px-3.5 py-2 rounded-2xl transition-colors border border-stone-200 shadow-sm">
+            <RefreshCw size={14} className="mr-1.5 text-stone-500" /> Refresh Data
           </button>
-          <button onClick={exportHODReport} className="flex items-center text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 px-4 py-2 rounded-lg transition-colors border border-slate-700 font-medium">
-            <Download size={16} className="mr-2" /> Export Report (CSV)
+          <button onClick={exportHODReport} className="flex items-center text-xs font-semibold bg-white hover:bg-stone-50 text-stone-800 px-4 py-2 rounded-2xl transition-colors border border-stone-200 shadow-sm">
+            <Download size={15} className="mr-1.5 text-stone-500" /> Export CSV
           </button>
           <a
-            href="http://localhost:3003/settings"
+            href="http://localhost:3003"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-4 py-2 rounded-lg transition-colors shadow-md font-semibold"
+            className="flex items-center text-xs bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-2xl transition-colors shadow-sm font-bold space-x-1.5"
           >
-            <Settings size={15} className="mr-2" /> HOD Settings (:3003)
+            <span>Full HOD Portal (:3003)</span>
+            <ExternalLink size={13} className="text-stone-300" />
           </a>
         </div>
       </header>
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 max-w-7xl mx-auto w-full p-6 sm:p-8 gap-8">
         {/* Sidebar Navigation */}
-        <nav className="w-64 bg-slate-900 border-r border-slate-800 p-4 space-y-2 hidden md:block">
+        <nav className="w-56 space-y-1.5 hidden md:block shrink-0">
           <button 
             onClick={() => setActiveTab('overview')}
-            className={`w-full flex items-center p-3 rounded-lg text-left transition-colors ${activeTab === 'overview' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center p-3 rounded-2xl text-xs font-bold text-left transition-all ${activeTab === 'overview' ? 'bg-stone-900 text-white shadow-sm' : 'text-stone-600 hover:bg-white hover:text-stone-900'}`}
           >
-            <BarChart3 size={20} className="mr-3" /> Live Matrices
+            <BarChart3 size={17} className="mr-2.5" /> Live Matrices
           </button>
           <button 
             onClick={() => setActiveTab('defaulters')}
-            className={`w-full flex items-center p-3 rounded-lg text-left transition-colors ${activeTab === 'defaulters' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center p-3 rounded-2xl text-xs font-bold text-left transition-all ${activeTab === 'defaulters' ? 'bg-stone-900 text-white shadow-sm' : 'text-stone-600 hover:bg-white hover:text-stone-900'}`}
           >
-            <AlertTriangle size={20} className="mr-3" /> Defaulter Alerts
+            <AlertTriangle size={17} className="mr-2.5" /> Defaulter Alerts
           </button>
           <button 
             onClick={() => setActiveTab('admin')}
-            className={`w-full flex items-center p-3 rounded-lg text-left transition-colors ${activeTab === 'admin' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:bg-slate-800'}`}
+            className={`w-full flex items-center p-3 rounded-2xl text-xs font-bold text-left transition-all ${activeTab === 'admin' ? 'bg-stone-900 text-white shadow-sm' : 'text-stone-600 hover:bg-white hover:text-stone-900'}`}
           >
-            <Calendar size={20} className="mr-3" /> Holidays & Archiving
+            <Calendar size={17} className="mr-2.5" /> Holidays & Archiving
           </button>
-          <div className="pt-4 mt-4 border-t border-slate-800">
-            <a 
-              href="http://localhost:3003/settings"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center p-3 rounded-lg text-left transition-colors text-amber-300 hover:bg-slate-800"
-            >
-              <Settings size={20} className="mr-3 text-amber-400" /> Department Settings
-            </a>
-          </div>
         </nav>
 
         {/* Main Content */}
-        <main className="flex-1 p-8 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto">
           {adminNotice && (
-            <div className="mb-6 p-4 bg-emerald-950/40 border border-emerald-800 text-emerald-300 rounded-xl flex items-center justify-between">
-              <span className="flex items-center"><CheckCircle className="mr-2" size={18} /> {adminNotice}</span>
-              <button onClick={() => setAdminNotice(null)} className="text-xs text-slate-400 hover:text-white">Dismiss</button>
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center justify-between shadow-sm text-xs font-semibold">
+              <span className="flex items-center"><CheckCircle className="mr-2 h-4 w-4 text-emerald-600" /> {adminNotice}</span>
+              <button onClick={() => setAdminNotice(null)} className="text-xs text-stone-500 hover:text-stone-800">Dismiss</button>
             </div>
           )}
 
           {activeTab === 'overview' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <h2 className="text-xl font-semibold mb-6">Real-Time Operational Visibility</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {stats.map((item) => (
-                  <div key={item.name} className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-slate-800/50 opacity-20" />
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-400">{item.name}</h3>
-                      <item.icon size={20} className="text-emerald-500" />
+                  <div key={item.name} className="bg-white/90 p-6 rounded-3xl border border-stone-200/80 shadow-sm relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">{item.name}</h3>
+                      <div className={`p-2 rounded-xl ${item.bg} border`}>
+                        <item.icon size={16} />
+                      </div>
                     </div>
-                    <div className="flex items-baseline">
-                      <p className="text-3xl font-bold text-white">{item.stat}</p>
-                      <p className={`ml-2 text-sm font-medium ${item.change.startsWith('+') ? 'text-emerald-400' : item.change === '0' ? 'text-slate-500' : 'text-rose-400'}`}>
-                        {item.change}
-                      </p>
+                    <div className="flex items-baseline space-x-2">
+                      <p className="text-3xl font-extrabold text-stone-900">{item.stat}</p>
+                      <span className="text-xs font-semibold text-stone-500">{item.change}</span>
                     </div>
                   </div>
                 ))}
               </div>
 
               {/* Attendance Matrix Overview */}
-              <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-white">Live Attendance Stream</h3>
-                  <span className="text-xs text-emerald-400 bg-emerald-950/60 px-2 py-1 rounded border border-emerald-800/50 flex items-center">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 mr-2 animate-pulse" /> Live Connected
+              <div className="bg-white/90 rounded-3xl border border-stone-200/80 p-8 shadow-sm">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-stone-900">Live Department Attendance Stream</h3>
+                  <span className="text-xs text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 flex items-center font-semibold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse" /> Live Connected
                   </span>
                 </div>
-                <div className="h-64 flex flex-col justify-center items-center text-slate-400 border border-slate-800 border-dashed rounded-lg">
-                  <BarChart3 size={40} className="mb-3 text-emerald-500 opacity-60" />
-                  <p className="text-sm">Attendance logs are synced instantly as teachers scan in classrooms.</p>
-                  <p className="text-xs text-slate-500 mt-1">Listening to backend webhook events & audit trail</p>
+                <div className="h-56 flex flex-col justify-center items-center text-stone-500 border border-stone-200 border-dashed rounded-2xl bg-stone-50/50">
+                  <BarChart3 size={36} className="mb-2 text-stone-400" />
+                  <p className="text-xs font-semibold text-stone-700">Attendance logs are synced instantly as teachers scan in classrooms.</p>
+                  <p className="text-[11px] text-stone-400 mt-0.5">Listening to backend webhook events & audit trail</p>
                 </div>
               </div>
             </motion.div>
           )}
 
           {activeTab === 'defaulters' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <h2 className="text-xl font-semibold mb-6 flex items-center text-rose-400">
-                <AlertTriangle className="mr-2" /> Critical Defaulters (&lt; 75%)
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              <h2 className="text-lg font-bold flex items-center text-rose-600">
+                <AlertTriangle className="mr-2 h-5 w-5" /> Critical Defaulters (&lt; 75%)
               </h2>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-sm text-slate-400">
-                  <thead className="bg-slate-800/50 text-xs uppercase border-b border-slate-700/50">
+              <div className="bg-white/90 border border-stone-200/80 rounded-3xl overflow-hidden shadow-sm">
+                <table className="w-full text-left text-xs text-stone-600">
+                  <thead className="bg-stone-50 text-[10px] uppercase font-bold tracking-wider text-stone-500 border-b border-stone-100">
                     <tr>
-                      <th className="px-6 py-4 font-medium text-slate-300">Roll Number</th>
-                      <th className="px-6 py-4 font-medium text-slate-300">Student Name</th>
-                      <th className="px-6 py-4 font-medium text-slate-300">Section</th>
-                      <th className="px-6 py-4 font-medium text-slate-300">Attendance %</th>
-                      <th className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
+                      <th className="px-6 py-4 font-bold">Roll Number</th>
+                      <th className="px-6 py-4 font-bold">Student Name</th>
+                      <th className="px-6 py-4 font-bold">Section</th>
+                      <th className="px-6 py-4 font-bold">Attendance %</th>
+                      <th className="px-6 py-4 font-bold text-right">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-stone-100">
                     {defaultersList.map((d, i) => (
-                      <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/30">
-                        <td className="px-6 py-4 font-medium text-white">{d.roll_number}</td>
-                        <td className="px-6 py-4">{d.name}</td>
+                      <tr key={i} className="hover:bg-stone-50/60 transition">
+                        <td className="px-6 py-4 font-mono font-bold text-stone-900">{d.roll_number}</td>
+                        <td className="px-6 py-4 font-semibold text-stone-800">{d.name}</td>
                         <td className="px-6 py-4">{d.section}</td>
-                        <td className="px-6 py-4 font-bold text-rose-400">{d.attendance_pct}%</td>
+                        <td className="px-6 py-4 font-extrabold text-rose-600">{d.attendance_pct}%</td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => alert(`Warning notification queued for ${d.name} (${d.roll_number})`)} className="text-xs bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1 rounded hover:bg-rose-500/20 transition-colors">Send Warning</button>
+                          <button onClick={() => alert(`Warning notification queued for ${d.name} (${d.roll_number})`)} className="text-xs bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl font-bold hover:bg-rose-100 transition shadow-sm">Send Warning</button>
                         </td>
                       </tr>
                     ))}
@@ -247,62 +246,59 @@ export default function HODDashboard() {
           )}
 
           {activeTab === 'admin' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-              <div>
-                <h2 className="text-xl font-semibold mb-6 flex items-center">
-                  <Calendar className="mr-2 text-indigo-400" /> Holiday Declaration
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <div className="bg-white/90 border border-stone-200/80 rounded-3xl p-7 shadow-sm max-w-2xl">
+                <h2 className="text-base font-bold mb-4 flex items-center text-stone-900">
+                  <Calendar className="mr-2 text-stone-700 h-5 w-5" /> Holiday Declaration
                 </h2>
-                <form onSubmit={handleDeclareHoliday} className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-2xl">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                <form onSubmit={handleDeclareHoliday} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">Date</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Date</label>
                       <input 
                         required
                         type="date" 
                         value={holidayDate}
                         onChange={(e) => setHolidayDate(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500" 
+                        className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white" 
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">Reason</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Reason</label>
                       <input 
                         required
                         type="text" 
                         value={holidayReason}
                         onChange={(e) => setHolidayReason(e.target.value)}
                         placeholder="e.g. Weather Emergency" 
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500" 
+                        className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white" 
                       />
                     </div>
                   </div>
-                  <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                  <button type="submit" className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold py-2.5 px-5 rounded-2xl transition shadow-sm">
                     Declare Holiday & Notify
                   </button>
                 </form>
               </div>
 
-              <div>
-                <h2 className="text-xl font-semibold mb-6 flex items-center text-rose-400">
-                  <AlertTriangle className="mr-2" /> Lifecycle Archiving
+              <div className="bg-white/90 border border-stone-200/80 rounded-3xl p-7 shadow-sm max-w-2xl">
+                <h2 className="text-base font-bold mb-2 flex items-center text-rose-600">
+                  <AlertTriangle className="mr-2 h-5 w-5" /> Lifecycle Archiving
                 </h2>
-                <div className="bg-rose-950/20 border border-rose-900/50 rounded-xl p-6 max-w-2xl">
-                  <p className="text-sm text-rose-200 mb-4">
-                    Warning: Running the end-of-semester archiving will freeze all current attendance records, export CSV backups, and increment active semesters for all branches.
-                  </p>
-                  <button 
-                    type="button"
-                    onClick={handleArchive}
-                    disabled={isArchiving}
-                    className="bg-rose-600 hover:bg-rose-500 text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-lg shadow-rose-900/20"
-                  >
-                    {isArchiving ? 'Archiving Records...' : 'Initialize Semester Archive'}
-                  </button>
-                </div>
+                <p className="text-xs text-stone-500 mb-4 leading-relaxed">
+                  Running the end-of-semester archiving will freeze all current attendance records, export CSV backups, and increment active semesters for all branches.
+                </p>
+                <button 
+                  type="button"
+                  onClick={handleArchive}
+                  disabled={isArchiving}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold py-2.5 px-5 rounded-2xl transition shadow-sm"
+                >
+                  {isArchiving ? 'Archiving Records...' : 'Initialize Semester Archive'}
+                </button>
               </div>
             </motion.div>
           )}
-
         </main>
       </div>
     </div>
