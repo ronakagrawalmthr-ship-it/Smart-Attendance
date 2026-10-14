@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 import json
 
 try:
-    from .. import models, schemas, database
+    from .. import models, schemas, database, security
     from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
     from ..sort_utils import natural_sort_key
 except (ImportError, ValueError):
-    import models, schemas, database
+    import models, schemas, database, security
     from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
     try:
         from sort_utils import natural_sort_key
@@ -333,11 +333,25 @@ def get_class_students(
     branch: str = "Computer Science",
     semester: int = None,
     section: str = None,
+    request: Request = None,
     db: Session = Depends(database.get_db)
 ):
     """
     Returns student roster for the selected class/section for attendance marking.
+    Protects private contact numbers: phone numbers are masked unless caller is authenticated.
     """
+    is_authenticated = False
+    if request:
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            try:
+                token = auth_header.split(" ")[1]
+                payload = security.decode_access_token(token)
+                if payload:
+                    is_authenticated = True
+            except Exception:
+                pass
+
     query = db.query(models.StudentProfile)
     if branch and branch != "all":
         query = query.filter(models.StudentProfile.branch.ilike(f"%{branch}%"))
@@ -361,7 +375,7 @@ def get_class_students(
                 "branch": s.branch,
                 "semester": s.semester,
                 "section": s.section or "A",
-                "phone": s.phone,
+                "phone": s.phone if is_authenticated else (f"******{s.phone[-4:]}" if s.phone and len(s.phone) >= 4 else None),
                 "has_face": bool(s.face_encoding)
             }
             for s in students

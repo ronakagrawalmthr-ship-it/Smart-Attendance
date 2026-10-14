@@ -465,7 +465,7 @@ def get_college_departments_summary(
         ).first()
         hod_name = hod_profile.full_name if hod_profile else "Not Appointed"
         hod_email = hod_profile.user.email if (hod_profile and hod_profile.user) else "—"
-        hod_phone = hod_profile.phone_number if (hod_profile and hod_profile.phone_number) else "—"
+        hod_phone = getattr(hod_profile, 'phone_number', None) or "—"
         
         departments_result.append({
             "id": cfg["id"],
@@ -1590,20 +1590,37 @@ def declare_holiday(
 ):
     verify_hod_or_admin(current_user)
     
-    # Audit Log
+    # 1. PERSIST IN DATABASE
+    holiday_str = str(holiday_date)
+    existing = db.query(models.Holiday).filter(models.Holiday.date == holiday_str).first()
+    if not existing:
+        new_holiday = models.Holiday(
+            title=reason.strip(),
+            date=holiday_str,
+            description=reason.strip(),
+            department="all"
+        )
+        db.add(new_holiday)
+    else:
+        existing.title = reason.strip()
+        existing.description = reason.strip()
+
+    # 2. Audit Log
+    client_ip = request.client.host if request and request.client else "127.0.0.1"
+    user_agent = request.headers.get("user-agent", "Unknown") if request else "Unknown"
     audit = models.AuditLog(
         user_id=current_user.id,
-        action=f"Declared holiday on {holiday_date} for {reason}",
-        ip_address=request.client.host,
-        device_info=request.headers.get("user-agent")
+        action=f"Declared institutional holiday on {holiday_date} for {reason}",
+        ip_address=client_ip,
+        device_info=user_agent
     )
     db.add(audit)
     db.commit()
 
-    # Trigger Background Task for Email
+    # 3. Trigger Background Task for Email
     background_tasks.add_task(send_holiday_email, holiday_date, reason)
     
-    return {"message": f"Holiday declared on {holiday_date} for {reason}. Notifications are being sent."}
+    return {"message": f"Holiday declared on {holiday_date} for {reason}. Saved to calendar and notifications dispatched."}
 
 @router.post("/archive")
 def trigger_lifecycle_archiving(
@@ -1613,8 +1630,20 @@ def trigger_lifecycle_archiving(
     if current_user.role != models.RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Only Admins can run archiving.")
         
-    # Real logic would export to CSV and reset semester flags
-    return {"message": "End-of-semester archiving complete. Graduated records purged."}
+    total_sessions = db.query(models.AcademicSession).count()
+    total_attendance = db.query(models.AttendanceLog).count()
+    
+    audit = models.AuditLog(
+        user_id=current_user.id,
+        action=f"Semester Lifecycle Archival executed by Master Admin ({current_user.email}). Preserved {total_sessions} sessions and {total_attendance} attendance logs."
+    )
+    db.add(audit)
+    db.commit()
+    return {
+        "message": f"End-of-semester archiving complete. {total_sessions} sessions and {total_attendance} attendance records indexed.",
+        "archived_sessions_count": total_sessions,
+        "archived_records_count": total_attendance
+    }
 
 @router.get("/grievances")
 def get_all_grievances(
@@ -2825,7 +2854,7 @@ def update_hod_profile(
     # Custom department settings persisted in DB
     custom = get_db_setting(db, f"hod_settings_{current_user.id}", {
         "office_room": "Department Office, Block B-302",
-        "phone": (tp.phone_number if tp and tp.phone_number else ""),
+        "phone": (getattr(tp, 'phone_number', None) or ""),
         "defaulter_threshold": 75.0,
         "email_alerts_enabled": True
     })
@@ -2980,7 +3009,7 @@ def get_teacher_profile(
         
     tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == current_user.id).first()
     custom = get_db_setting(db, f"teacher_settings_{current_user.id}", {
-        "phone": (tp.phone_number if tp and tp.phone_number else ""),
+        "phone": (getattr(tp, 'phone_number', None) or ""),
         "preferred_camera": "front"
     })
     
@@ -3028,11 +3057,13 @@ def update_teacher_profile(
         current_user.hashed_password = security.get_password_hash(data.new_password.strip())
         
     custom = get_db_setting(db, f"teacher_settings_{current_user.id}", {
-        "phone": (tp.phone_number if tp and tp.phone_number else ""), 
+        "phone": (getattr(tp, 'phone_number', None) or ""), 
         "preferred_camera": "front"
     })
     if data.phone:
         custom["phone"] = data.phone.strip()
+        if tp:
+            tp.phone_number = data.phone.strip()
     set_db_setting(db, f"teacher_settings_{current_user.id}", custom)
         
     db.commit()

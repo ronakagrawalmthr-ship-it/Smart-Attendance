@@ -83,6 +83,9 @@ export default function AttendanceTrendsChart({
 }) {
   const [chartMode, setChartMode] = useState<'timeline' | 'semesters'>('timeline');
 
+  const safeWeeklyData = Array.isArray(weeklyData) ? weeklyData : DEFAULT_WEEKLY_DATA;
+  const safeSemesterData = Array.isArray(semesterData) ? semesterData : DEFAULT_SEMESTER_DATA;
+
   return (
     <div className="rounded-3xl border border-stone-200/80 bg-white/85 p-6 sm:p-8 shadow-sm backdrop-blur-xl">
       {/* Header & Controls */}
@@ -128,24 +131,24 @@ export default function AttendanceTrendsChart({
       </div>
 
       {/* Quick KPI Badges */}
-      {weeklyData.length > 0 && (
+      {safeWeeklyData.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
             <div className="text-[11px] font-bold text-stone-500">Peak Turnout</div>
             <div className="text-lg font-extrabold text-emerald-700 mt-0.5">
-              {Math.max(...weeklyData.map(d => d.turnout)).toFixed(1)}%
+              {Math.max(...safeWeeklyData.map(d => d.turnout)).toFixed(1)}%
             </div>
           </div>
           <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
             <div className="text-[11px] font-bold text-stone-500">Weekly Avg</div>
             <div className="text-lg font-extrabold text-teal-700 mt-0.5">
-              {(weeklyData.reduce((acc, d) => acc + d.turnout, 0) / weeklyData.length).toFixed(1)}%
+              {(safeWeeklyData.reduce((acc, d) => acc + d.turnout, 0) / safeWeeklyData.length).toFixed(1)}%
             </div>
           </div>
           <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
             <div className="text-[11px] font-bold text-stone-500">Compliance Rate</div>
             <div className="text-lg font-extrabold text-sky-700 mt-0.5">
-              {((weeklyData.filter(d => d.turnout >= 75).length / weeklyData.length) * 100).toFixed(0)}% &gt; 75%
+              {((safeWeeklyData.filter(d => d.turnout >= 75).length / safeWeeklyData.length) * 100).toFixed(0)}% &gt; 75%
             </div>
           </div>
         </div>
@@ -155,7 +158,7 @@ export default function AttendanceTrendsChart({
       <div className="h-72 w-full">
         {chartMode === 'timeline' ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={weeklyData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+            <AreaChart data={safeWeeklyData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
               <defs>
                 <linearGradient id="turnoutGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#059669" stopOpacity={0.3} />
@@ -198,7 +201,7 @@ export default function AttendanceTrendsChart({
           </ResponsiveContainer>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={semesterData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+            <BarChart data={safeSemesterData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis 
                 dataKey="semester" 
@@ -223,7 +226,7 @@ export default function AttendanceTrendsChart({
                 label={{ value: '75% Cutoff', fill: '#e11d48', fontSize: 10, position: 'insideBottomRight' }} 
               />
               <Bar dataKey="turnout" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                {semesterData.map((entry, index) => {
+                {safeSemesterData.map((entry, index) => {
                   const color = entry.turnout >= 88 ? '#059669' : entry.turnout >= 75 ? '#0284c7' : '#e11d48';
                   return <Cell key={`cell-${index}`} fill={color} />;
                 })}

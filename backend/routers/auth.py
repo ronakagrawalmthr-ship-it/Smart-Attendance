@@ -272,6 +272,7 @@ def forgot_password(
     RESET_OTP_STORE[clean_id] = {"otp": otp, "expires_at": expires_at, "email": user.email}
     RESET_OTP_STORE[user_email_key] = {"otp": otp, "expires_at": expires_at, "email": user.email}
     
+    print(f"\n[SECURITY VERIFICATION] Password reset OTP generated for {user.email}: {otp} (Valid for 15 minutes)\n")
     background_tasks.add_task(send_reset_email, user.email, otp)
     
     return {

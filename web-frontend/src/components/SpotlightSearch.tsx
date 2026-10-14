@@ -64,9 +64,11 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('open-spotlight', handleCustomSpotlight);
+    window.addEventListener('open-spotlight-search', handleCustomSpotlight);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('open-spotlight', handleCustomSpotlight);
+      window.removeEventListener('open-spotlight-search', handleCustomSpotlight);
     };
   }, []);
 

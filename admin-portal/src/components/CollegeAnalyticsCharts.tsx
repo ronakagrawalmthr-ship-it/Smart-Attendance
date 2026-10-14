@@ -112,17 +112,19 @@ export default function CollegeAnalyticsCharts({
 }: CollegeAnalyticsChartsProps) {
   const [tab, setTab] = useState<'branches' | 'trajectory' | 'defaulters'>('branches');
 
-  const riskData = riskDistribution && riskDistribution.length > 0 ? riskDistribution : RISK_DISTRIBUTION_DATA;
+  const safeBranches = Array.isArray(branches) ? branches : DEFAULT_BRANCH_DATA;
+  const safeMonthly = Array.isArray(monthly) ? monthly : DEFAULT_MONTHLY_DATA;
+  const riskData = Array.isArray(riskDistribution) && riskDistribution.length > 0 ? riskDistribution : RISK_DISTRIBUTION_DATA;
   const totalCount = totalStudents !== undefined 
     ? totalStudents 
     : riskData.reduce((sum, item) => sum + item.value, 0);
 
   // Dynamic insight message based on branch data
-  const bestBranch = branches.length > 0 
-    ? [...branches].sort((a, b) => b.attendance_percentage - a.attendance_percentage)[0]
+  const bestBranch = safeBranches.length > 0 
+    ? [...safeBranches].sort((a, b) => b.attendance_percentage - a.attendance_percentage)[0]
     : null;
-  const lowestBranch = branches.length > 0
-    ? [...branches].sort((a, b) => a.attendance_percentage - b.attendance_percentage)[0]
+  const lowestBranch = safeBranches.length > 0
+    ? [...safeBranches].sort((a, b) => a.attendance_percentage - b.attendance_percentage)[0]
     : null;
 
   return (
@@ -186,7 +188,7 @@ export default function CollegeAnalyticsCharts({
       <div className="h-72 w-full pt-2">
         {tab === 'branches' && (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={branches} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <BarChart data={safeBranches} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis 
                 dataKey="code" 
@@ -208,7 +210,7 @@ export default function CollegeAnalyticsCharts({
                 radius={[8, 8, 0, 0]} 
                 maxBarSize={48}
               >
-                {branches.map((entry, index) => (
+                {safeBranches.map((entry, index) => (
                   <Cell 
                     key={`cell-${index}`} 
                     fill={entry.attendance_percentage >= 75 ? '#818cf8' : '#fb7185'} 
@@ -221,7 +223,7 @@ export default function CollegeAnalyticsCharts({
 
         {tab === 'trajectory' && (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={monthly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={safeMonthly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="collegeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#6366f1" stopOpacity={0.25} />

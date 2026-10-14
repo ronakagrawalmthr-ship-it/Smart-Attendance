@@ -62,6 +62,7 @@ class TeacherProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     full_name = Column(String)
     department = Column(String)
+    phone_number = Column(String, nullable=True)
 
     user = relationship("User", back_populates="teacher_profile")
     sessions = relationship("AcademicSession", back_populates="teacher")

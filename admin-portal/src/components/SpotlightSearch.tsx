@@ -60,8 +60,16 @@ export default function SpotlightSearch() {
         setIsOpen(false);
       }
     };
+    const handleOpenCustom = () => setIsOpen(true);
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('open-spotlight-search', handleOpenCustom);
+    window.addEventListener('open-spotlight', handleOpenCustom);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('open-spotlight-search', handleOpenCustom);
+      window.removeEventListener('open-spotlight', handleOpenCustom);
+    };
   }, [isOpen]);
 
   // Focus input when opened
