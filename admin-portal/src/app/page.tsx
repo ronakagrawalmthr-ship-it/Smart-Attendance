@@ -1,18 +1,43 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Building2, ArrowRight, Lock, Mail, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Building2, ArrowRight, Lock, Mail, ShieldCheck, AlertCircle, Sparkles, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE_URL } from '@/lib/api';
 
 export default function AdminLogin() {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@college.edu');
-  const [password, setPassword] = useState('AdminPass123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [institutionName, setInstitutionName] = useState('Institutional Administration');
+  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Check setup status on load
+  useEffect(() => {
+    async function checkSetup() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/setup/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.institution_name) {
+            setInstitutionName(data.institution_name);
+          }
+          if (!data.is_initialized || data.admin_count === 0) {
+            router.push('/setup');
+          } else {
+            setIsInitialized(true);
+          }
+        }
+      } catch (err) {
+        console.error('Setup status check error:', err);
+      }
+    }
+    checkSetup();
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,11 +47,12 @@ export default function AdminLogin() {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password: password.trim() })
       });
 
       if (!res.ok) {
-        throw new Error('Invalid administrative credentials.');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Invalid administrative credentials.');
       }
 
       const data = await res.json();
@@ -36,6 +62,12 @@ export default function AdminLogin() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('admin_token', data.access_token);
+        if (data.user?.full_name) {
+          localStorage.setItem('admin_name', data.user.full_name);
+        }
+        if (data.user?.role) {
+          localStorage.setItem('admin_role', data.user.role);
+        }
       }
       router.push('/dashboard');
     } catch (err: any) {
@@ -56,16 +88,14 @@ export default function AdminLogin() {
             <Building2 className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
-            Institutional Console
+            {institutionName}
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 max-w-sm mx-auto">
-            Sign in with institutional credentials to access academic directories, defaulter matrices, and emergency governance.
+            Administrative & Academic Governance Console. Sign in with your verified administrator credentials.
           </p>
         </div>
 
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
           className="rounded-[2rem] bg-white/95 border border-stone-200/80 p-8 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.05)]"
         >
           {errorMessage && (
@@ -87,7 +117,7 @@ export default function AdminLogin() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@college.edu or hod@college.edu"
+                  placeholder="admin@college.edu or dean@univ.ac.in"
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
                 />
               </div>
@@ -109,6 +139,7 @@ export default function AdminLogin() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your master password"
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
                 />
               </div>
@@ -117,34 +148,35 @@ export default function AdminLogin() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3.5 px-4 rounded-full font-bold text-sm bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white shadow-lg shadow-indigo-600/25 transition duration-200 flex items-center justify-center space-x-2"
+              className="w-full mt-2 py-3.5 px-4 rounded-full font-bold text-sm bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white shadow-lg shadow-indigo-600/25 transition duration-200 flex items-center justify-center space-x-2 disabled:opacity-50"
             >
-              <span>{isLoading ? 'Verifying...' : 'Sign In to Console'}</span>
+              <span>{isLoading ? 'Verifying Credentials...' : 'Sign In to Master Console'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
 
-          {/* Quick Demo Fill Pill */}
-          <div className="mt-5 p-3 rounded-2xl bg-stone-50 border border-stone-200/80 flex items-center justify-between text-xs text-stone-600">
-            <div className="truncate mr-2">
-              <span className="font-semibold text-stone-900">Demo Admin:</span> admin@college.edu
+          {/* First-Time Setup Wizard Launch Link (Only visible on Day-0 before initialization) */}
+          {isInitialized === false && (
+          <div className="mt-5 p-3 rounded-2xl bg-indigo-50/60 border border-indigo-100/80 flex items-center justify-between text-xs text-indigo-900">
+            <div className="truncate mr-2 flex items-center space-x-1.5">
+              <KeyRound className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="font-medium">Deploying a new university instance?</span>
             </div>
-            <button
-              type="button"
-              onClick={() => { setEmail('admin@college.edu'); setPassword('AdminPass123!'); }}
-              className="px-3 py-1 rounded-full bg-white border border-stone-200 hover:border-stone-300 text-stone-800 font-semibold text-[11px] shadow-sm transition"
+            <Link
+              href="/setup"
+              className="px-2.5 py-1 rounded-xl bg-white border border-indigo-200 text-indigo-700 font-bold text-[11px] shadow-2xs hover:bg-indigo-50 transition shrink-0"
             >
-              Fill
-            </button>
+              Setup Wizard →
+            </Link>
           </div>
+          )}
 
           <div className="mt-4 pt-4 border-t border-stone-100 text-center text-xs text-stone-400 flex items-center justify-center space-x-1.5">
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span>Encrypted Institutional Security (RBAC)</span>
+            <span>Zero Default Passwords • OTP Verified Access</span>
           </div>
         </motion.div>
       </div>
     </div>
   );
 }
-

@@ -14,12 +14,16 @@ build/
 */.expo/
 *.log
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+*.tsbuildinfo
 chrome_audit_profile/
 scratch/chrome_audit_profile/
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+
 

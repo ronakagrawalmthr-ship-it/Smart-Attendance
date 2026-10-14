@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum, ARRAY
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum, ARRAY, UniqueConstraint
 from sqlalchemy.orm import relationship
 import enum
 from datetime import datetime
@@ -49,6 +49,8 @@ class StudentProfile(Base):
     face_encoding = Column(String, nullable=True) 
     phone = Column(String, nullable=True)
     emergency_contact = Column(String, nullable=True)
+    parent_email = Column(String, nullable=True)  # Guardian email for automated attendance alerts
+    photo_thumbnail = Column(String, nullable=True)  # Compressed base64 JPEG (80x80) for avatar display
 
     user = relationship("User", back_populates="student_profile")
     attendance_records = relationship("AttendanceLog", back_populates="student")
@@ -97,6 +99,9 @@ class AcademicSession(Base):
 
 class AttendanceLog(Base):
     __tablename__ = "attendance_logs"
+    __table_args__ = (
+        UniqueConstraint('session_id', 'student_id', name='uq_session_student'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("academic_sessions.id"))
@@ -105,6 +110,7 @@ class AttendanceLog(Base):
     is_present = Column(Boolean, default=True)
     status_tag = Column(String, default="PRESENT")  # "PRESENT", "ABSENT", "DUTY_LEAVE", "MEDICAL"
     remarks = Column(String, nullable=True)
+    confidence_score = Column(Float, nullable=True)  # Real face-match confidence % (0.0-100.0)
 
     session = relationship("AcademicSession", back_populates="attendance_logs")
     student = relationship("StudentProfile", back_populates="attendance_records")
@@ -131,6 +137,8 @@ class Grievance(Base):
     subject_name = Column(String, default="General Attendance")
     reason = Column(String)
     status = Column(String, default="Pending HOD Decision")
+    document_url = Column(String, nullable=True)
+    document_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     student = relationship("StudentProfile")
@@ -143,7 +151,7 @@ class ParentNotificationLog(Base):
     student_roll = Column(String, nullable=True)
     student_name = Column(String, nullable=True)
     parent_phone = Column(String, nullable=True)
-    channel = Column(String, default="WhatsApp")  # "WhatsApp", "SMS", "Email"
+    channel = Column(String, default="Email")  # "Email", "SMS" (WhatsApp removed — using Resend)
     trigger_reason = Column(String)               # "3 Consecutive Missed Classes", "Defaulter Warning (<75%)"
     message_content = Column(String)
     status = Column(String, default="Delivered")  # "Delivered", "Sent", "Queued"
@@ -184,6 +192,29 @@ class ProxyAssignment(Base):
     original_teacher = relationship("TeacherProfile", foreign_keys=[original_teacher_id])
     proxy_teacher = relationship("TeacherProfile", foreign_keys=[proxy_teacher_id])
     subject = relationship("Subject")
+
+class TimetableSlot(Base):
+    __tablename__ = "timetable_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    branch = Column(String, index=True)          # e.g. "Computer Science & Engineering"
+    semester = Column(Integer, index=True)        # 1-8
+    section = Column(String, index=True)          # "A", "B", "C"
+    day_of_week = Column(String, index=True)      # "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+    slot_index = Column(Integer, default=1)       # 1 to 8
+    start_time = Column(String)                   # "09:00 AM"
+    end_time = Column(String)                     # "10:00 AM"
+    subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
+    custom_subject_name = Column(String, nullable=True)
+    teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), nullable=True)
+    custom_teacher_name = Column(String, nullable=True)
+    room_number = Column(String, default="LH-101")
+    session_type = Column(String, default="lecture") # lecture, practical, tutorial
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    subject = relationship("Subject")
+    teacher = relationship("TeacherProfile")
+
 
 
 

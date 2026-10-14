@@ -20,17 +20,74 @@ import {
   Zap,
   Lock,
   Settings,
-  Search
+  Search,
+  Users
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import SpotlightSearch from '@/components/SpotlightSearch';
+import { API_BASE_URL, getAdminPortalUrl, getStudentPortalUrl, getHodPortalUrl } from '@/lib/api';
 
 export default function Home() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
+  const [institutionName, setInstitutionName] = useState<string>('');
+  const [adminUrl, setAdminUrl] = useState('http://localhost:3001');
+  const [studentUrl, setStudentUrl] = useState('http://localhost:3002');
+  const [hodUrl, setHodUrl] = useState('http://localhost:3003');
+  const [liveKpi, setLiveKpi] = useState<{
+    students: number;
+    faculty: number;
+    departments: number;
+    turnout: string;
+  }>({
+    students: 0,
+    faculty: 0,
+    departments: 0,
+    turnout: '0.0%'
+  });
 
   useEffect(() => {
-    fetch('http://localhost:8000/')
+    setAdminUrl(getAdminPortalUrl());
+    setStudentUrl(getStudentPortalUrl());
+    setHodUrl(getHodPortalUrl());
+
+    fetch(`${API_BASE_URL}/`)
       .then(res => res.ok ? setBackendStatus('online') : setBackendStatus('offline'))
       .catch(() => setBackendStatus('offline'));
+
+    fetch(`${API_BASE_URL}/setup/status`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.institution_name) {
+          setInstitutionName(data.institution_name);
+        }
+      })
+      .catch(() => {});
+
+    fetch(`${API_BASE_URL}/management/college/kpi-stats`)
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setLiveKpi({
+            students: data.totalStudents ?? 0,
+            faculty: data.totalFaculty ?? 0,
+            departments: data.totalDepartments ?? 0,
+            turnout: data.overallTurnout ?? '0.0%'
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSpotlightOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const portals = [
@@ -52,7 +109,7 @@ export default function Home() {
       category: 'Self-Service & Transparency',
       desc: 'Individual attendance percentage gauge, subject-by-subject threshold monitoring (<75%), and transparent absence dispute / grievance filing.',
       href: '/student',
-      externalPortUrl: 'http://localhost:3002',
+      externalPortUrl: studentUrl,
       icon: GraduationCap,
       iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200/60',
       tag: 'Port 3002 Live',
@@ -65,7 +122,7 @@ export default function Home() {
       category: 'Administration & Governance',
       desc: 'Live department matrices, automated defaulter roster (<75%), emergency holiday announcements with Resend email automation, and semester archiving.',
       href: '/hod',
-      externalPortUrl: 'http://localhost:3003',
+      externalPortUrl: hodUrl,
       icon: Building2,
       iconBg: 'bg-purple-50 text-purple-600 border border-purple-200/60',
       tag: 'Port 3003 Live',
@@ -77,7 +134,7 @@ export default function Home() {
       title: 'College Administrator Portal',
       category: 'Whole Institution Governance',
       desc: 'Master institutional intelligence across all 6 departments, full faculty directory CRUD, statutory defaulters, and emergency broadcasts.',
-      href: 'http://localhost:3001',
+      href: adminUrl,
       isExternal: true,
       icon: Building2,
       iconBg: 'bg-rose-50 text-rose-600 border border-rose-200/60',
@@ -109,7 +166,9 @@ export default function Home() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="tracking-wide">Apex University Biometric Grid: All 4 Portals Synchronized • AI Liveness Active</span>
+          <span className="tracking-wide">
+            {institutionName ? `${institutionName} Biometric Grid` : 'University Biometric Grid'}: All 4 Portals Synchronized • AI Liveness Active
+          </span>
           <span className="text-[10px] bg-stone-800 px-2 py-0.5 rounded-full text-stone-300 font-mono">
             {backendStatus === 'online' ? 'BACKEND ONLINE' : backendStatus === 'checking' ? 'SYNCING' : 'OFFLINE MODE'}
           </span>
@@ -134,14 +193,25 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Spotlight Search Pill */}
-          <div className="hidden lg:flex items-center space-x-2 bg-stone-100/90 text-stone-500 px-3.5 py-1.5 rounded-full text-xs border border-stone-200/80 shadow-inner w-64">
-            <Search className="h-3.5 w-3.5 text-stone-400 shrink-0" />
-            <span className="text-stone-400">Search portals, classes, rosters...</span>
-            <kbd className="ml-auto font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-stone-200 text-stone-500">⌘K</kbd>
-          </div>
+          {/* Interactive Spotlight Universal Search Trigger */}
+          <button
+            onClick={() => setSpotlightOpen(true)}
+            className="hidden lg:flex items-center space-x-2 bg-stone-100/90 hover:bg-stone-200/80 text-stone-500 hover:text-stone-800 px-3.5 py-1.5 rounded-full text-xs border border-stone-200/80 shadow-inner w-64 transition text-left cursor-pointer group"
+            title="Press Cmd+K or Ctrl+K to open Universal Database Search"
+          >
+            <Search className="h-3.5 w-3.5 text-stone-400 group-hover:text-stone-700 shrink-0 transition" />
+            <span className="text-stone-400 group-hover:text-stone-700 transition">Search campus database...</span>
+            <kbd className="ml-auto font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-stone-200 text-stone-500 shadow-2xs">⌘K</kbd>
+          </button>
 
           <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSpotlightOpen(true)}
+              className="lg:hidden p-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-200/60 transition"
+              title="Search database (Cmd+K)"
+            >
+              <Search className="h-4 w-4" />
+            </button>
             <Link
               href="/teacher"
               className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-800 border border-stone-200 transition shadow-sm"
@@ -150,7 +220,7 @@ export default function Home() {
               <span className="hidden sm:inline">Teacher Terminal</span>
             </Link>
             <a
-              href="http://localhost:3001"
+              href={adminUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
@@ -160,7 +230,7 @@ export default function Home() {
               <span>Admin</span>
             </a>
             <a
-              href="http://localhost:3003"
+              href={hodUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
@@ -170,7 +240,7 @@ export default function Home() {
               <span>HOD</span>
             </a>
             <a
-              href="http://localhost:3002"
+              href={studentUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
@@ -194,8 +264,8 @@ export default function Home() {
       {/* Main Hero Section */}
       <main className="relative max-w-7xl mx-auto px-6 pt-10 pb-20">
         <motion.div 
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           transition={{ duration: 0.5 }}
           className="text-center max-w-3xl mx-auto mb-16"
         >
@@ -234,6 +304,26 @@ export default function Home() {
               <span>PostgreSQL / Docker Ready</span>
             </div>
           </div>
+
+          {/* Live Real-Time Database Metrics Strip */}
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-6">
+            <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white border border-stone-200/80 shadow-xs text-xs font-semibold text-stone-800">
+              <GraduationCap className="h-4 w-4 text-emerald-600" />
+              <span>{liveKpi.students} Students Enrolled</span>
+            </div>
+            <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white border border-stone-200/80 shadow-xs text-xs font-semibold text-stone-800">
+              <Users className="h-4 w-4 text-purple-600" />
+              <span>{liveKpi.faculty} Appointed Faculty</span>
+            </div>
+            <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white border border-stone-200/80 shadow-xs text-xs font-semibold text-stone-800">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <span>{liveKpi.departments} Engineering Branches</span>
+            </div>
+            <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 shadow-xs text-xs font-semibold text-emerald-800">
+              <Activity className="h-4 w-4 text-emerald-600 animate-pulse" />
+              <span>{liveKpi.turnout} Live Turnout</span>
+            </div>
+          </div>
         </motion.div>
 
         {/* Portal Grid */}
@@ -243,8 +333,8 @@ export default function Home() {
             return (
               <motion.div
                 key={portal.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                
+                
                 transition={{ duration: 0.4, delay: index * 0.08 }}
                 className="group relative rounded-3xl bg-white/85 border border-stone-200/80 hover:border-stone-300 p-8 flex flex-col justify-between transition-all duration-300 hover:shadow-xl shadow-sm backdrop-blur-xl overflow-hidden"
               >
@@ -368,6 +458,9 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Spotlight Universal Search Modal */}
+      <SpotlightSearch isOpen={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
     </div>
   );
 }

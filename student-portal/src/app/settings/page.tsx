@@ -23,7 +23,8 @@ import {
   EyeOff
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function StudentSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -32,11 +33,11 @@ export default function StudentSettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Student Profile & Preferences
-  const [fullName, setFullName] = useState('Aarav Sharma');
-  const [rollNumber, setRollNumber] = useState('23CSE001');
-  const [email, setEmail] = useState('23cse001@college.edu');
-  const [phone, setPhone] = useState('+91 98765 43210');
-  const [emergencyContact, setEmergencyContact] = useState('+91 98765 00000');
+  const [fullName, setFullName] = useState('');
+  const [rollNumber, setRollNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [emergencyContact, setEmergencyContact] = useState('');
   
   // Alert Preferences
   const [alertThreshold, setAlertThreshold] = useState<number>(75);
@@ -57,6 +58,15 @@ export default function StudentSettingsPage() {
       setErrorMessage(null);
 
       // Check for saved local settings first
+      if (typeof window !== 'undefined') {
+        const storedName = localStorage.getItem('student_name');
+        const storedRoll = localStorage.getItem('student_roll');
+        const storedEmail = localStorage.getItem('student_email');
+        if (storedName) setFullName(storedName);
+        if (storedRoll) setRollNumber(storedRoll);
+        if (storedEmail) setEmail(storedEmail);
+      }
+
       const cached = typeof window !== 'undefined' ? localStorage.getItem('student_custom_settings') : null;
       if (cached) {
         try {
@@ -72,18 +82,7 @@ export default function StudentSettingsPage() {
         }
       }
 
-      let token = typeof window !== 'undefined' ? localStorage.getItem('student_token') : null;
-      if (!token) {
-        // Fallback demo student token so direct visits always work
-        token = 'demo_student_token';
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('student_token', token);
-        }
-      }
-
-      const res = await fetch(`${API_BASE_URL}/portal/profile`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await authFetch(`${API_BASE_URL}/portal/profile`);
 
       if (res.ok) {
         const data = await res.json();
@@ -128,13 +127,9 @@ export default function StudentSettingsPage() {
 
     try {
       setSaving(true);
-      let token = typeof window !== 'undefined' ? localStorage.getItem('student_token') : null;
-      if (!token) {
-        token = 'demo_student_token';
-        if (typeof window !== 'undefined') localStorage.setItem('student_token', token);
-      }
 
       const payload: any = {
+        full_name: fullName.trim(),
         email: email.trim(),
         phone: phone.trim(),
         emergency_contact: emergencyContact.trim(),
@@ -153,15 +148,22 @@ export default function StudentSettingsPage() {
         localStorage.setItem('student_custom_settings', JSON.stringify(payload));
       }
 
-      await fetch(`${API_BASE_URL}/portal/profile`, {
+      const res = await authFetch(`${API_BASE_URL}/portal/profile`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });
 
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to update student profile on server.');
+      }
+
+      if (typeof window !== 'undefined' && fullName.trim()) {
+        localStorage.setItem('student_name', fullName.trim());
+      }
       setSuccessMessage('Student preferences, notification thresholds & profile saved successfully!');
       setCurrentPassword('');
       setNewPassword('');
@@ -169,16 +171,16 @@ export default function StudentSettingsPage() {
 
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      // Local fallback was already saved
-      setSuccessMessage('Student settings saved successfully in browser memory!');
-      setTimeout(() => setSuccessMessage(null), 4000);
+      setErrorMessage(err.message || 'Error saving settings.');
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+    <AppleDeluxeShell studentName={fullName} rollNumber={rollNumber}>
+      <div className="w-full space-y-6">
       {/* Top Header & Navigation */}
       <div className="flex items-center justify-between">
         <Link 
@@ -231,8 +233,8 @@ export default function StudentSettingsPage() {
       {/* Status Alerts */}
       {successMessage && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="rounded-2xl border border-emerald-200/80 bg-emerald-50 p-4 flex items-center space-x-3 text-emerald-900 shadow-xs"
         >
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -242,8 +244,8 @@ export default function StudentSettingsPage() {
 
       {errorMessage && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="rounded-2xl border border-rose-200/80 bg-rose-50 p-4 flex items-center space-x-3 text-rose-900 shadow-xs"
         >
           <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
@@ -264,6 +266,20 @@ export default function StudentSettingsPage() {
 
             <div className="space-y-4 text-xs">
               <div>
+                <label className="block font-semibold text-stone-600 mb-1.5">Student Full Name</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3 h-4 w-4 text-stone-400" />
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Student Full Name"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-semibold placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 transition"
+                  />
+                </div>
+              </div>
+              <div>
                 <label className="block font-semibold text-stone-600 mb-1.5">Registered Student Email</label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-3 h-4 w-4 text-stone-400" />
@@ -273,7 +289,7 @@ export default function StudentSettingsPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                    placeholder="student@college.edu"
+                    placeholder="student@university.edu"
                   />
                 </div>
               </div>
@@ -505,6 +521,7 @@ export default function StudentSettingsPage() {
           </button>
         </div>
       </form>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

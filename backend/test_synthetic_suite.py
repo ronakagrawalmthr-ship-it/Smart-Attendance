@@ -101,16 +101,13 @@ def seed_test_users():
     db.close()
 
 def generate_synthetic_face_jpeg():
-    """Generates a synthetic 200x200 JPEG image with a stylized face for testing."""
-    img = np.zeros((200, 200, 3), dtype=np.uint8)
-    img[:] = (240, 240, 240)
-    
-    cv2.circle(img, (100, 100), 60, (200, 180, 160), -1)
-    cv2.circle(img, (80, 85), 8, (50, 50, 50), -1)
-    cv2.circle(img, (120, 85), 8, (50, 50, 50), -1)
-    cv2.ellipse(img, (100, 115), (25, 12), 0, 0, 180, (50, 50, 50), 3)
-
-    _, encoded = cv2.imencode('.jpg', img)
+    """Generates a synthetic 240x240 image with skin-tone calibrated oval for testing."""
+    img = np.ones((240, 240, 3), dtype=np.uint8) * 230
+    cv2.ellipse(img, (120, 115), (45, 65), 0, 0, 360, (140, 170, 220), -1)
+    cv2.circle(img, (100, 100), 5, (50, 40, 30), -1)
+    cv2.circle(img, (140, 100), 5, (50, 40, 30), -1)
+    cv2.line(img, (110, 145), (130, 145), (60, 50, 180), 2)
+    _, encoded = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     return io.BytesIO(encoded.tobytes())
 
 def run_tests():

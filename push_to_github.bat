@@ -1,5 +1,5 @@
 @echo off
-cd /d "c:\Users\RONAK AGRAWAL\Projects\Smart Attendance(Antigravity)"
+cd /d "%~dp0"
 echo ===================================================
 echo   Pushing Smart Attendance Project to GitHub...
 echo ===================================================

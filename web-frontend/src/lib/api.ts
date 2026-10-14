@@ -1,6 +1,23 @@
 // Unified API client for Smart Face-Authentication Attendance System
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = 
+  typeof window !== 'undefined' && window.location?.hostname
+    ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+
+export function getPortalUrl(port: number, path: string = ''): string {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const protocol = window.location.protocol || 'http:';
+    const host = window.location.hostname;
+    return `${protocol}//${host}:${port}${path}`;
+  }
+  return `http://localhost:${port}${path}`;
+}
+
+export const getAdminPortalUrl = (path: string = '') => getPortalUrl(3001, path);
+export const getStudentPortalUrl = (path: string = '') => getPortalUrl(3002, path);
+export const getHodPortalUrl = (path: string = '') => getPortalUrl(3003, path);
+export const getWebMasterUrl = (path: string = '') => getPortalUrl(3000, path);
 
 export class ApiError extends Error {
   status: number;

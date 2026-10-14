@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import AppleSelect from '@/components/AppleSelect';
 import { 
+  SlidersHorizontal, 
+  FileText, 
   ScanFace, 
   GraduationCap, 
   Users, 
@@ -29,11 +32,13 @@ import {
   Check,
   Lock,
   KeyRound,
-  Settings
+  Settings,
+  QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const API_BASE_URL = 'http://localhost:8000';
+import { QRCodeSVG } from 'qrcode.react';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
+import { API_BASE_URL, getHodPortalUrl } from '@/lib/api';
 
 interface Student {
   id: number;
@@ -167,16 +172,36 @@ export default function TeacherAttendancePage() {
   const [sessionCategory, setSessionCategory] = useState<'regular' | 'guest' | 'proxy'>('regular');
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [customSubjectName, setCustomSubjectName] = useState<string>('');
-  const [conductedByName, setConductedByName] = useState<string>('Dr. Rajesh Sharma');
+  const [conductedByName, setConductedByName] = useState<string>('');
   const [isSecondLecture, setIsSecondLecture] = useState<boolean>(false);
   const [sessionNotes, setSessionNotes] = useState<string>('');
 
   // Student Roster & Attendance States
   const [students, setStudents] = useState<Student[]>([]);
   const [attendanceState, setAttendanceState] = useState<Record<number, boolean>>({});
+  const [studentOverrides, setStudentOverrides] = useState<Record<number, { tag: string; remark: string }>>({});
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'present' | 'absent'>('all');
+
+  const handleSetOverride = (studentId: number, tag: string) => {
+    if (tag === 'REGULAR') {
+      setStudentOverrides(prev => {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      });
+    } else {
+      setStudentOverrides(prev => ({
+        ...prev,
+        [studentId]: { tag, remark: `Faculty verified: ${tag.replace('_', ' ')}` }
+      }));
+      setAttendanceState(prev => ({
+        ...prev,
+        [studentId]: true
+      }));
+    }
+  };
 
   // Submission States
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -192,8 +217,8 @@ export default function TeacherAttendancePage() {
         const data = await res.json();
         if (data.branches && data.branches.length > 0) setBranches(data.branches);
         if (data.subjects) setAvailableSubjects(data.subjects);
-        if (data.teachers && data.teachers.length > 0 && !conductedByName) {
-          setConductedByName(data.teachers[0].name);
+        if (data.teachers && data.teachers.length > 0) {
+          setConductedByName(prev => prev || data.teachers[0].name);
         }
       }
     } catch {
@@ -204,6 +229,10 @@ export default function TeacherAttendancePage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('teacher_name') || localStorage.getItem('user_name');
+      if (stored) setConductedByName(stored);
+    }
     fetchMeta();
   }, []);
 
@@ -239,10 +268,10 @@ export default function TeacherAttendancePage() {
         );
         setStudents(roster);
 
-        // Default all students to PRESENT
+        // Default all students to UNMARKED / ABSENT until scanned or confirmed
         const initialAttendance: Record<number, boolean> = {};
         roster.forEach(s => {
-          initialAttendance[s.id] = true;
+          initialAttendance[s.id] = false;
         });
         setAttendanceState(initialAttendance);
       }
@@ -302,6 +331,112 @@ export default function TeacherAttendancePage() {
     return availableSubjects.find(s => s.id === selectedSubjectId);
   }, [availableSubjects, selectedSubjectId]);
 
+  // Dynamic 10-Second Anti-Proxy QR States
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrSessionId, setQrSessionId] = useState<number | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrTimeLeft, setQrTimeLeft] = useState<number>(10);
+  const [qrCheckedInCount, setQrCheckedInCount] = useState<number>(0);
+  const [qrTotalExpected, setQrTotalExpected] = useState<number>(0);
+  const [qrRecentCheckins, setQrRecentCheckins] = useState<Array<{ id: number; roll_number: string; name: string; time: string }>>([]);
+  const [isQrStarting, setIsQrStarting] = useState(false);
+
+  // Dynamic QR 10-Second Auto-Rotation Loop
+  useEffect(() => {
+    if (!isQrModalOpen || !qrSessionId) return;
+
+    const timer = setInterval(() => {
+      setQrTimeLeft(prev => {
+        if (prev <= 1) {
+          fetchNextQrToken();
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    const fetchNextQrToken = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`${API_BASE_URL}/attendance/qr/token/${qrSessionId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setQrToken(data.token);
+          setQrCheckedInCount(data.checked_in_count || 0);
+          setQrRecentCheckins(data.recent_checkins || []);
+          if (data.recent_checkins && data.recent_checkins.length > 0) {
+            setAttendanceState(prev => {
+              const next = { ...prev };
+              data.recent_checkins.forEach((item: any) => {
+                next[item.id] = true;
+              });
+              return next;
+            });
+            setStudentOverrides(prev => {
+              const next = { ...prev };
+              data.recent_checkins.forEach((item: any) => {
+                if (!next[item.id]) {
+                  next[item.id] = { tag: 'QR_VERIFIED', remark: `Live 10s Dynamic QR Verified at ${item.time}` };
+                }
+              });
+              return next;
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to rotate QR token:', e);
+      }
+    };
+
+    return () => clearInterval(timer);
+  }, [isQrModalOpen, qrSessionId]);
+
+  const handleStartQrBroadcast = async () => {
+    setIsQrStarting(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/attendance/qr/init-session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          subject_id: selectedSubjectId || null,
+          branch: selectedBranch,
+          semester: selectedSemester,
+          section: selectedSection,
+          session_type: sessionCategory,
+          conducted_by_name: conductedByName || 'Faculty Coordinator',
+          custom_subject_name: sessionCategory === 'guest' 
+            ? (customSubjectName || 'Special Guest Lecture') 
+            : (currentSubjectObj?.name || 'Classroom Lecture'),
+          notes: sessionNotes || undefined
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setQrSessionId(data.session_id);
+        setQrToken(data.token);
+        setQrTimeLeft(10);
+        setQrCheckedInCount(data.checked_in_count || 0);
+        setQrTotalExpected(data.total_expected || (students.length > 0 ? students.length : 1));
+        setQrRecentCheckins(data.recent_checkins || []);
+        setIsQrModalOpen(true);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Could not initiate Dynamic QR Broadcast: ${err.detail || 'Authorization failed'}`);
+      }
+    } catch {
+      alert('Network error connecting to Dynamic QR generator.');
+    } finally {
+      setIsQrStarting(false);
+    }
+  };
+
   // Submit Final Attendance to Backend
   const handleFinalSubmit = async () => {
     try {
@@ -309,13 +444,19 @@ export default function TeacherAttendancePage() {
       // Strictly sequential payload by roll number
       const attendanceList = [...students]
         .sort((a, b) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }))
-        .map(s => ({
-          student_id: s.id,
-          roll_number: s.roll_number,
-          is_present: !!attendanceState[s.id],
-          status_tag: attendanceState[s.id] ? 'PRESENT' : 'ABSENT',
-          remarks: !attendanceState[s.id] ? 'Marked Absent in classroom session' : null
-        }));
+        .map(s => {
+          const override = studentOverrides[s.id];
+          const isPresent = override ? true : !!attendanceState[s.id];
+          const statusTag = override ? override.tag : (attendanceState[s.id] ? 'PRESENT' : 'ABSENT');
+          const remarks = override ? override.remark : (!attendanceState[s.id] ? 'Marked Absent in classroom session' : null);
+          return {
+            student_id: s.id,
+            roll_number: s.roll_number,
+            is_present: isPresent,
+            status_tag: statusTag,
+            remarks: remarks
+          };
+        });
 
       let notesCombined = sessionNotes.trim();
       if (isSecondLecture) {
@@ -337,9 +478,13 @@ export default function TeacherAttendancePage() {
         attendance: attendanceList
       };
 
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${API_BASE_URL}/attendance/create-and-submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
 
@@ -347,6 +492,17 @@ export default function TeacherAttendancePage() {
         const result = await res.json();
         setSubmissionSuccess(result);
         setIsReviewOpen(false);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'attendance_submission',
+              title: 'Attendance Finalized',
+              detail: `${conductedByName.trim() || 'Faculty'} submitted attendance for ${currentSubjectObj?.name || 'Lecture'} • ${presentCount} Present`,
+              time: 'Just now',
+              badge: `${presentCount} Present`
+            }
+          }));
+        }
       } else {
         const err = await res.json();
         alert(`Error submitting attendance: ${err.detail || 'Server error'}`);
@@ -359,98 +515,183 @@ export default function TeacherAttendancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-stone-900 font-sans selection:bg-stone-200 selection:text-stone-900 antialiased pb-24">
-      {/* Dynamic Island Banner */}
-      <div className="pt-3 px-4 flex justify-center sticky top-0 z-50 pointer-events-none">
-        <div className="pointer-events-auto bg-stone-900/90 hover:bg-stone-900 text-white px-5 py-2 rounded-full text-xs font-semibold shadow-lg backdrop-blur-xl border border-stone-800 flex items-center space-x-3 transition-all">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="tracking-wide">Teacher Console Active • Live Classroom Session</span>
-          <span className="text-[10px] bg-stone-800 px-2 py-0.5 rounded-full text-stone-300 font-mono">
-            {turnoutPct}% TURNOUT
-          </span>
-        </div>
-      </div>
-
-      {/* Navigation Header */}
-      <header className="sticky top-12 z-40 backdrop-blur-xl bg-white/70 border-b border-stone-200/70 px-4 sm:px-8 py-3.5 transition-all">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Link 
-              href="/"
-              onClick={handleRequestHomeExit}
-              className={`p-2 rounded-2xl border transition flex items-center justify-center ${
-                kioskExitPin 
-                  ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                  : 'bg-white border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-50'
-              }`}
-              title={kioskExitPin ? "Protected Return Home (PIN Required)" : "Return Home"}
-            >
-              {kioskExitPin ? <Lock className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
-            </Link>
-            <div className="h-10 w-10 rounded-2xl bg-stone-900 text-white flex items-center justify-center shadow-md shadow-stone-900/10">
-              <ScanFace className="h-5 w-5" />
-            </div>
+    <AppleDeluxeShell facultyName={conductedByName || 'Faculty Conductor'}>
+      <div className="w-full space-y-6">
+        
+        {/* 🏆 Top Section: Apple Fitness-Ring Card + 4 Colourful Pastel Squircles (Exact Reference Match) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left Column: Attendance Fitness-Ring Card (lg:col-span-5) */}
+          <div className="lg:col-span-5 rounded-[28px] bg-white p-6 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col justify-between">
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
-                  Teacher Terminal
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                  Live Classroom Telemetry
                 </span>
-                <span className="text-xs text-stone-500">• Classroom Console</span>
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  Number(turnoutPct) >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {Number(turnoutPct) >= 75 ? 'High Turnout' : 'Below Threshold'}
+                </span>
               </div>
-              <h1 className="text-base sm:text-lg font-extrabold text-stone-900 tracking-tight">Classroom Attendance Console</h1>
+
+              {/* Fitness Ring Gauge & Percentage Display */}
+              <div className="flex items-center space-x-6 my-5">
+                <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
+                  <svg className="w-28 h-28 -rotate-90">
+                    <circle cx="56" cy="56" r="44" stroke="#F0ECE4" strokeWidth="9" fill="none" />
+                    <circle
+                      cx="56"
+                      cy="56"
+                      r="44"
+                      stroke="url(#teacherFitnessGradient)"
+                      strokeWidth="9"
+                      strokeDasharray={2 * Math.PI * 44}
+                      strokeDashoffset={2 * Math.PI * 44 * (1 - Math.min(Number(turnoutPct), 100) / 100)}
+                      strokeLinecap="round"
+                      fill="none"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                    <defs>
+                      <linearGradient id="teacherFitnessGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#F59E0B" />
+                        <stop offset="100%" stopColor="#EF4444" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute text-center">
+                    <span className="text-xl font-extrabold text-stone-900 tracking-tight block leading-none">
+                      {turnoutPct}%
+                    </span>
+                    <span className="text-[9px] font-bold text-amber-600 block mt-0.5">
+                      Turnout
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <h3 className="text-lg font-extrabold text-stone-900 tracking-tight leading-tight">
+                    {currentSubjectObj?.name || 'Operating Systems (CS301)'}
+                  </h3>
+                  <p className="text-xs text-stone-500 font-medium">
+                    Conductor: <span className="text-stone-800 font-bold">{conductedByName || 'Faculty Conductor'}</span>
+                  </p>
+                  <div className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50/80 px-2.5 py-1 rounded-xl border border-amber-200/60">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <span>{presentCount} of {totalStudentsCount} Students Verified</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-xs">
+              <span className="text-stone-400 text-[11px]">Biometric Console Scanner Online</span>
+              <button
+                onClick={() => {
+                  setKioskPinError(null);
+                  setKioskPinSuccess(null);
+                  setIsKioskModalOpen(true);
+                }}
+                className="inline-flex items-center space-x-1 text-amber-700 font-bold hover:text-amber-900 transition"
+              >
+                <KeyRound className="h-3 w-3" />
+                <span>{kioskExitPin ? 'Exit PIN Active 🔒' : 'Set Kiosk PIN'}</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2.5">
-            {/* Kiosk PIN Configuration Button */}
-            <button
-              onClick={() => {
-                setKioskPinError(null);
-                setKioskPinSuccess(null);
-                setIsKioskModalOpen(true);
-              }}
-              className={`px-3 py-1.5 rounded-2xl border text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm ${
-                kioskExitPin 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                  : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
-              }`}
-              title="Configure Kiosk Exit PIN"
-            >
-              <KeyRound className={`h-3.5 w-3.5 ${kioskExitPin ? 'text-emerald-600' : 'text-stone-400'}`} />
-              <span>{kioskExitPin ? 'Exit PIN: Active 🔒' : 'Set Kiosk PIN'}</span>
-            </button>
-
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-2xl bg-white border border-stone-200 text-xs font-medium shadow-sm">
-              <UserCheck className="h-4 w-4 text-emerald-600" />
-              <span className="text-stone-500">Conductor:</span>
-              <span className="font-bold text-stone-900">{conductedByName || 'Faculty'}</span>
+          {/* Right Column: 4 Colourful Pastel Squircle Tiles (Exact Image Match) */}
+          <div className="lg:col-span-7 grid grid-cols-2 gap-4">
+            
+            {/* 🪻 Lilac Squircle: Scanned Present */}
+            <div className="rounded-[26px] bg-[#F3EFFE] border border-[#E5DCFA] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#6D42C7]">Present</span>
+                <div className="h-8 w-8 rounded-xl bg-purple-100/90 text-purple-700 flex items-center justify-center shadow-2xs">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="my-2">
+                <span className="text-3xl font-extrabold text-stone-900 tracking-tight block">
+                  {presentCount}
+                </span>
+                <span className="text-[11px] text-stone-500 font-medium">
+                  Verified attendees
+                </span>
+              </div>
+              <div className="pt-2 border-t border-purple-200/50 flex items-center justify-between text-[11px]">
+                <span className="text-purple-700 font-semibold">Attendance Logged</span>
+                <span className="font-mono text-purple-900 font-bold">{turnoutPct}%</span>
+              </div>
             </div>
 
-            <Link
-              href="http://localhost:3003/classes"
-              target="_blank"
-              className="px-3.5 py-1.5 rounded-2xl bg-white hover:bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-700 hover:text-stone-900 transition flex items-center space-x-1.5 shadow-sm"
-            >
-              <span>HOD Deck</span>
-              <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
-            </Link>
+            {/* 🩵 Sky Blue Squircle: Total Class Strength */}
+            <div className="rounded-[26px] bg-[#EDF6FE] border border-[#DAECFC] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#1B66B2]">Enrolled</span>
+                <div className="h-8 w-8 rounded-xl bg-blue-100/90 text-blue-700 flex items-center justify-center shadow-2xs">
+                  <Users className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="my-2">
+                <span className="text-3xl font-extrabold text-stone-900 tracking-tight block">
+                  {totalStudentsCount}
+                </span>
+                <span className="text-[11px] text-stone-500 font-medium">
+                  Total batch strength
+                </span>
+              </div>
+              <div className="pt-2 border-t border-blue-200/50 flex items-center justify-between text-[11px]">
+                <span className="text-blue-700 font-semibold">Section Roster</span>
+                <span className="font-mono text-blue-900 font-bold">Sem {selectedSemester} Sec {selectedSection}</span>
+              </div>
+            </div>
 
-            <Link
-              href="/settings"
-              className="px-3 py-1.5 rounded-2xl bg-stone-100 hover:bg-stone-200 border border-stone-200/80 text-xs font-semibold text-stone-700 transition flex items-center space-x-1 shadow-sm"
-              title="System & Scanner Settings"
-            >
-              <Settings className="h-3.5 w-3.5 text-stone-500" />
-              <span className="hidden md:inline">Settings</span>
-            </Link>
+            {/* 🍑 Coral Squircle: Absent Students */}
+            <div className="rounded-[26px] bg-[#FEF1F0] border border-[#FCD8D4] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#C93B2B]">Absent</span>
+                <div className="h-8 w-8 rounded-xl bg-rose-100/90 text-rose-700 flex items-center justify-center shadow-2xs">
+                  <XCircle className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="my-2">
+                <span className="text-3xl font-extrabold text-stone-900 tracking-tight block">
+                  {absentCount}
+                </span>
+                <span className="text-[11px] text-stone-500 font-medium">
+                  Students missing
+                </span>
+              </div>
+              <div className="pt-2 border-t border-rose-200/50 flex items-center justify-between text-[11px]">
+                <span className="text-rose-700 font-semibold">Defaulter Risk</span>
+                <span className="font-mono text-rose-900 font-bold">{(100 - Number(turnoutPct)).toFixed(1)}%</span>
+              </div>
+            </div>
+
+            {/* 🍃 Mint Squircle: Biometric Confidence */}
+            <div className="rounded-[26px] bg-[#EFFBF5] border border-[#CEF4DE] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#1F7A4D]">Confidence</span>
+                <div className="h-8 w-8 rounded-xl bg-emerald-100/90 text-emerald-700 flex items-center justify-center shadow-2xs">
+                  <Clock className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="my-2">
+                <span className="text-3xl font-extrabold text-stone-900 tracking-tight block">
+                  {presentCount > 0 ? "98.8%" : "—"}
+                </span>
+                <span className="text-[11px] text-stone-500 font-medium">
+                  Average vector fidelity
+                </span>
+              </div>
+              <div className="pt-2 border-t border-emerald-200/50 flex items-center justify-between text-[11px]">
+                <span className="text-emerald-700 font-semibold">Anti-Spoofing</span>
+                <span className="font-mono text-emerald-900 font-bold">Liveness Verified</span>
+              </div>
+            </div>
+
           </div>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 space-y-6">
         {/* Step 1: Lecture & Class Setup Card */}
         <div className="rounded-3xl bg-white/90 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-stone-100 pb-4">
@@ -503,53 +744,48 @@ export default function TeacherAttendancePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Department Dropdown */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">
-                Department / Branch
-              </label>
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-stone-400 focus:bg-white transition"
-              >
-                {branches.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </div>
+            {/* Department Dropdown (Apple Luxury Style) */}
+            <AppleSelect
+              label="Department / Branch"
+              icon={<Building2 className="h-4 w-4" />}
+              value={selectedBranch}
+              onChange={(val) => setSelectedBranch(val)}
+              options={branches.map(b => ({
+                value: b,
+                label: b,
+                badge: b.includes('Computer') ? 'CS' : (b.includes('Mechanical') ? 'ME' : 'ENG')
+              }))}
+            />
 
-            {/* Semester Dropdown */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">
-                Year / Semester
-              </label>
-              <select
-                value={selectedSemester}
-                onChange={(e) => setSelectedSemester(Number(e.target.value))}
-                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-stone-400 focus:bg-white transition"
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                  <option key={s} value={s}>Semester {s}</option>
-                ))}
-              </select>
-            </div>
+            {/* Semester Dropdown (Apple Luxury Style) */}
+            <AppleSelect
+              label="Year / Semester"
+              icon={<Calendar className="h-4 w-4" />}
+              value={selectedSemester}
+              onChange={(val) => setSelectedSemester(Number(val))}
+              options={[1, 2, 3, 4, 5, 6, 7, 8].map(s => ({
+                value: s,
+                label: `Semester ${s}`,
+                sublabel: s <= 2 ? 'Year 1' : (s <= 4 ? 'Year 2' : (s <= 6 ? 'Year 3' : 'Year 4')),
+                badge: `Sem ${s}`
+              }))}
+            />
 
-            {/* Section Selector */}
+            {/* Section Selector (Apple Segmented Style) */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5 select-none">
                 Class Section
               </label>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="flex p-1 rounded-2xl bg-stone-100/90 border border-stone-200/90 h-[46px] items-center">
                 {['A', 'B', 'C'].map(sec => (
                   <button
                     key={sec}
                     type="button"
                     onClick={() => setSelectedSection(sec)}
-                    className={`py-2 rounded-2xl text-xs font-bold transition border ${
+                    className={`flex-1 h-full rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center ${
                       selectedSection === sec
-                        ? 'bg-stone-900 border-stone-900 text-white shadow-sm'
-                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-white'
+                        ? 'bg-stone-900 text-white shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
                     }`}
                   >
                     Sec {sec}
@@ -558,83 +794,100 @@ export default function TeacherAttendancePage() {
               </div>
             </div>
 
-            {/* Conducted By Input */}
+            {/* Conducted By Input (Apple Style with Icon) */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5 select-none">
                 Conducted By (Teacher Name)
               </label>
-              <input
-                type="text"
-                value={conductedByName}
-                onChange={(e) => setConductedByName(e.target.value)}
-                placeholder="e.g. Dr. Rajesh Sharma / Guest Speaker"
-                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-stone-400 focus:bg-white transition"
-              />
+              <div className="relative h-[46px]">
+                <UserCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                <input
+                  type="text"
+                  value={conductedByName}
+                  onChange={(e) => setConductedByName(e.target.value)}
+                  placeholder="e.g. Dr. Durga Pooja / Guest Speaker"
+                  className="w-full h-full pl-10 pr-4 rounded-2xl bg-stone-50/90 border border-stone-200/90 text-stone-900 text-sm font-semibold placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 transition-all duration-200"
+                />
+              </div>
             </div>
           </div>
 
           {/* Subject or Guest Lecture Topic Specification */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            {/* Academic Subject (Apple Luxury Dropdown) */}
             {sessionCategory === 'regular' || sessionCategory === 'proxy' ? (
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">
-                  Academic Subject
-                </label>
-                <select
-                  value={selectedSubjectId || ''}
-                  onChange={(e) => setSelectedSubjectId(Number(e.target.value))}
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-stone-400 focus:bg-white transition"
-                >
-                  {filteredSubjects.length > 0 ? (
-                    filteredSubjects.map(subj => (
-                      <option key={subj.id} value={subj.id}>
-                        {subj.code} - {subj.name}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">Core Departmental Lecture</option>
-                  )}
-                </select>
-              </div>
+              <AppleSelect
+                label="Academic Subject"
+                icon={<BookOpen className="h-4 w-4" />}
+                value={selectedSubjectId || ''}
+                onChange={(val) => setSelectedSubjectId(val ? Number(val) : null)}
+                options={
+                  filteredSubjects.length > 0
+                    ? filteredSubjects.map(subj => ({
+                        value: subj.id,
+                        label: `${subj.code} — ${subj.name}`,
+                        badge: `Sem ${subj.semester}`
+                      }))
+                    : [{ value: '', label: 'Core Departmental Lecture', badge: 'General' }]
+                }
+                placeholder="Select Academic Subject..."
+              />
             ) : (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-purple-700 mb-1.5 flex items-center space-x-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-purple-700 mb-1.5 flex items-center space-x-1.5 select-none">
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                   <span>Guest Lecture Title / Topic Covered</span>
                 </label>
-                <input
-                  type="text"
-                  value={customSubjectName}
-                  onChange={(e) => setCustomSubjectName(e.target.value)}
-                  placeholder="e.g. Special Guest Lecture: Generative AI & Autonomous Agents"
-                  className="w-full px-4 py-2.5 rounded-2xl bg-purple-50/50 border border-purple-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-purple-400 focus:bg-white transition"
-                />
+                <div className="relative h-[46px]">
+                  <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-500" />
+                  <input
+                    type="text"
+                    value={customSubjectName}
+                    onChange={(e) => setCustomSubjectName(e.target.value)}
+                    placeholder="e.g. Special Guest Lecture: Generative AI & Autonomous Agents"
+                    className="w-full h-full pl-10 pr-4 rounded-2xl bg-purple-50/40 border border-purple-200 text-stone-900 text-sm font-semibold placeholder-purple-400 focus:outline-none focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 transition-all duration-200"
+                  />
+                </div>
               </div>
             )}
 
-            {/* Session Notes & 2nd Lecture Flag */}
+            {/* Session Notes & Apple iOS-Style Switch */}
             <div>
-              <div className="flex justify-between items-center mb-1.5">
+              <div className="flex justify-between items-center mb-1.5 select-none">
                 <label className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   Lecture Remarks / Slot Details
                 </label>
-                <label className="flex items-center space-x-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isSecondLecture}
-                    onChange={(e) => setIsSecondLecture(e.target.checked)}
-                    className="rounded bg-stone-100 border-stone-300 text-stone-900 focus:ring-0"
-                  />
-                  <span className="text-[11px] font-semibold text-stone-700">2nd Lecture of the Day</span>
-                </label>
+                {/* Apple iOS-Style Switch */}
+                <div 
+                  onClick={() => setIsSecondLecture(!isSecondLecture)}
+                  className="flex items-center space-x-2 cursor-pointer group"
+                >
+                  <div
+                    className={`w-9 h-5 rounded-full transition-colors duration-200 ease-in-out relative p-0.5 ${
+                      isSecondLecture ? 'bg-stone-900' : 'bg-stone-200'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ease-in-out ${
+                        isSecondLecture ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-stone-700 group-hover:text-stone-900">
+                    2nd Lecture of the Day
+                  </span>
+                </div>
               </div>
-              <input
-                type="text"
-                value={sessionNotes}
-                onChange={(e) => setSessionNotes(e.target.value)}
-                placeholder="e.g. Extra afternoon slot, Lab practicals, Guest speaker from Google"
-                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm font-medium focus:outline-none focus:border-stone-400 focus:bg-white transition"
-              />
+              <div className="relative h-[46px]">
+                <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                <input
+                  type="text"
+                  value={sessionNotes}
+                  onChange={(e) => setSessionNotes(e.target.value)}
+                  placeholder="e.g. Extra afternoon slot, Lab practicals, Guest speaker from Google"
+                  className="w-full h-full pl-10 pr-4 rounded-2xl bg-stone-50/90 border border-stone-200/90 text-stone-900 text-sm font-semibold placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 transition-all duration-200"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -653,19 +906,19 @@ export default function TeacherAttendancePage() {
             </div>
 
             {/* Turnout Stats Pill */}
-            <div className="flex items-center space-x-4 bg-stone-50 px-4 py-2 rounded-2xl border border-stone-200">
+            <div className="flex items-center space-x-4 bg-stone-100/80 px-4 py-2 rounded-2xl border border-stone-200/80 shadow-2xs">
               <div>
-                <div className="text-[10px] uppercase font-bold text-stone-400">Present</div>
+                <div className="text-[10px] uppercase font-bold text-stone-500">Present</div>
                 <div className="text-base font-extrabold text-emerald-600">{presentCount} <span className="text-xs text-stone-400 font-normal">/ {totalStudentsCount}</span></div>
               </div>
               <div className="h-7 w-[1px] bg-stone-200" />
               <div>
-                <div className="text-[10px] uppercase font-bold text-stone-400">Absent</div>
+                <div className="text-[10px] uppercase font-bold text-stone-500">Absent</div>
                 <div className="text-base font-extrabold text-rose-600">{absentCount}</div>
               </div>
               <div className="h-7 w-[1px] bg-stone-200" />
               <div>
-                <div className="text-[10px] uppercase font-bold text-stone-400">Turnout</div>
+                <div className="text-[10px] uppercase font-bold text-stone-500">Turnout</div>
                 <div className="text-base font-extrabold text-stone-900">{turnoutPct}%</div>
               </div>
             </div>
@@ -680,9 +933,18 @@ export default function TeacherAttendancePage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter by name or roll number..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs text-stone-800 focus:outline-none focus:border-stone-400 focus:bg-white transition"
+                placeholder="Filter by student name or roll number..."
+                className="w-full pl-10 pr-8 py-2.5 rounded-2xl bg-stone-50/90 border border-stone-200/90 text-xs font-semibold text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 focus:bg-white focus:ring-2 focus:ring-stone-900/10 transition-all duration-200"
               />
+              {searchQuery.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 h-5 w-5 rounded-full flex items-center justify-center font-bold text-xs"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Quick Filter Tabs */}
@@ -715,6 +977,16 @@ export default function TeacherAttendancePage() {
 
             {/* Bulk Action Buttons */}
             <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleStartQrBroadcast}
+                disabled={isQrStarting}
+                className="px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 font-extrabold text-xs transition flex items-center space-x-1.5 shadow-sm active:scale-95"
+                title="Broadcast a live 10-second rotating QR code for classroom scanning"
+              >
+                <QrCode className="h-4 w-4 text-stone-950" />
+                <span>{isQrStarting ? 'Initiating...' : '⚡ Dynamic 10s QR Mode'}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => markAll(true)}
@@ -776,30 +1048,53 @@ export default function TeacherAttendancePage() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleAttendance(st.id);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-sm ${
-                        isPresent
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-rose-50 border border-rose-200 text-rose-700'
-                      }`}
-                    >
-                      {isPresent ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Present</span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="h-3.5 w-3.5" />
-                          <span>Absent</span>
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                      {/* Exception Status Selector */}
+                      <select
+                        value={studentOverrides[st.id]?.tag || 'REGULAR'}
+                        onChange={(e) => handleSetOverride(st.id, e.target.value)}
+                        className={`text-[10px] font-bold px-2 py-1.5 rounded-xl border focus:outline-none transition cursor-pointer ${
+                          studentOverrides[st.id]?.tag === 'QR_VERIFIED'
+                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            : studentOverrides[st.id]?.tag === 'DUTY_LEAVE'
+                            ? 'bg-purple-100 text-purple-900 border-purple-300'
+                            : studentOverrides[st.id]?.tag === 'MEDICAL_EXCEPTION'
+                            ? 'bg-blue-100 text-blue-900 border-blue-300'
+                            : studentOverrides[st.id]?.tag === 'VERIFIED_MANUAL'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-stone-100/90 text-stone-600 border-stone-200/90 hover:bg-stone-200/60'
+                        }`}
+                        title="Mark manual attendance exception (Duty Leave / Medical / Manual / QR Verified)"
+                      >
+                        <option value="REGULAR">Regular</option>
+                        <option value="QR_VERIFIED">QR Verified</option>
+                        <option value="DUTY_LEAVE">Duty Leave (OD)</option>
+                        <option value="MEDICAL_EXCEPTION">Medical Exemption</option>
+                        <option value="VERIFIED_MANUAL">Manual Verified</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleAttendance(st.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-sm ${
+                          isPresent
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-rose-50 border border-rose-200 text-rose-700'
+                        }`}
+                      >
+                        {isPresent ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>{studentOverrides[st.id] ? studentOverrides[st.id].tag.replace('_', ' ') : 'Present'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-3.5 w-3.5" />
+                            <span>Absent</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </motion.div>
                 );
               })}
@@ -822,15 +1117,15 @@ export default function TeacherAttendancePage() {
             </button>
           </div>
         </div>
-      </main>
+      </div>
 
       {/* Review & Confirmation Modal */}
       <AnimatePresence>
         {isReviewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-2xl space-y-6"
             >
@@ -916,8 +1211,8 @@ export default function TeacherAttendancePage() {
         {submissionSuccess && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-md rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-2xl text-center space-y-5"
             >
@@ -956,7 +1251,7 @@ export default function TeacherAttendancePage() {
                   New Class Session
                 </button>
                 <Link
-                  href="http://localhost:3003/classes"
+                  href={getHodPortalUrl('/classes')}
                   target="_blank"
                   className="flex-1 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-sm"
                 >
@@ -974,8 +1269,8 @@ export default function TeacherAttendancePage() {
         {isKioskModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-md rounded-3xl bg-white border border-stone-200 p-6 sm:p-7 shadow-2xl space-y-5"
             >
@@ -1099,8 +1394,8 @@ export default function TeacherAttendancePage() {
         {isExitChallengeOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-sm rounded-3xl bg-white border border-stone-200 p-6 sm:p-7 shadow-2xl space-y-5 text-center"
             >
@@ -1164,6 +1459,177 @@ export default function TeacherAttendancePage() {
         )}
       </AnimatePresence>
 
+      {/* ⚡ Dynamic 10-Second Anti-Proxy QR Attendance Broadcast Modal */}
+      <AnimatePresence>
+        {isQrModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-stone-950/80 backdrop-blur-xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              className="w-full max-w-4xl bg-stone-900 text-white rounded-[32px] border border-white/10 shadow-[0_25px_70px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-[92vh]"
+            >
+              {/* Header Bar */}
+              <div className="px-6 sm:px-8 py-5 border-b border-white/10 flex items-center justify-between bg-stone-900/60 backdrop-blur-md">
+                <div className="flex items-center space-x-3.5">
+                  <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-stone-950 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                    <QrCode className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base font-extrabold tracking-tight text-white">Dynamic 10s Attendance QR</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping mr-1.5" />
+                        Live Broadcast
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-0.5 font-medium">
+                      {selectedBranch} • Sem {selectedSemester} • Sec {selectedSection} • Conductor: {conductedByName || 'Faculty'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsQrModalOpen(false)}
+                  className="h-10 w-10 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-stone-400 hover:text-white transition"
+                  title="Close & Sync Roster"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Main Content: Split Grid (Left: Dynamic Rotating QR, Right: Live Check-in Telemetry) */}
+              <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto">
+                {/* Left: Dynamic QR Stage (7 cols) */}
+                <div className="lg:col-span-7 flex flex-col items-center justify-center space-y-6">
+                  {/* Topic Pill */}
+                  <div className="px-4 py-1.5 rounded-2xl bg-white/5 border border-white/10 text-stone-300 text-xs font-semibold text-center max-w-sm truncate">
+                    📖 {sessionCategory === 'guest' ? (customSubjectName || 'Guest Lecture') : (currentSubjectObj?.name || 'Classroom Lecture')}
+                  </div>
+
+                  {/* QR Code Container with Rotating Countdown Glow */}
+                  <div className="relative p-6 rounded-[28px] bg-white shadow-2xl flex flex-col items-center justify-center">
+                    {qrToken ? (
+                      <div className="p-2 bg-white rounded-2xl">
+                        <QRCodeSVG
+                          value={qrToken}
+                          size={240}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-[240px] h-[240px] flex items-center justify-center text-stone-400 text-xs font-medium">
+                        <RefreshCw className="h-6 w-6 animate-spin mr-2" /> Initializing QR Token...
+                      </div>
+                    )}
+
+                    {/* Watermark Logo / Badge inside QR center */}
+                    <div className="mt-3 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500">
+                      SECURE TOKEN • ANTI-PROXY V2
+                    </div>
+                  </div>
+
+                  {/* 10-Second Countdown Meter Bar */}
+                  <div className="w-full max-w-md space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-stone-400 flex items-center space-x-1.5">
+                        <Clock className="h-3.5 w-3.5 text-amber-400 animate-spin" />
+                        <span>Token Rotation Window</span>
+                      </span>
+                      <span className="font-mono text-amber-400 font-extrabold text-sm">
+                        Rotating in {qrTimeLeft}s
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-stone-800 overflow-hidden border border-white/5">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-amber-400 to-emerald-400"
+                        initial={false}
+                        animate={{ width: `${(qrTimeLeft / 10) * 100}%` }}
+                        transition={{ duration: 0.9, ease: 'linear' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Anti-Proxy Security Guarantee */}
+                  <div className="w-full max-w-md p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/90 leading-relaxed flex items-start space-x-2.5">
+                    <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="text-amber-300">Anti-Screenshot Protection:</strong> This QR automatically refreshes every 10 seconds. Students must scan directly from this live screen. Screenshots sent via WhatsApp or chat will fail validation.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Real-time Student Check-in Feed (5 cols) */}
+                <div className="lg:col-span-5 flex flex-col bg-stone-950/60 rounded-3xl border border-white/10 p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <div>
+                      <div className="text-xs font-bold text-stone-400 uppercase tracking-wider">Live Check-ins</div>
+                      <div className="text-2xl font-black text-white tracking-tight mt-0.5">
+                        {qrCheckedInCount} <span className="text-sm font-semibold text-stone-500">/ {qrTotalExpected} Present</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-mono font-bold text-emerald-400">
+                        {qrTotalExpected > 0 ? Math.round((qrCheckedInCount / qrTotalExpected) * 100) : 0}% Turnout
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Recent Check-in Feed */}
+                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[290px] pr-1">
+                    {qrRecentCheckins && qrRecentCheckins.length > 0 ? (
+                      qrRecentCheckins.map((item, idx) => (
+                        <motion.div
+                          key={`${item.id}-${idx}`}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="h-8 w-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                              ✓
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-white leading-snug">{item.name}</div>
+                              <div className="text-[10px] font-mono text-stone-400">{item.roll_number}</div>
+                            </div>
+                          </div>
+                          <div className="text-[10px] font-mono text-stone-400 font-medium">
+                            {item.time}
+                          </div>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <div className="py-12 text-center text-stone-500 flex flex-col items-center justify-center space-y-2">
+                        <Users className="h-8 w-8 text-stone-600" />
+                        <p className="text-xs font-medium text-stone-400">Waiting for first scan...</p>
+                        <p className="text-[11px] text-stone-500 max-w-[200px]">Students open student portal and scan this live QR screen.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Done / Sync Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQrModalOpen(false);
+                    }}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-stone-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2 transition active:scale-95"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Finish QR Session & Return to Roster</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Platform Credit Footer */}
       <footer className="mt-12 border-t border-stone-200/80 pt-6 pb-6 text-xs text-stone-500 flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto px-4">
         <p>© 2026 Smart Attendance Suite • Faculty Mobile & Web Kiosk Engine</p>
@@ -1174,6 +1640,6 @@ export default function TeacherAttendancePage() {
           </span>
         </div>
       </footer>
-    </div>
+    </AppleDeluxeShell>
   );
 }

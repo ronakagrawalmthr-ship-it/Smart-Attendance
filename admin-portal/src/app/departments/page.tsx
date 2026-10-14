@@ -18,7 +18,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, getHodPortalUrl } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 const ICON_MAP: Record<string, any> = {
   CSE: Laptop,
@@ -27,82 +28,14 @@ const ICON_MAP: Record<string, any> = {
   MECH: Cog,
 };
 
+const getHodDeckUrl = () => getHodPortalUrl('/dashboard');
+
 export default function AllDepartmentsPage() {
   const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState<any[]>([
-    {
-      id: 'cse',
-      name: 'Computer Science & Engineering',
-      code: 'CSE',
-      icon: Laptop,
-      color: 'from-emerald-500 to-teal-600',
-      textColor: 'text-emerald-400',
-      borderColor: 'border-emerald-500/30',
-      hod: 'Dr. Rajesh Sharma',
-      hodEmail: 'hod.cse@college.edu',
-      hodPhone: '+91 98765 43210',
-      students: 15,
-      faculty: 4,
-      labs: 5,
-      turnoutToday: 83.6,
-      rank: 'Tier 1 (NBA Accredited)'
-    },
-    {
-      id: 'it',
-      name: 'Information Technology',
-      code: 'IT',
-      icon: Network,
-      color: 'from-cyan-500 to-blue-600',
-      textColor: 'text-cyan-400',
-      borderColor: 'border-cyan-500/30',
-      hod: 'Dr. Sunita Verma',
-      hodEmail: 'hod.it@college.edu',
-      hodPhone: '+91 98765 43211',
-      students: 10,
-      faculty: 2,
-      labs: 3,
-      turnoutToday: 77.7,
-      rank: 'Tier 1 (NBA Accredited)'
-    },
-    {
-      id: 'ece',
-      name: 'Electronics & Communication',
-      code: 'ECE',
-      icon: Radio,
-      color: 'from-amber-500 to-orange-600',
-      textColor: 'text-amber-400',
-      borderColor: 'border-amber-500/30',
-      hod: 'Dr. Amit Patel',
-      hodEmail: 'hod.ece@college.edu',
-      hodPhone: '+91 98765 43212',
-      students: 10,
-      faculty: 2,
-      labs: 3,
-      turnoutToday: 76.9,
-      rank: 'Tier 1 (NBA Accredited)'
-    },
-    {
-      id: 'mech',
-      name: 'Mechanical Engineering',
-      code: 'MECH',
-      icon: Cog,
-      color: 'from-rose-500 to-red-600',
-      textColor: 'text-rose-400',
-      borderColor: 'border-rose-500/30',
-      hod: 'Dr. Vikram Malhotra',
-      hodEmail: 'hod.mech@college.edu',
-      hodPhone: '+91 98765 43213',
-      students: 10,
-      faculty: 2,
-      labs: 3,
-      turnoutToday: 76.9,
-      rank: 'Tier 2 Accredited'
-    }
-  ]);
-
-  const [totalStudents, setTotalStudents] = useState<number | null>(45);
-  const [totalFaculty, setTotalFaculty] = useState<number | null>(10);
-  const [avgTurnout, setAvgTurnout] = useState<number | null>(79.3);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [totalStudents, setTotalStudents] = useState<number | null>(null);
+  const [totalFaculty, setTotalFaculty] = useState<number | null>(null);
+  const [avgTurnout, setAvgTurnout] = useState<number | null>(null);
 
   const fetchDepartmentsSummary = async () => {
     try {
@@ -147,8 +80,9 @@ export default function AllDepartmentsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-      <div className="flex items-center justify-between">
+    <AppleDeluxeShell userRole="Institutional Governance">
+      <div className="space-y-8">
+        <div className="flex items-center justify-between">
         <Link 
           href="/dashboard"
           className="inline-flex items-center space-x-2 text-xs font-semibold text-stone-500 hover:text-stone-900 transition px-3 py-1.5 rounded-full hover:bg-stone-200/50"
@@ -183,7 +117,7 @@ export default function AllDepartmentsPage() {
         <div className="rounded-3xl bg-[#F4EFE6]/80 border border-stone-200/80 p-6 backdrop-blur-xl shadow-xs">
           <span className="text-[11px] uppercase font-bold tracking-wider text-stone-500 block mb-2">Total College Students</span>
           <div className="text-3xl font-extrabold text-stone-900 tracking-tight">
-            {totalStudents !== null ? totalStudents : 'null'}
+            {totalStudents !== null ? totalStudents : '--'}
           </div>
           <span className="text-[11px] text-stone-500 mt-1 block">Across all {departments.length} engineering faculties</span>
         </div>
@@ -191,7 +125,7 @@ export default function AllDepartmentsPage() {
         <div className="rounded-3xl bg-[#EBF3FF]/80 border border-blue-100 p-6 backdrop-blur-xl shadow-xs">
           <span className="text-[11px] uppercase font-bold tracking-wider text-blue-700 block mb-2">Total College Faculty</span>
           <div className="text-3xl font-extrabold text-stone-900 tracking-tight">
-            {totalFaculty !== null ? totalFaculty : 'null'}
+            {totalFaculty !== null ? totalFaculty : '--'}
           </div>
           <span className="text-[11px] text-stone-500 mt-1 block">Professors, Associate & Assistant</span>
         </div>
@@ -199,14 +133,24 @@ export default function AllDepartmentsPage() {
         <div className="rounded-3xl bg-[#E8F8F0]/80 border border-emerald-100 p-6 backdrop-blur-xl shadow-xs">
           <span className="text-[11px] uppercase font-bold tracking-wider text-emerald-700 block mb-2">University Average Turnout</span>
           <div className="text-3xl font-extrabold text-emerald-700 tracking-tight">
-            {avgTurnout !== null ? `${avgTurnout}%` : 'null'}
+            {avgTurnout !== null ? `${avgTurnout}%` : '--'}
           </div>
           <span className="text-[11px] text-emerald-600 mt-1 block">Live calculated biometric turnout</span>
         </div>
       </div>
 
       {/* Department Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+      {loading && departments.length === 0 ? (
+        <div className="py-16 text-center text-stone-400 text-sm">
+          <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-stone-400" />
+          Loading departments directory...
+        </div>
+      ) : departments.length === 0 ? (
+        <div className="py-16 text-center text-stone-400 text-sm bg-white/50 rounded-3xl border border-stone-200/60">
+          No engineering departments configured yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
         {departments.map((dept) => {
           const Icon = dept.icon || Building2;
           const turnoutVal = dept.turnoutToday ?? 0;
@@ -283,7 +227,7 @@ export default function AllDepartmentsPage() {
               {/* Department Quick Actions */}
               <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-2 text-xs font-semibold">
                 <Link
-                  href="http://localhost:3003/dashboard"
+                  href={getHodDeckUrl()}
                   target="_blank"
                   className="flex-1 py-2 px-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-900 border border-stone-200/80 transition flex items-center justify-center space-x-1.5 shadow-xs"
                   title="Open department-exclusive HOD deck"
@@ -313,7 +257,9 @@ export default function AllDepartmentsPage() {
             </div>
           );
         })}
+        </div>
+      )}
       </div>
-    </div>
+    </AppleDeluxeShell>
   );
 }

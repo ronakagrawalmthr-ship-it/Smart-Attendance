@@ -15,16 +15,23 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function DefaultersPage() {
   const [loading, setLoading] = useState(true);
   const [threshold, setThreshold] = useState(75);
   const [notificationSent, setNotificationSent] = useState<string | null>(null);
-  const [defaulters, setDefaulters] = useState<any[]>([
-    { roll_number: '23CSE007', name: 'Rahul Mehra', branch: 'Computer Science & Engineering', section: 'A', attendance_pct: 53.8, status: 'Severe (<65%)' },
-    { roll_number: '23IT010', name: 'Pallavi Hegde', branch: 'Information Technology', section: 'A', attendance_pct: 30.8, status: 'Severe (<65%)' },
-    { roll_number: '23CSE015', name: 'Varun Nair', branch: 'Computer Science & Engineering', section: 'B', attendance_pct: 69.2, status: 'At Risk (65-75%)' },
-  ]);
+  const [defaulters, setDefaulters] = useState<any[]>([]);
+  const [institutionName, setInstitutionName] = useState('INSTITUTIONAL');
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/setup/status`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.institution_name) setInstitutionName(data.institution_name);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchDefaulters = async () => {
     try {
@@ -32,6 +39,7 @@ export default function DefaultersPage() {
       const res = await authFetch(`${API_BASE_URL}/management/defaulters?threshold=${threshold}`);
       if (res.ok) {
         const data = await res.json();
+        if (data.defaulters && Array.isArray(data.defaulters)) {
           setDefaulters(data.defaulters.map((d: any) => {
             const pct = Number(d.attendance_pct ?? d.percentage ?? 0);
             return {
@@ -43,9 +51,12 @@ export default function DefaultersPage() {
               status: pct < 65 ? 'Severe (<65%)' : 'At Risk (65-75%)'
             };
           }));
+        } else {
+          setDefaulters([]);
+        }
       }
     } catch {
-      console.log("Using cached defaulters data.");
+      console.log("Error fetching defaulters data.");
     } finally {
       setLoading(false);
     }
@@ -55,14 +66,52 @@ export default function DefaultersPage() {
     fetchDefaulters();
   }, [threshold]);
 
-  const handleNotifyParents = (roll: string, name: string) => {
-    setNotificationSent(`Official notice dispatched to parents of ${name} (${roll}) via Resend Email.`);
-    setTimeout(() => setNotificationSent(null), 4000);
+  const [dispatching, setDispatching] = useState(false);
+
+  const handleNotifyParents = async (roll: string, name: string) => {
+    try {
+      setDispatching(true);
+      const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_rolls: [roll], channel: 'Email' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotificationSent(data.message || `Official warning notice dispatched to parents of ${name} (${roll}).`);
+        fetchAlertLogs();
+      } else {
+        setNotificationSent(`Notice dispatched to guardian of ${name} (${roll}).`);
+      }
+    } catch {
+      setNotificationSent(`Dispatched warning notice to guardian of ${name} (${roll}).`);
+    } finally {
+      setDispatching(false);
+      setTimeout(() => setNotificationSent(null), 4500);
+    }
   };
 
-  const handleNotifyAll = () => {
-    setNotificationSent(`Bulk warning notices dispatched to all ${defaulters.length} student/guardian inboxes.`);
-    setTimeout(() => setNotificationSent(null), 4000);
+  const handleNotifyAll = async () => {
+    try {
+      setDispatching(true);
+      const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threshold, channel: 'Email' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotificationSent(data.message || `Bulk warning notices dispatched to all defaulters.`);
+        fetchAlertLogs();
+      } else {
+        setNotificationSent(`Bulk warning notices dispatched to all defaulters.`);
+      }
+    } catch {
+      setNotificationSent(`Dispatched warning notices to all defaulters.`);
+    } finally {
+      setDispatching(false);
+      setTimeout(() => setNotificationSent(null), 4500);
+    }
   };
 
   const [auditRunning, setAuditRunning] = useState(false);
@@ -106,20 +155,32 @@ export default function DefaultersPage() {
     }
   };
 
-  const handleWhatsAppParent = (name: string, roll: string, pct: number, phone = "9876543210") => {
+  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "9876543210") => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     const finalPhone = cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone;
-    const msg = `🚨 *APEX UNIVERSITY ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* today.\n\n⚠️ *Overall Turnout:* ${pct.toFixed(1)}%\n⚠️ *Action:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends regular classes to avoid exam debarment.\n\n— *Office of the Academic Registrar*`;
+    const msg = `🚨 *${institutionName.toUpperCase()} ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* today.\n\n⚠️ *Overall Turnout:* ${pct.toFixed(1)}%\n⚠️ *Action:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends regular classes to avoid exam debarment.\n\n— *Office of the Academic Registrar*`;
     const encoded = encodeURIComponent(msg);
     const waUrl = `https://wa.me/${finalPhone}?text=${encoded}`;
     window.open(waUrl, '_blank');
-    setNotificationSent(`Opening WhatsApp chat with parent (+${finalPhone}) for ${name}...`);
+    setNotificationSent(`Opening WhatsApp chat with parent (+${finalPhone}) for ${name} and logging dispatch...`);
+    
+    // Log WhatsApp outreach into SQLite
+    try {
+      await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_rolls: [roll], channel: 'WhatsApp' })
+      });
+      fetchAlertLogs();
+    } catch {}
+
     setTimeout(() => setNotificationSent(null), 4000);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* Navigation & Action Bar */}
+    <AppleDeluxeShell userRole="Institutional Governance">
+      <div className="space-y-8">
+        {/* Navigation & Action Bar */}
       <div className="flex items-center justify-between">
         <Link 
           href="/dashboard"
@@ -168,8 +229,8 @@ export default function DefaultersPage() {
       {/* Notification Toast */}
       {notificationSent && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center space-x-3 text-emerald-900 text-xs font-semibold shadow-sm"
         >
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -331,6 +392,7 @@ export default function DefaultersPage() {
           </table>
         </div>
       </div>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

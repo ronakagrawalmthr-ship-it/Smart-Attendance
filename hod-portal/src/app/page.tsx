@@ -9,8 +9,8 @@ import { API_BASE_URL } from '@/lib/api';
 
 export default function HODLogin() {
   const router = useRouter();
-  const [email, setEmail] = useState('hod.cse@college.edu');
-  const [password, setPassword] = useState('AdminPass123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [department, setDepartment] = useState('Computer Science');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -34,7 +34,10 @@ export default function HODLogin() {
       const data = await res.json();
       if (typeof window !== 'undefined') {
         localStorage.setItem('hod_token', data.access_token);
-        localStorage.setItem('hod_department', department);
+        localStorage.setItem('hod_department', data.user?.department || department);
+        if (data.user?.full_name) {
+          localStorage.setItem('hod_name', data.user.full_name);
+        }
       }
       router.push('/dashboard');
     } catch (err: any) {
@@ -63,8 +66,8 @@ export default function HODLogin() {
         </div>
 
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="rounded-3xl bg-white/85 border border-stone-200/80 p-8 backdrop-blur-2xl shadow-xl shadow-stone-900/5"
         >
           {errorMessage && (
@@ -102,7 +105,7 @@ export default function HODLogin() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="hod.cse@college.edu"
+                  placeholder="e.g. hod.dept@university.ac.in"
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-stone-50/70 border border-stone-200 text-stone-900 placeholder:text-stone-400 text-sm font-medium focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 transition"
                 />
               </div>
@@ -139,19 +142,7 @@ export default function HODLogin() {
             </button>
           </form>
 
-          {/* Demo Credentials Quick-Select Pill */}
-          <div className="mt-5 p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-between text-xs text-emerald-900">
-            <div>
-              <span className="font-bold text-emerald-950">Demo HOD:</span> hod.cse@college.edu / AdminPass123!
-            </div>
-            <button
-              type="button"
-              onClick={() => { setEmail('hod.cse@college.edu'); setPassword('AdminPass123!'); }}
-              className="px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-sm transition"
-            >
-              Fill
-            </button>
-          </div>
+          
 
           <div className="mt-5 pt-4 border-t border-stone-200/80 text-center text-xs text-stone-500 flex items-center justify-center space-x-2">
             <ShieldCheck className="h-4 w-4 text-emerald-600" />

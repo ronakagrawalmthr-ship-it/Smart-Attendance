@@ -107,8 +107,8 @@ export default function ForgotPasswordPage() {
         </div>
 
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="rounded-3xl bg-white/90 border border-stone-200/80 p-8 backdrop-blur-xl shadow-sm space-y-5"
         >
           {errorMessage && (
@@ -139,7 +139,7 @@ export default function ForgotPasswordPage() {
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="e.g. 23CSE001 or student@college.edu"
+                    placeholder="e.g. ROLL101 or student@university.edu"
                     className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white transition"
                   />
                 </div>

@@ -32,21 +32,9 @@ interface SemesterDataPoint {
   present: number;
 }
 
-const DEFAULT_WEEKLY_DATA: WeeklyDataPoint[] = [
-  { day: 'Mon', date: 'Feb 23', turnout: 88.5, present: 465, total: 525 },
-  { day: 'Tue', date: 'Feb 24', turnout: 89.2, present: 468, total: 525 },
-  { day: 'Wed', date: 'Feb 25', turnout: 86.4, present: 454, total: 525 },
-  { day: 'Thu', date: 'Feb 26', turnout: 91.2, present: 479, total: 525 },
-  { day: 'Fri', date: 'Feb 27', turnout: 84.1, present: 442, total: 525 },
-  { day: 'Sat', date: 'Feb 28', turnout: 87.3, present: 458, total: 525 },
-];
+const DEFAULT_WEEKLY_DATA: WeeklyDataPoint[] = [];
 
-const DEFAULT_SEMESTER_DATA: SemesterDataPoint[] = [
-  { semester: 'Sem 2', turnout: 89.1, enrolled: 128, present: 114 },
-  { semester: 'Sem 4', turnout: 82.9, enrolled: 135, present: 112 },
-  { semester: 'Sem 6', turnout: 87.3, enrolled: 142, present: 124 },
-  { semester: 'Sem 8', turnout: 90.0, enrolled: 120, present: 108 },
-];
+const DEFAULT_SEMESTER_DATA: SemesterDataPoint[] = [];
 
 // Custom Light Apple Tooltip for Recharts
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -140,20 +128,28 @@ export default function AttendanceTrendsChart({
       </div>
 
       {/* Quick KPI Badges */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
-          <div className="text-[11px] font-bold text-stone-500">Peak Turnout</div>
-          <div className="text-lg font-extrabold text-emerald-700 mt-0.5">91.2% (Thu)</div>
+      {weeklyData.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
+            <div className="text-[11px] font-bold text-stone-500">Peak Turnout</div>
+            <div className="text-lg font-extrabold text-emerald-700 mt-0.5">
+              {Math.max(...weeklyData.map(d => d.turnout)).toFixed(1)}%
+            </div>
+          </div>
+          <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
+            <div className="text-[11px] font-bold text-stone-500">Weekly Avg</div>
+            <div className="text-lg font-extrabold text-teal-700 mt-0.5">
+              {(weeklyData.reduce((acc, d) => acc + d.turnout, 0) / weeklyData.length).toFixed(1)}%
+            </div>
+          </div>
+          <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
+            <div className="text-[11px] font-bold text-stone-500">Compliance Rate</div>
+            <div className="text-lg font-extrabold text-sky-700 mt-0.5">
+              {((weeklyData.filter(d => d.turnout >= 75).length / weeklyData.length) * 100).toFixed(0)}% &gt; 75%
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
-          <div className="text-[11px] font-bold text-stone-500">Weekly Avg</div>
-          <div className="text-lg font-extrabold text-teal-700 mt-0.5">87.8%</div>
-        </div>
-        <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3.5">
-          <div className="text-[11px] font-bold text-stone-500">Compliance Rate</div>
-          <div className="text-lg font-extrabold text-sky-700 mt-0.5">100% &gt; 75%</div>
-        </div>
-      </div>
+      )}
 
       {/* Chart Canvas Area */}
       <div className="h-72 w-full">
@@ -241,7 +237,7 @@ export default function AttendanceTrendsChart({
       <div className="mt-4 pt-3 border-t border-stone-200/80 flex items-center justify-between text-xs text-stone-500">
         <div className="flex items-center space-x-2">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span>CSE turnout has exceeded departmental SLA for 18 consecutive lecture days.</span>
+          <span>Departmental attendance trajectory dynamically synced with institutional ledger.</span>
         </div>
         <div className="hidden sm:block text-stone-400 font-mono text-[11px]">
           Live telemetry updated 2m ago

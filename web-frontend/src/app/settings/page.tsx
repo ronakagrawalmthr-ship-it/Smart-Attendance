@@ -23,6 +23,8 @@ import {
   Globe
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
+import { API_BASE_URL, getPortalUrl } from '@/lib/api';
 
 export default function GlobalSettingsPage() {
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,7 @@ export default function GlobalSettingsPage() {
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
 
   // System Configurations
-  const [apiHost, setApiHost] = useState('http://localhost:8000');
+  const [apiHost, setApiHost] = useState(API_BASE_URL);
   const [toleranceThreshold, setToleranceThreshold] = useState<number>(0.50);
   const [livenessStrictness, setLivenessStrictness] = useState<string>('high');
   const [audioFeedback, setAudioFeedback] = useState<boolean>(true);
@@ -38,12 +40,12 @@ export default function GlobalSettingsPage() {
 
   // Live Service Ports Status
   const services = [
-    { name: 'Web Master Console', port: 3000, desc: 'Central University Entrance & Teacher Deck', status: 'Online', url: 'http://localhost:3000' },
-    { name: 'Administrator Portal', port: 3001, desc: 'Whole College Governance & Directory CRUD', status: 'Online', url: 'http://localhost:3001' },
-    { name: 'Student Academic Portal', port: 3002, desc: 'Student Attendance Gauges & Grievances', status: 'Online', url: 'http://localhost:3002' },
-    { name: 'Department HOD Deck', port: 3003, desc: 'CSE Department Live Class Matrices', status: 'Online', url: 'http://localhost:3003' },
-    { name: 'Python FastAPI Engine', port: 8000, desc: 'OpenCV Anti-Spoofing & 128-D Biometrics', status: 'Online', url: 'http://localhost:8000/docs' },
-    { name: 'Metro / Expo Bundler', port: 8081, desc: 'React Native Android / iOS Kiosk App', status: 'Online', url: 'http://localhost:8081' },
+    { name: 'Web Master Console', port: 3000, desc: 'Central University Entrance & Teacher Deck', status: 'Online', url: getPortalUrl(3000) },
+    { name: 'Administrator Portal', port: 3001, desc: 'Whole College Governance & Directory CRUD', status: 'Online', url: getPortalUrl(3001) },
+    { name: 'Student Academic Portal', port: 3002, desc: 'Student Attendance Gauges & Grievances', status: 'Online', url: getPortalUrl(3002) },
+    { name: 'Department HOD Deck', port: 3003, desc: 'CSE Department Live Class Matrices', status: 'Online', url: getPortalUrl(3003) },
+    { name: 'Python FastAPI Engine', port: 8000, desc: 'OpenCV Anti-Spoofing & 128-D Biometrics', status: 'Online', url: getPortalUrl(8000, '/docs') },
+    { name: 'Metro / Expo Bundler', port: 8081, desc: 'React Native Android / iOS Kiosk App', status: 'Online', url: getPortalUrl(8081) },
   ];
 
   useEffect(() => {
@@ -84,8 +86,8 @@ export default function GlobalSettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-stone-900 font-sans p-6 sm:p-10 selection:bg-stone-200 selection:text-stone-900 antialiased">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
         
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
@@ -127,8 +129,8 @@ export default function GlobalSettingsPage() {
         {/* Success Alert */}
         {savedSuccess && (
           <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
+            
+            
             className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center space-x-3 text-emerald-800 shadow-sm"
           >
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -317,7 +319,7 @@ export default function GlobalSettingsPage() {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+        </div>
+      </AppleDeluxeShell>
   );
 }

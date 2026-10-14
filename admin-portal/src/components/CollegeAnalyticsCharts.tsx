@@ -41,26 +41,11 @@ interface MonthlyTrendPoint {
   classes: number;
 }
 
-const DEFAULT_BRANCH_DATA: BranchMetric[] = [
-  { branch: 'Computer Science', code: 'CSE', total_enrolled: 525, present_count: 458, attendance_percentage: 87.3 },
-  { branch: 'Information Tech', code: 'IT', total_enrolled: 380, present_count: 328, attendance_percentage: 86.4 },
-  { branch: 'Electronics & Comm', code: 'ECE', total_enrolled: 310, present_count: 225, attendance_percentage: 72.5 },
-  { branch: 'Mechanical Engg', code: 'ME', total_enrolled: 290, present_count: 232, attendance_percentage: 80.0 },
-  { branch: 'Civil Engineering', code: 'CE', total_enrolled: 230, present_count: 180, attendance_percentage: 78.2 },
-];
+const DEFAULT_BRANCH_DATA: BranchMetric[] = [];
 
-const DEFAULT_MONTHLY_DATA: MonthlyTrendPoint[] = [
-  { week: 'Week 1', turnout: 83.2, classes: 142 },
-  { week: 'Week 2', turnout: 85.7, classes: 156 },
-  { week: 'Week 3', turnout: 87.9, classes: 160 },
-  { week: 'Week 4', turnout: 84.8, classes: 148 },
-];
+const DEFAULT_MONTHLY_DATA: MonthlyTrendPoint[] = [];
 
-const RISK_DISTRIBUTION_DATA = [
-  { name: 'Safe (>75%)', value: 1360, percentage: 78.4, color: '#10b981' },
-  { name: 'Warning (65-75%)', value: 246, percentage: 14.2, color: '#f59e0b' },
-  { name: 'Critical Defaulters (<65%)', value: 129, percentage: 7.4, color: '#f43f5e' },
-];
+const RISK_DISTRIBUTION_DATA: Array<{ name: string; value: number; percentage: number; color: string }> = [];
 
 // Custom Tooltip for Admin Charts
 const AdminCustomTooltip = ({ active, payload, label }: any) => {
@@ -112,14 +97,33 @@ const AdminCustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function CollegeAnalyticsCharts({
-  branches = DEFAULT_BRANCH_DATA,
-  monthly = DEFAULT_MONTHLY_DATA
-}: {
+export interface CollegeAnalyticsChartsProps {
   branches?: BranchMetric[];
   monthly?: MonthlyTrendPoint[];
-}) {
+  riskDistribution?: Array<{ name: string; value: number; percentage: number; color: string }>;
+  totalStudents?: number;
+}
+
+export default function CollegeAnalyticsCharts({
+  branches = DEFAULT_BRANCH_DATA,
+  monthly = DEFAULT_MONTHLY_DATA,
+  riskDistribution,
+  totalStudents
+}: CollegeAnalyticsChartsProps) {
   const [tab, setTab] = useState<'branches' | 'trajectory' | 'defaulters'>('branches');
+
+  const riskData = riskDistribution && riskDistribution.length > 0 ? riskDistribution : RISK_DISTRIBUTION_DATA;
+  const totalCount = totalStudents !== undefined 
+    ? totalStudents 
+    : riskData.reduce((sum, item) => sum + item.value, 0);
+
+  // Dynamic insight message based on branch data
+  const bestBranch = branches.length > 0 
+    ? [...branches].sort((a, b) => b.attendance_percentage - a.attendance_percentage)[0]
+    : null;
+  const lowestBranch = branches.length > 0
+    ? [...branches].sort((a, b) => a.attendance_percentage - b.attendance_percentage)[0]
+    : null;
 
   return (
     <div className="rounded-[2rem] border border-stone-200/70 bg-white p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] mb-8">
@@ -132,89 +136,84 @@ export default function CollegeAnalyticsCharts({
             </div>
             <h3 className="text-base font-bold text-stone-900">Institutional Analytics</h3>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-              Cross-Departmental
+              Live Database Connected
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-1">
-            Comparative departmental attendance rates, 30-day institutional trajectory, and statutory risk distributions.
+            Real-time departmental attendance rates, 30-day institutional trajectory, and statutory risk distributions.
           </p>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex items-center space-x-1 bg-stone-100/80 p-1 rounded-full border border-stone-200/50 shrink-0">
+        {/* Tab Switcher Pills */}
+        <div className="flex items-center space-x-1.5 p-1 rounded-2xl bg-stone-100/80 border border-stone-200/60 self-start sm:self-auto text-xs font-semibold">
           <button
             onClick={() => setTab('branches')}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
-              tab === 'branches'
-                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition ${
+              tab === 'branches' 
+                ? 'bg-white text-stone-900 shadow-sm' 
                 : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <BarChart3 className="h-3.5 w-3.5 text-indigo-600" />
-            <span>Branch Breakdown</span>
+            <Building2 className="h-3.5 w-3.5" />
+            <span>Departments</span>
           </button>
           <button
             onClick={() => setTab('trajectory')}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
-              tab === 'trajectory'
-                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition ${
+              tab === 'trajectory' 
+                ? 'bg-white text-stone-900 shadow-sm' 
                 : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <TrendingUp className="h-3.5 w-3.5 text-violet-600" />
-            <span>Monthly Curve</span>
+            <TrendingUp className="h-3.5 w-3.5" />
+            <span>Trajectory</span>
           </button>
           <button
             onClick={() => setTab('defaulters')}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
-              tab === 'defaulters'
-                ? 'bg-white text-stone-900 shadow-sm border border-stone-200/60'
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition ${
+              tab === 'defaulters' 
+                ? 'bg-white text-stone-900 shadow-sm' 
                 : 'text-stone-500 hover:text-stone-900'
             }`}
           >
-            <PieIcon className="h-3.5 w-3.5 text-rose-500" />
-            <span>Defaulter Risk</span>
+            <PieIcon className="h-3.5 w-3.5" />
+            <span>Risk Breakdown</span>
           </button>
         </div>
       </div>
 
-      {/* Main Visualizer Area */}
-      <div className="h-72 w-full">
+      {/* Chart Canvas Area */}
+      <div className="h-72 w-full pt-2">
         {tab === 'branches' && (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={branches} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <BarChart data={branches} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis 
                 dataKey="code" 
-                stroke="#94a3b8" 
-                fontSize={11} 
+                tick={{ fill: '#78716c', fontSize: 11, fontWeight: 600 }} 
+                axisLine={{ stroke: '#e7e5e4' }}
                 tickLine={false}
-                axisLine={{ stroke: '#e2e8f0' }} 
               />
               <YAxis 
-                domain={[50, 100]} 
-                stroke="#94a3b8" 
-                fontSize={11} 
+                domain={[0, 100]} 
+                tick={{ fill: '#78716c', fontSize: 11 }} 
+                axisLine={false}
                 tickLine={false}
-                axisLine={{ stroke: '#e2e8f0' }}
-                tickFormatter={(val) => `${val}%`}
+                unit="%"
               />
               <Tooltip content={<AdminCustomTooltip />} />
-              <ReferenceLine 
-                y={75} 
-                stroke="#f43f5e" 
-                strokeDasharray="4 4" 
-                label={{ value: '75% Institutional Cutoff', fill: '#f43f5e', fontSize: 10, position: 'insideBottomRight' }} 
-              />
-              <Bar dataKey="attendance_percentage" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                {branches.map((entry, index) => {
-                  const color = entry.attendance_percentage >= 85 
-                    ? '#6366f1' 
-                    : entry.attendance_percentage >= 75 
-                    ? '#8b5cf6' 
-                    : '#fb7185';
-                  return <Cell key={`cell-${index}`} fill={color} />;
-                })}
+              <ReferenceLine y={75} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: '75% Cutoff', fill: '#f43f5e', fontSize: 10, position: 'right' }} />
+              <Bar 
+                dataKey="attendance_percentage" 
+                radius={[8, 8, 0, 0]} 
+                maxBarSize={48}
+              >
+                {branches.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.attendance_percentage >= 75 ? '#818cf8' : '#fb7185'} 
+                  />
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -222,36 +221,29 @@ export default function CollegeAnalyticsCharts({
 
         {tab === 'trajectory' && (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={monthly} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+            <AreaChart data={monthly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="collegeGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#818cf8" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#818cf8" stopOpacity={0.0} />
+                <linearGradient id="collegeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis 
                 dataKey="week" 
-                stroke="#94a3b8" 
-                fontSize={11} 
+                tick={{ fill: '#78716c', fontSize: 11, fontWeight: 600 }} 
+                axisLine={{ stroke: '#e7e5e4' }}
                 tickLine={false}
-                axisLine={{ stroke: '#e2e8f0' }} 
               />
               <YAxis 
-                domain={[60, 100]} 
-                stroke="#94a3b8" 
-                fontSize={11} 
+                domain={[50, 100]} 
+                tick={{ fill: '#78716c', fontSize: 11 }} 
+                axisLine={false}
                 tickLine={false}
-                axisLine={{ stroke: '#e2e8f0' }}
-                tickFormatter={(val) => `${val}%`}
+                unit="%"
               />
               <Tooltip content={<AdminCustomTooltip />} />
-              <ReferenceLine 
-                y={75} 
-                stroke="#ef4444" 
-                strokeDasharray="4 4" 
-                label={{ value: '75% Cutoff', fill: '#ef4444', fontSize: 10, position: 'insideBottomRight' }} 
-              />
+              <ReferenceLine y={75} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: '75% Statutory', fill: '#f43f5e', fontSize: 10, position: 'insideTopLeft' }} />
               <Area 
                 type="monotone" 
                 dataKey="turnout" 
@@ -272,27 +264,27 @@ export default function CollegeAnalyticsCharts({
                 <PieChart>
                   <Tooltip content={<AdminCustomTooltip />} />
                   <Pie
-                    data={RISK_DISTRIBUTION_DATA}
+                    data={riskData}
                     innerRadius={55}
                     outerRadius={80}
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {RISK_DISTRIBUTION_DATA.map((entry, index) => (
+                    {riskData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xl font-extrabold text-stone-900">1,735</span>
+                <span className="text-xl font-extrabold text-stone-900">{totalCount}</span>
                 <span className="text-[10px] text-stone-400 uppercase font-bold tracking-wider">Students</span>
               </div>
             </div>
 
             {/* Legend & Breakdown Cards */}
             <div className="space-y-2.5 w-full max-w-sm">
-              {RISK_DISTRIBUTION_DATA.map((tier, idx) => (
+              {riskData.map((tier, idx) => (
                 <div key={idx} className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-stone-50/70 p-3">
                   <div className="flex items-center space-x-2.5">
                     <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: tier.color }} />
@@ -311,11 +303,18 @@ export default function CollegeAnalyticsCharts({
       {/* Footer Insight */}
       <div className="mt-4 pt-3.5 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
         <div className="flex items-center space-x-2">
-          <span className="h-2 w-2 rounded-full bg-indigo-500" />
-          <span>CSE and IT lead institutional turnout; ECE is 2.5% below statutory cutoff.</span>
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span>
+            {bestBranch 
+              ? `${bestBranch.branch} leads college turnout at ${bestBranch.attendance_percentage}%.`
+              : 'Direct SQL database connectivity active across all departments.'}
+            {lowestBranch && lowestBranch.attendance_percentage < 75 
+              ? ` ${lowestBranch.code} is under observation at ${lowestBranch.attendance_percentage}%.` 
+              : ''}
+          </span>
         </div>
         <div className="hidden sm:block text-stone-400 font-mono text-[11px]">
-          Live AI telemetry synchronized
+          Live SQL Database Synced
         </div>
       </div>
     </div>

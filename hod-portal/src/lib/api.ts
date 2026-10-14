@@ -1,5 +1,22 @@
 // API Client for HOD Portal
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = 
+  typeof window !== 'undefined' && window.location?.hostname
+    ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+
+export function getPortalUrl(port: number, path: string = ''): string {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const protocol = window.location.protocol || 'http:';
+    const host = window.location.hostname;
+    return `${protocol}//${host}:${port}${path}`;
+  }
+  return `http://localhost:${port}${path}`;
+}
+
+export const getAdminPortalUrl = (path: string = '') => getPortalUrl(3001, path);
+export const getStudentPortalUrl = (path: string = '') => getPortalUrl(3002, path);
+export const getHodPortalUrl = (path: string = '') => getPortalUrl(3003, path);
+export const getWebMasterUrl = (path: string = '') => getPortalUrl(3000, path);
 
 export class ApiError extends Error {
   status: number;
@@ -11,52 +28,28 @@ export class ApiError extends Error {
   }
 }
 
-export async function getValidHodToken(): Promise<string> {
+export function getValidHodToken(): string {
   if (typeof window === 'undefined') return '';
-  let token = localStorage.getItem('hod_token');
+  const token = localStorage.getItem('hod_token');
   if (token && token !== 'undefined' && token !== 'null') {
     return token;
-  }
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'hod.cse@college.edu', password: 'AdminPass123!' })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.access_token) {
-        localStorage.setItem('hod_token', data.access_token);
-        localStorage.setItem('hod_department', 'Computer Science');
-        return data.access_token;
-      }
-    }
-  } catch (e) {
-    console.warn("Could not auto-restore HOD session:", e);
   }
   return '';
 }
 
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  let token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-  if (!token || token === 'undefined' || token === 'null') {
-    token = await getValidHodToken();
-  }
-
+  const token = getValidHodToken();
   const headers = new Headers(options.headers || {});
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  let response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401 && typeof window !== 'undefined') {
-    // Stale or expired token: auto-acquire fresh token and retry once
     localStorage.removeItem('hod_token');
-    const freshToken = await getValidHodToken();
-    if (freshToken) {
-      headers.set('Authorization', `Bearer ${freshToken}`);
-      response = await fetch(url, { ...options, headers });
+    if (window.location.pathname !== '/' && window.location.pathname !== '/forgot-password') {
+      window.location.href = '/';
     }
   }
 

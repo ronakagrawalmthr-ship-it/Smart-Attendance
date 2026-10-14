@@ -28,6 +28,8 @@ class StudentProfileBase(BaseModel):
     section: str
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
+    parent_email: Optional[str] = None
+    photo_thumbnail: Optional[str] = None
 
 class StudentProfileCreate(StudentProfileBase):
     user_id: int
@@ -42,8 +44,12 @@ class StudentProfile(StudentProfileBase):
         from_attributes = True
 
 class StudentProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
+    alert_threshold: Optional[int] = None
+    email_alerts: Optional[bool] = None
+    sms_alerts: Optional[bool] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None

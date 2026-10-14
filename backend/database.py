@@ -17,12 +17,68 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite:///./"):
 # In a real environment with PostgreSQL:
 # SQLALCHEMY_DATABASE_URL = "postgresql://user:password@postgresserver/db"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
-)
+is_sqlite = "sqlite" in SQLALCHEMY_DATABASE_URL
+
+if is_sqlite:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False, "timeout": 30}
+    )
+    # Enable WAL mode and foreign keys on SQLite connections to support high concurrency
+    from sqlalchemy import event
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=10000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+else:
+    # Production PostgreSQL connection with robust connection pooling
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_size=20,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+def ensure_sqlite_columns():
+    if "sqlite" in SQLALCHEMY_DATABASE_URL:
+        try:
+            import sqlite3
+            db_path = SQLALCHEMY_DATABASE_URL.replace("sqlite:///", "")
+            if os.path.exists(db_path):
+                con = sqlite3.connect(db_path)
+                cur = con.cursor()
+                
+                # Check student_profiles
+                cur.execute("PRAGMA table_info(student_profiles)")
+                st_cols = [r[1] for r in cur.fetchall()]
+                if st_cols:
+                    if "photo_thumbnail" not in st_cols:
+                        cur.execute("ALTER TABLE student_profiles ADD COLUMN photo_thumbnail TEXT")
+                    if "parent_email" not in st_cols:
+                        cur.execute("ALTER TABLE student_profiles ADD COLUMN parent_email TEXT")
+
+                # Check attendance_logs
+                cur.execute("PRAGMA table_info(attendance_logs)")
+                att_cols = [r[1] for r in cur.fetchall()]
+                if att_cols:
+                    if "confidence_score" not in att_cols:
+                        cur.execute("ALTER TABLE attendance_logs ADD COLUMN confidence_score FLOAT")
+
+                con.commit()
+                con.close()
+        except Exception:
+            pass
+
+ensure_sqlite_columns()
 
 def get_db():
     db = SessionLocal()

@@ -97,8 +97,8 @@ export default function AdminForgotPasswordPage() {
         </div>
 
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="rounded-3xl bg-white/90 border border-stone-200/80 p-8 backdrop-blur-xl shadow-sm space-y-5"
         >
           {errorMessage && (

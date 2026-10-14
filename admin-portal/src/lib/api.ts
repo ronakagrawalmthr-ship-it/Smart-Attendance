@@ -1,5 +1,22 @@
-// API Client for Admin & HOD Portal
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API Client for Admin Portal
+export const API_BASE_URL = 
+  typeof window !== 'undefined' && window.location?.hostname
+    ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+
+export function getPortalUrl(port: number, path: string = ''): string {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const protocol = window.location.protocol || 'http:';
+    const host = window.location.hostname;
+    return `${protocol}//${host}:${port}${path}`;
+  }
+  return `http://localhost:${port}${path}`;
+}
+
+export const getAdminPortalUrl = (path: string = '') => getPortalUrl(3001, path);
+export const getStudentPortalUrl = (path: string = '') => getPortalUrl(3002, path);
+export const getHodPortalUrl = (path: string = '') => getPortalUrl(3003, path);
+export const getWebMasterUrl = (path: string = '') => getPortalUrl(3000, path);
 
 export class ApiError extends Error {
   status: number;
@@ -11,51 +28,29 @@ export class ApiError extends Error {
   }
 }
 
-export async function getValidAdminToken(): Promise<string> {
+export function getValidAdminToken(): string {
   if (typeof window === 'undefined') return '';
-  let token = localStorage.getItem('admin_token');
+  const token = localStorage.getItem('admin_token');
   if (token && token !== 'undefined' && token !== 'null') {
     return token;
-  }
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'admin@college.edu', password: 'AdminPass123!' })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.access_token) {
-        localStorage.setItem('admin_token', data.access_token);
-        return data.access_token;
-      }
-    }
-  } catch (e) {
-    console.warn("Could not auto-restore Admin session:", e);
   }
   return '';
 }
 
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  let token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  if (!token || token === 'undefined' || token === 'null') {
-    token = await getValidAdminToken();
-  }
-
+  const token = getValidAdminToken();
   const headers = new Headers(options.headers || {});
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  let response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401 && typeof window !== 'undefined') {
-    // Stale or expired token: auto-acquire fresh token and retry once
+    // Expired or invalid token: purge and redirect to login
     localStorage.removeItem('admin_token');
-    const freshToken = await getValidAdminToken();
-    if (freshToken) {
-      headers.set('Authorization', `Bearer ${freshToken}`);
-      response = await fetch(url, { ...options, headers });
+    if (window.location.pathname !== '/' && window.location.pathname !== '/setup' && window.location.pathname !== '/forgot-password') {
+      window.location.href = '/';
     }
   }
 

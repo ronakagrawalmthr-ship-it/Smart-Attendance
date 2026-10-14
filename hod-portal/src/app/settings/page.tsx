@@ -22,7 +22,8 @@ import {
   Award
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function HODSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -32,7 +33,7 @@ export default function HODSettingsPage() {
 
   // Profile fields
   const [fullName, setFullName] = useState('HOD Computer Science');
-  const [email, setEmail] = useState('hod.cse@college.edu');
+  const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('Computer Science & Engineering');
   const [officeRoom, setOfficeRoom] = useState('Department Office, Block B-302');
   const [phone, setPhone] = useState('+91 98765 22441');
@@ -63,22 +64,16 @@ export default function HODSettingsPage() {
         } catch (e) {}
       }
 
-      let token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-      if (!token) {
-        token = 'demo_hod_token';
-        if (typeof window !== 'undefined') localStorage.setItem('hod_token', token);
-      }
-
-      const res = await fetch(`${API_BASE_URL}/management/hod/profile`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const res = await authFetch(`${API_BASE_URL}/management/hod/profile`);
 
       if (res.ok) {
         const data = await res.json();
-        setFullName(data.full_name || 'HOD Computer Science');
-        setEmail(data.email || 'hod.cse@college.edu');
+        const loadedName = data.full_name || 'HOD Computer Science';
+        setFullName(loadedName);
+        if (typeof window !== 'undefined' && data.full_name) {
+          localStorage.setItem('hod_name', data.full_name);
+        }
+        setEmail(data.email || '');
         setDepartment(data.department || 'Computer Science & Engineering');
         setOfficeRoom(data.office_room || 'Department Office, Block B-302');
         setPhone(data.phone || '+91 98765 22441');
@@ -121,7 +116,7 @@ export default function HODSettingsPage() {
       setSaving(true);
       let token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
       if (!token) {
-        token = 'demo_hod_token';
+        token = '';
         if (typeof window !== 'undefined') localStorage.setItem('hod_token', token);
       }
 
@@ -142,14 +137,14 @@ export default function HODSettingsPage() {
       // Guarantee local persistence immediately
       if (typeof window !== 'undefined') {
         localStorage.setItem('hod_custom_settings', JSON.stringify(payload));
+        localStorage.setItem('hod_name', fullName);
       }
 
       try {
-        await fetch(`${API_BASE_URL}/management/hod/profile`, {
+        await authFetch(`${API_BASE_URL}/management/hod/profile`, {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         });
@@ -172,7 +167,8 @@ export default function HODSettingsPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       {/* Breadcrumb & Navigation */}
       <div className="mb-6 flex items-center justify-between">
         <Link 
@@ -227,8 +223,8 @@ export default function HODSettingsPage() {
       {/* Status Alerts */}
       {successMessage && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center space-x-3 text-emerald-800 shadow-sm"
         >
           <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
@@ -238,8 +234,8 @@ export default function HODSettingsPage() {
 
       {errorMessage && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 flex items-center space-x-3 text-rose-800 shadow-sm"
         >
           <AlertCircle className="h-5 w-5 shrink-0 text-rose-500" />
@@ -288,7 +284,7 @@ export default function HODSettingsPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     className="w-full rounded-2xl border border-stone-200 bg-stone-50/80 py-2.5 pl-10 pr-4 text-sm text-stone-900 placeholder-stone-400 focus:bg-white focus:border-emerald-500 focus:outline-none transition"
-                    placeholder="hod.cse@college.edu"
+                    placeholder="hod@university.ac.in"
                   />
                 </div>
               </div>
@@ -472,6 +468,7 @@ export default function HODSettingsPage() {
           </button>
         </div>
       </form>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

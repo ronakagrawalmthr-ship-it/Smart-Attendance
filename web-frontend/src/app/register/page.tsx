@@ -1,14 +1,19 @@
 'use client';
 
+import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { Camera, Upload, User, CheckCircle, AlertCircle, ArrowLeft, ScanFace, Sparkles, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { API_BASE_URL } from '@/lib/api';
 
 export default function RegisterStudent() {
   const [formData, setFormData] = useState({
     fullName: '',
     rollNumber: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
     branch: '',
     semester: '',
     section: '',
@@ -79,6 +84,13 @@ export default function RegisterStudent() {
     setStatus('idle');
     setErrorMessage(null);
 
+    if (formData.password && formData.password !== formData.confirmPassword) {
+      setStatus('error');
+      setErrorMessage("Passwords do not match. Please check.");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       // Convert captured canvas data to Blob
       const blob = await new Promise<Blob | null>((resolve) =>
@@ -93,10 +105,11 @@ export default function RegisterStudent() {
       formDataPayload.append('branch', formData.branch);
       formDataPayload.append('semester', formData.semester);
       formDataPayload.append('section', formData.section);
+      if (formData.email?.trim()) formDataPayload.append('email', formData.email.trim().toLowerCase());
+      if (formData.password?.trim()) formDataPayload.append('password', formData.password.trim());
       formDataPayload.append('selfie', blob, 'selfie.jpg');
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/students/register`, {
+      const response = await fetch(`${API_BASE_URL}/students/register`, {
         method: 'POST',
         body: formDataPayload,
       });
@@ -143,8 +156,8 @@ export default function RegisterStudent() {
         </div>
 
         <motion.div 
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="text-center mb-10"
         >
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-stone-900">
@@ -174,26 +187,52 @@ export default function RegisterStudent() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Semester</label>
-                  <select required name="semester" value={formData.semester} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition">
-                    <option value="">Select</option>
-                    {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>Semester {s}</option>)}
-                  </select>
+                  <AppleSelect
+                    value={formData.semester}
+                    onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
+                    placeholder="Select Semester"
+                    options={[1,2,3,4,5,6,7,8].map(s => ({
+                      value: String(s),
+                      label: `Semester ${s}`,
+                      badge: `Sem ${s}`
+                    }))}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Branch</label>
-                  <select required name="branch" value={formData.branch} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition">
-                    <option value="">Select Branch</option>
-                    <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                    <option value="Information Technology">Information Technology</option>
-                    <option value="Electronics & Communication">Electronics & Communication</option>
-                    <option value="Mechanical Engineering">Mechanical Engineering</option>
-                  </select>
+                  <AppleSelect
+                    value={formData.branch}
+                    onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
+                    placeholder="Select Branch"
+                    options={[
+                      { value: 'Computer Science & Engineering', label: 'Computer Science & Engineering', badge: 'CS' },
+                      { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
+                      { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'EC' },
+                      { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' }
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Section</label>
                   <input required type="text" name="section" value={formData.section} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="A" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Institutional Email (Optional)</label>
+                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="student@university.edu" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Create Password</label>
+                  <input type="password" name="password" value={formData.password} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="Create password" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Confirm Password</label>
+                  <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="Confirm password" />
                 </div>
               </div>
               
@@ -208,14 +247,14 @@ export default function RegisterStudent() {
               </div>
 
               {status === 'success' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center text-emerald-800 text-xs font-semibold">
+                <motion.div   className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center text-emerald-800 text-xs font-semibold">
                   <CheckCircle className="mr-2.5 h-5 w-5 text-emerald-600 flex-shrink-0" />
                   Successfully registered student & encrypted face vector into database.
                 </motion.div>
               )}
 
               {status === 'error' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center text-rose-800 text-xs font-semibold">
+                <motion.div   className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center text-rose-800 text-xs font-semibold">
                   <AlertCircle className="mr-2.5 h-5 w-5 text-rose-600 flex-shrink-0" />
                   {errorMessage || 'Registration failed. Please check inputs and retry.'}
                 </motion.div>

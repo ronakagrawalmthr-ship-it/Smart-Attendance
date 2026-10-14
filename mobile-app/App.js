@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
+import {
+  Animated,
   StyleSheet, 
   Text, 
   View, 
@@ -19,12 +20,14 @@ import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Development & Production API URL
-const DEV_HOST = '10.67.204.38'; // Local Wi-Fi IP for physical phone & Expo Go testing
-const API_BASE_URL = Platform.select({
-  android: `http://${DEV_HOST}:8000`,
-  ios: `http://${DEV_HOST}:8000`,
-  default: 'http://localhost:8000'
-});
+const DEV_HOST = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) 
+  ? window.location.hostname 
+  : '127.0.0.1'; // Can be adjusted in-app via the Server Configurator
+// Public Cloud Tunnel & Local Fallback
+const CLOUD_API_URL = 'http://127.0.0.1:8000';
+let currentServerHost = DEV_HOST;
+let LOCAL_API_URL = `http://${currentServerHost}:8000`;
+let API_BASE_URL = LOCAL_API_URL;
 
 export default function App() {
   // Camera & Device Permissions
@@ -33,20 +36,164 @@ export default function App() {
   const [torch, setTorch] = useState(false);
   const cameraRef = useRef(null);
 
+  // In-App Backend Server IP Configurator States
+  const [serverHostInput, setServerHostInput] = useState(DEV_HOST);
+  const [serverPortInput, setServerPortInput] = useState('8000');
+  const [isServerModalVisible, setIsServerModalVisible] = useState(false);
+  const [pingStatus, setPingStatus] = useState('idle');
+  const [pingMessage, setPingMessage] = useState('');
+
+  // 🏝️ Apple Dynamic Island State & Animation
+  const [islandState, setIslandState] = useState({
+    type: 'idle', // 'idle' | 'attendance' | 'holiday' | 'warning'
+    title: '',
+    subtitle: '',
+    tag: '',
+    icon: ''
+  });
+  const islandWidthAnim = useRef(new Animated.Value(140)).current;
+  const islandHeightAnim = useRef(new Animated.Value(34)).current;
+  const islandTimeoutRef = useRef(null);
+
+  const triggerDynamicIsland = (type, title, subtitle, durationMs = 2000, tag = '', icon = '') => {
+    if (islandTimeoutRef.current) clearTimeout(islandTimeoutRef.current);
+    setIslandState({ type, title, subtitle, tag, icon });
+    
+    if (Platform.OS !== 'web') {
+      try {
+        if (type === 'attendance') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        else if (type === 'holiday') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        else if (type === 'warning') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } catch (e) {}
+    }
+
+    const targetWidth = type === 'holiday' ? 345 : (type === 'attendance' ? 335 : 320);
+    const targetHeight = type === 'holiday' ? 70 : 64;
+
+    Animated.parallel([
+      Animated.spring(islandWidthAnim, {
+        toValue: targetWidth,
+        friction: 7,
+        tension: 65,
+        useNativeDriver: false
+      }),
+      Animated.spring(islandHeightAnim, {
+        toValue: targetHeight,
+        friction: 7,
+        tension: 65,
+        useNativeDriver: false
+      })
+    ]).start();
+
+    islandTimeoutRef.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(islandWidthAnim, {
+          toValue: 140,
+          friction: 8,
+          tension: 70,
+          useNativeDriver: false
+        }),
+        Animated.spring(islandHeightAnim, {
+          toValue: 34,
+          friction: 8,
+          tension: 70,
+          useNativeDriver: false
+        })
+      ]).start(() => {
+        setIslandState({ type: 'idle', title: '', subtitle: '', tag: '', icon: '' });
+      });
+    }, durationMs);
+  };
+
+  // 🏝️ Apple Dynamic Island Component
+  const renderDynamicIsland = () => (
+    <Animated.View 
+      style={[
+        styles.islandContainer,
+        {
+          width: islandWidthAnim,
+          height: islandHeightAnim,
+        }
+      ]}
+    >
+      <TouchableOpacity 
+        activeOpacity={0.9} 
+        style={styles.islandInner}
+        onPress={() => {
+          if (islandState.type !== 'idle') {
+            Animated.parallel([
+              Animated.spring(islandWidthAnim, { toValue: 140, useNativeDriver: false }),
+              Animated.spring(islandHeightAnim, { toValue: 34, useNativeDriver: false })
+            ]).start(() => setIslandState({ type: 'idle', title: '', subtitle: '', tag: '', icon: '' }));
+          } else {
+            triggerDynamicIsland('attendance', 'Campus Biometrics Active', 'Institutional Server Connected', 2500, 'LIVE', '●');
+          }
+        }}
+      >
+        {islandState.type === 'idle' ? (
+          <View style={styles.islandIdleRow}>
+            <View style={styles.islandPulseDot} />
+            <Text style={styles.islandIdleText}>Smart • Live</Text>
+          </View>
+        ) : islandState.type === 'attendance' ? (
+          <View style={styles.islandExpandedRow}>
+            <View style={styles.islandCheckBadge}>
+              <Text style={styles.islandCheckText}>✓</Text>
+            </View>
+            <View style={styles.islandTextCol}>
+              <Text style={styles.islandTitleText} numberOfLines={1}>{islandState.title}</Text>
+              <Text style={styles.islandSubText} numberOfLines={1}>{islandState.subtitle}</Text>
+            </View>
+            <View style={styles.islandTagBadge}>
+              <Text style={styles.islandTagText}>PRESENT</Text>
+            </View>
+          </View>
+        ) : islandState.type === 'holiday' ? (
+          <View style={styles.islandExpandedRow}>
+            <View style={[styles.islandCheckBadge, { backgroundColor: 'rgba(245, 158, 11, 0.25)' }]}>
+              <Text style={{ fontSize: 18 }}>🎉</Text>
+            </View>
+            <View style={styles.islandTextCol}>
+              <Text style={[styles.islandTitleText, { color: '#FBBF24' }]} numberOfLines={1}>{islandState.title}</Text>
+              <Text style={styles.islandSubText} numberOfLines={1}>{islandState.subtitle}</Text>
+            </View>
+            <View style={[styles.islandTagBadge, { backgroundColor: 'rgba(245, 158, 11, 0.25)' }]}>
+              <Text style={[styles.islandTagText, { color: '#FDE68A' }]}>HOLIDAY</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.islandExpandedRow}>
+            <View style={[styles.islandCheckBadge, { backgroundColor: 'rgba(239, 68, 68, 0.25)' }]}>
+              <Text style={{ fontSize: 16 }}>⚠️</Text>
+            </View>
+            <View style={styles.islandTextCol}>
+              <Text style={[styles.islandTitleText, { color: '#F87171' }]} numberOfLines={1}>{islandState.title}</Text>
+              <Text style={styles.islandSubText} numberOfLines={1}>{islandState.subtitle}</Text>
+            </View>
+            <View style={[styles.islandTagBadge, { backgroundColor: 'rgba(239, 68, 68, 0.25)' }]}>
+              <Text style={[styles.islandTagText, { color: '#FCA5A5' }]}>ALERT</Text>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
+
   // Connectivity & Offline Storage
   const [isOffline, setIsOffline] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
 
   // Authentication State
   const [teacher, setTeacher] = useState(null);
-  const [authEmail, setAuthEmail] = useState('teacher@college.edu');
-  const [authPassword, setAuthPassword] = useState('TeacherPass123!');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Forgot Password Modal States
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
   const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'verify'
-  const [forgotEmail, setForgotEmail] = useState('teacher@college.edu');
+  const [forgotEmail, setForgotEmail] = useState('');
   const [forgotOtp, setForgotOtp] = useState('');
   const [forgotNewPassword, setForgotNewPassword] = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
@@ -58,17 +205,17 @@ export default function App() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileDetails, setProfileDetails] = useState({
-    employee_id: 'FAC-0005',
-    full_name: 'Prof. Priya Nair',
+    employee_id: 'FACULTY',
+    full_name: 'Faculty Member',
     department: 'Computer Science & Engineering',
-    email: 'teacher@college.edu',
-    phone: '+91 98765 43210',
-    assigned_subjects: ['Design & Analysis of Algorithms', 'Computer Networks & Security']
+    email: '',
+    phone: '',
+    assigned_subjects: []
   });
   const [prefCamera, setPrefCamera] = useState('front');
   const [prefHaptics, setPrefHaptics] = useState(true);
   const [prefAutoSync, setPrefAutoSync] = useState(true);
-  const [profilePhone, setProfilePhone] = useState('+91 98765 43210');
+  const [profilePhone, setProfilePhone] = useState('');
   const [profCurrentPass, setProfCurrentPass] = useState('');
   const [profNewPass, setProfNewPass] = useState('');
   const [profConfirmPass, setProfConfirmPass] = useState('');
@@ -111,8 +258,22 @@ export default function App() {
   const [manualSearchQuery, setManualSearchQuery] = useState('');
   const [isSummaryModalVisible, setIsSummaryModalVisible] = useState(false);
 
-  // Teacher's Schedule
-  const lectures = [
+  // Natural Roll Number Sorter Function (Vidyalaya ERP Standard)
+  const sortStudentsByRoll = (list) => {
+    return [...(list || [])].sort((a, b) => 
+      (a.roll || a.roll_number || '').localeCompare(
+        b.roll || b.roll_number || '', 
+        undefined, 
+        { numeric: true, sensitivity: 'base' }
+      )
+    );
+  };
+
+  // Real Student Roster dynamically loaded from SQLite Database
+  const REAL_CSE_STUDENTS = [];
+
+  // Dynamic Teacher's Schedule (loaded dynamically from database metadata)
+  const [lectures, setLectures] = useState([
     {
       id: 1,
       code: 'CS305',
@@ -122,14 +283,8 @@ export default function App() {
       room: 'Room A - Lab 2',
       time: '10:00 AM - 11:00 AM',
       status: 'Live Now',
-      enrolled: 15,
-      roster: [
-        { id: 1, name: 'Aarav Sharma', roll: '23CSE001', email: '23cse001@college.edu' },
-        { id: 2, name: 'Diya Patel', roll: '23CSE002', email: '23cse002@college.edu' },
-        { id: 3, name: 'Ishan Gupta', roll: '23CSE003', email: '23cse003@college.edu' },
-        { id: 4, name: 'Ananya Iyer', roll: '23CSE004', email: '23cse004@college.edu' },
-        { id: 5, name: 'Rohan Verma', roll: '23CSE005', email: '23cse005@college.edu' },
-      ]
+      enrolled: 0,
+      roster: REAL_CSE_STUDENTS
     },
     {
       id: 2,
@@ -140,13 +295,8 @@ export default function App() {
       room: 'Room A - Lab 1',
       time: '11:30 AM - 12:30 PM',
       status: 'Upcoming',
-      enrolled: 15,
-      roster: [
-        { id: 6, name: 'Sneha Kulkarni', roll: '23CSE006', email: '23cse006@college.edu' },
-        { id: 7, name: 'Rahul Mehra', roll: '23CSE007', email: '23cse007@college.edu' },
-        { id: 8, name: 'Tanvi Deshmukh', roll: '23CSE008', email: '23cse008@college.edu' },
-        { id: 9, name: 'Aditya Chopra', roll: '23CSE009', email: '23cse009@college.edu' },
-      ]
+      enrolled: 0,
+      roster: REAL_CSE_STUDENTS
     },
     {
       id: 3,
@@ -157,22 +307,84 @@ export default function App() {
       room: 'Room A - Lab 4',
       time: '02:00 PM - 03:00 PM',
       status: 'Scheduled',
-      enrolled: 15,
-      roster: [
-        { id: 10, name: 'Pooja Reddy', roll: '23CSE010', email: '23cse010@college.edu' },
-        { id: 11, name: 'Siddharth Malhotra', roll: '23CSE011', email: '23cse011@college.edu' },
-        { id: 12, name: 'Neha Bhatt', roll: '23CSE012', email: '23cse012@college.edu' },
-        { id: 13, name: 'Kabir Sen', roll: '23CSE013', email: '23cse013@college.edu' },
-        { id: 14, name: 'Riya Banerjee', roll: '23CSE014', email: '23cse014@college.edu' },
-        { id: 15, name: 'Varun Nair', roll: '23CSE015', email: '23cse015@college.edu' },
-      ]
+      enrolled: 0,
+      roster: REAL_CSE_STUDENTS
     }
-  ];
+  ]);
+
+  const fetchLiveRoster = async () => {
+    try {
+      // 1. Fetch live department & subject metadata
+      let metaRes = await fetch(`${API_BASE_URL}/attendance/departments-meta`).catch(() => null);
+      if (!metaRes || !metaRes.ok) {
+        metaRes = await fetch(`${CLOUD_API_URL}/attendance/departments-meta`).catch(() => null);
+      }
+      let subjectsList = [];
+      if (metaRes && metaRes.ok) {
+        const metaData = await metaRes.json();
+        if (metaData.subjects && metaData.subjects.length > 0) {
+          subjectsList = metaData.subjects;
+        }
+      }
+
+      // 2. Fetch enrolled students from SQLite database
+      let res = await fetch(`${API_BASE_URL}/attendance/class-students?branch=Computer%20Science%20%26%20Engineering&semester=6&section=A`).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`${CLOUD_API_URL}/attendance/class-students?branch=Computer%20Science%20%26%20Engineering&semester=6&section=A`).catch(() => null);
+      }
+      
+      let liveRoster = [];
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.students && Array.isArray(data.students)) {
+          liveRoster = data.students.map((s, idx) => ({
+            id: s.id || (idx + 1),
+            name: s.name || s.full_name,
+            roll: s.roll_number,
+            email: `${s.roll_number.toLowerCase()}@student.college.edu`
+          }));
+        }
+      }
+
+      // 3. Populate dynamic lecture schedule from database subjects
+      if (subjectsList.length > 0) {
+        const cseSubjects = subjectsList.filter(s => s.semester === 6 && (s.branch.includes('Computer') || !s.branch));
+        const activeSubjects = cseSubjects.length > 0 ? cseSubjects.slice(0, 4) : subjectsList.slice(0, 3);
+        const timeSlots = ['10:00 AM - 11:00 AM', '11:30 AM - 12:30 PM', '02:00 PM - 03:00 PM', '03:30 PM - 04:30 PM'];
+        const rooms = ['Room A - Lab 2', 'Room A - Lab 1', 'Room A - Lab 4', 'Room B - Seminar Hall'];
+        
+        const dynamicLectures = activeSubjects.map((sub, idx) => ({
+          id: sub.id,
+          code: sub.code,
+          name: sub.name,
+          semester: `Semester ${sub.semester || 6}`,
+          section: 'Section A',
+          room: rooms[idx % rooms.length],
+          time: timeSlots[idx % timeSlots.length],
+          status: idx === 0 ? 'Live Now' : idx === 1 ? 'Upcoming' : 'Scheduled',
+          enrolled: liveRoster.length,
+          roster: liveRoster
+        }));
+        setLectures(dynamicLectures);
+        console.log(`[Roster Sync] Configured ${dynamicLectures.length} dynamic courses with ${liveRoster.length} enrolled students.`);
+      } else {
+        setLectures(prev => prev.map(lec => ({
+          ...lec,
+          enrolled: liveRoster.length,
+          roster: liveRoster
+        })));
+        console.log(`[Roster Sync] Loaded ${liveRoster.length} students from database!`);
+      }
+    } catch (e) {
+      console.log('Error synchronizing live schedule & roster:', e);
+    }
+  };
 
   // Initialize Network & Cached Session
   useEffect(() => {
     checkSavedAuth();
     updateOfflineCount();
+    fetchLiveRoster();
 
     const unsubscribe = NetInfo.addEventListener(state => {
       const offline = !state.isConnected;
@@ -184,6 +396,12 @@ export default function App() {
 
   const checkSavedAuth = async () => {
     try {
+      const savedHost = await AsyncStorage.getItem('@custom_server_host');
+      if (savedHost && savedHost.trim()) {
+        currentServerHost = savedHost.trim();
+        API_BASE_URL = `http://${currentServerHost}:8000`;
+        setServerHostInput(savedHost.trim());
+      }
       const saved = await AsyncStorage.getItem('@teacher_user');
       if (saved) {
         setTeacher(JSON.parse(saved));
@@ -196,6 +414,121 @@ export default function App() {
       console.log('Error reading auth cache:', e);
     }
   };
+
+  const handlePingServer = async () => {
+    setPingStatus('testing');
+    setPingMessage('Pinging server at http://' + serverHostInput.trim() + ':' + serverPortInput.trim() + '...');
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(`http://${serverHostInput.trim()}:${serverPortInput.trim()}/`, { signal: timer });
+      clearTimeout(timer);
+      if (res.ok) {
+        setPingStatus('success');
+        setPingMessage('✓ FastAPI Backend is online and responding!');
+      } else {
+        setPingStatus('failed');
+        setPingMessage(`Server responded with HTTP ${res.status}`);
+      }
+    } catch (e) {
+      setPingStatus('failed');
+      setPingMessage('✕ Connection timed out. Ensure PC & phone share the same Wi-Fi network.');
+    }
+  };
+
+  const handleSaveServerConfig = async () => {
+    const cleanHost = serverHostInput.trim();
+    currentServerHost = cleanHost;
+    API_BASE_URL = `http://${currentServerHost}:${serverPortInput.trim()}`;
+    await AsyncStorage.setItem('@custom_server_host', cleanHost);
+    setIsServerModalVisible(false);
+    triggerDynamicIsland('attendance', 'Server Configured', `Connected to ${cleanHost}`, 2500, 'Online');
+    fetchLiveRoster();
+  };
+
+  const renderServerConfigModal = () => (
+    <Modal
+      visible={isServerModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setIsServerModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.forgotModalCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={styles.forgotModalTitle}>Backend Server IP Config</Text>
+            <TouchableOpacity onPress={() => setIsServerModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.forgotModalDesc}>
+            Configure the IPv4 address of your computer running the FastAPI server. Both device and host PC must be on the same Wi-Fi network.
+          </Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Host IP Address (Computer IPv4)</Text>
+            <TextInput 
+              style={styles.textInput}
+              value={serverHostInput}
+              onChangeText={(val) => { setServerHostInput(val); setPingStatus('idle'); }}
+              placeholder="e.g. 192.168.1.100 or 10.125.98.38"
+              placeholderTextColor="#64748b"
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Port</Text>
+            <TextInput 
+              style={styles.textInput}
+              value={serverPortInput}
+              onChangeText={setServerPortInput}
+              placeholder="8000"
+              placeholderTextColor="#64748b"
+              keyboardType="numeric"
+            />
+          </View>
+
+          {pingStatus !== 'idle' && (
+            <View style={{
+              padding: 10,
+              borderRadius: 12,
+              backgroundColor: pingStatus === 'success' ? '#ECFDF5' : pingStatus === 'failed' ? '#FEF2F2' : '#F3F4F6',
+              borderWidth: 1,
+              borderColor: pingStatus === 'success' ? '#A7F3D0' : pingStatus === 'failed' ? '#FECACA' : '#E5E7EB',
+              marginBottom: 12
+            }}>
+              <Text style={{
+                fontSize: 12,
+                fontWeight: '600',
+                color: pingStatus === 'success' ? '#065F46' : pingStatus === 'failed' ? '#991B1B' : '#374151'
+              }}>
+                {pingMessage}
+              </Text>
+            </View>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <TouchableOpacity 
+              style={[styles.primaryButton, { flex: 1, backgroundColor: '#475569' }]} 
+              onPress={handlePingServer}
+              disabled={pingStatus === 'testing'}
+            >
+              {pingStatus === 'testing' ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Ping Server</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.primaryButton, { flex: 1 }]} 
+              onPress={handleSaveServerConfig}
+            >
+              <Text style={styles.primaryButtonText}>Save & Connect</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const updateOfflineCount = async () => {
     try {
@@ -216,11 +549,25 @@ export default function App() {
       if (queue) {
         const items = JSON.parse(queue);
         for (const item of items) {
-          await fetch(`${API_BASE_URL}/attendance/submit_final/${item.sessionId}`, {
+          let syncRes = await fetch(`${API_BASE_URL}/attendance/submit_final/${item.sessionId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${teacher?.token || ''}`
+            },
             body: JSON.stringify(item)
-          });
+          }).catch(() => null);
+
+          if (!syncRes || !syncRes.ok) {
+            await fetch(`${CLOUD_API_URL}/attendance/submit_final/${item.sessionId}`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${teacher?.token || ''}`
+              },
+              body: JSON.stringify(item)
+            }).catch(() => null);
+          }
         }
         await AsyncStorage.removeItem('@offline_queue');
         setOfflineQueueCount(0);
@@ -244,7 +591,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         const teacherProfile = {
-          name: data.user?.full_name || 'Prof. Priya Nair',
+          name: data.user?.full_name || 'Faculty Member',
           email: data.user?.email || authEmail,
           department: data.user?.department || 'Computer Science & Engineering',
           token: data.access_token
@@ -253,28 +600,13 @@ export default function App() {
         await AsyncStorage.setItem('@teacher_user', JSON.stringify(teacherProfile));
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        // Fallback for development/testing
-        const fallback = {
-          name: 'Prof. Priya Nair',
-          email: authEmail,
-          department: 'Computer Science & Engineering',
-          token: 'demo_token_teacher'
-        };
-        setTeacher(fallback);
-        await AsyncStorage.setItem('@teacher_user', JSON.stringify(fallback));
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const errData = await res.json().catch(() => ({}));
+        Alert.alert("Authentication Failed", errData.detail || "Invalid faculty credentials. Please check your email and password.");
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } catch (err) {
-      // Fallback if offline
-      const fallback = {
-        name: 'Prof. Priya Nair',
-        email: authEmail,
-        department: 'Computer Science & Engineering',
-        token: 'demo_token_teacher'
-      };
-      setTeacher(fallback);
-      await AsyncStorage.setItem('@teacher_user', JSON.stringify(fallback));
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Connection Error", "Could not connect to faculty authentication service. Please verify backend is reachable.");
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsLoggingIn(false);
     }
@@ -550,10 +882,19 @@ export default function App() {
 
   // Launch a Lecture Session
   const launchSession = (lec) => {
+    if (!teacher?.token) {
+      Alert.alert(
+        "Faculty Authentication Required",
+        "Please log in with your faculty credentials before launching a biometric attendance session.",
+        [
+          { text: "Log In", onPress: () => setCurrentView('auth') },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
+      return;
+    }
     setActiveSession(lec);
-    const sortedRoster = [...lec.roster].sort((a, b) => 
-      (a.roll || a.roll_number || '').localeCompare(b.roll || b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' })
-    );
+    const sortedRoster = sortStudentsByRoll(lec.roster);
     setPendingStudents(sortedRoster);
     setScannedStudents([]);
     setCurrentView('scanner');
@@ -583,144 +924,105 @@ export default function App() {
       if (!photo) throw new Error("Could not capture frame");
 
       if (isOffline) {
-        // Offline resilience
-        if (pendingStudents.length > 0) {
-          const student = pendingStudents[0];
-          setScannedStudents(prev => [...prev, { ...student, status: 'Present', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-          setPendingStudents(prev => prev.slice(1));
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setLivenessStatus({
-            message: `Verified (Offline): ${student.name} (${student.roll})`,
-            type: 'success'
-          });
-        }
-      } else {
-        const formData = new FormData();
-        formData.append('image', {
-          uri: photo.uri,
-          name: 'scan.jpg',
-          type: 'image/jpeg',
+        if (prefHaptics) await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        triggerDynamicIsland('warning', 'Offline Mode', 'Database connection required for facial scan', 2500, 'OFFLINE', '⚠️');
+        setLivenessStatus({
+          message: "⚠️ Offline Mode: Live facial recognition requires database connection. Please use manual checklist below or connect to Wi-Fi.",
+          type: 'error'
         });
+        return;
+      }
 
-        const response = await fetch(`${API_BASE_URL}/attendance/verify_single/${activeSession?.id || 1}`, {
+      const formData = new FormData();
+      formData.append('image', {
+        uri: photo.uri,
+        name: 'scan.jpg',
+        type: 'image/jpeg',
+      });
+
+      // Try LOCAL_API_URL first, then fallback to CLOUD_API_URL
+      let response = null;
+      try {
+        response = await fetch(`${API_BASE_URL}/attendance/verify_single/${activeSession?.id || 1}`, {
           method: 'POST',
           body: formData,
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${teacher?.token || ''}`,
           },
         });
-
-        const result = await response.json();
-
-        if (result.success && result.student) {
-          const matched = result.student;
-          // 1. STRICT DUPLICATE SCAN PREVENTION
-          const existing = scannedStudents.find(s => s.roll === matched.roll_number || s.id === matched.id);
-          if (existing) {
-            if (prefHaptics) {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
-            setLivenessStatus({
-              message: `⚠️ Already Marked: ${existing.name} (${existing.roll}) recorded at ${existing.time || 'earlier'}`,
-              type: 'error'
-            });
-            return;
-          }
-
-          setScannedStudents(prev => [...prev, { 
-            id: matched.id, 
-            name: matched.name, 
-            roll: matched.roll_number, 
-            status: 'Present',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }]);
-          setPendingStudents(prev => prev.filter(s => s.roll !== matched.roll_number));
-          if (prefHaptics) {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          setLivenessStatus({
-            message: `Match Confirmed: ${matched.name} (${matched.roll_number})`,
-            type: 'success'
-          });
-        } else {
-          // Mock verification fallback for next student in roster
-          if (pendingStudents.length > 0) {
-            const student = pendingStudents[0];
-            // Check Duplicate in fallback
-            const existing = scannedStudents.find(s => s.roll === student.roll);
-            if (existing) {
-              if (prefHaptics) {
-                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              }
-              setLivenessStatus({
-                message: `⚠️ Already Marked: ${existing.name} (${existing.roll})`,
-                type: 'error'
-              });
-              return;
-            }
-
-            setScannedStudents(prev => [...prev, { 
-              ...student, 
-              status: 'Present', 
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-            }]);
-            setPendingStudents(prev => prev.slice(1));
-            if (prefHaptics) {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            setLivenessStatus({
-              message: `Match Confirmed: ${student.name} (${student.roll})`,
-              type: 'success'
-            });
-          } else {
-            if (prefHaptics) {
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            }
-            setLivenessStatus({
-              message: result.error || "Biometric match not found. Please retry.",
-              type: 'error'
-            });
-          }
-        }
+      } catch (err) {
+        response = await fetch(`${CLOUD_API_URL}/attendance/verify_single/${activeSession?.id || 1}`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${teacher?.token || ''}`,
+          },
+        });
       }
-    } catch (err) {
-      if (pendingStudents.length > 0) {
-        const student = pendingStudents[0];
-        const existing = scannedStudents.find(s => s.roll === student.roll);
+
+      const result = await response.json();
+
+      if (result.success && result.student) {
+        const matched = result.student;
+        // 1. STRICT DUPLICATE SCAN PREVENTION
+        const existing = scannedStudents.find(s => (s.roll || s.roll_number) === (matched.roll_number || matched.roll));
         if (existing) {
           if (prefHaptics) {
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           }
           setLivenessStatus({
-            message: `⚠️ Already Marked: ${existing.name} (${existing.roll})`,
+            message: `⚠️ Already Marked: ${existing.name} (${existing.roll || existing.roll_number}) recorded earlier`,
             type: 'error'
           });
+          triggerDynamicIsland('warning', 'Already Marked', `${existing.name} already recorded`, 2000, 'EXISTS', 'ℹ️');
           return;
         }
 
-        setScannedStudents(prev => [...prev, { 
-          ...student, 
-          status: 'Present', 
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-        }]);
-        setPendingStudents(prev => prev.slice(1));
+        const studentItem = { 
+          id: matched.id, 
+          name: matched.name, 
+          roll: matched.roll_number, 
+          status: 'Present',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        setScannedStudents(prev => [...prev, studentItem]);
+        setPendingStudents(prev => prev.filter(s => (s.roll || s.roll_number) !== matched.roll_number));
+        
         if (prefHaptics) {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+        triggerDynamicIsland('attendance', 'Attendance Marked!', matched.name + ' (' + matched.roll_number + ')', 2000, 'PRESENT', '✓');
         setLivenessStatus({
-          message: `Match Confirmed: ${student.name}`,
+          message: `Match Confirmed: ${matched.name} (${matched.roll_number})`,
           type: 'success'
         });
+      } else {
+        // NO MOCK FALLBACK: Real failure feedback
+        if (prefHaptics) {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+        const errMsg = result.error || "Biometric match not found. Please position student face in frame.";
+        triggerDynamicIsland('warning', 'Not Recognized', errMsg, 2500, 'RETRY', '⚠️');
+        setLivenessStatus({
+          message: `⚠️ ${errMsg}`,
+          type: 'error'
+        });
       }
+    } catch (err) {
+      // NO MOCK FALLBACK: Real error feedback
+      if (prefHaptics) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      triggerDynamicIsland('warning', 'Scan Error', err.message || 'Verification failed', 2500, 'ERROR', '⚠️');
+      setLivenessStatus({
+        message: `⚠️ Scan verification error: ${err.message || 'Could not reach attendance database'}`,
+        type: 'error'
+      });
     } finally {
       setIsCapturing(false);
-      setTimeout(() => {
-        setLivenessStatus({
-          message: "Ready for next student. Align face.",
-          type: 'idle'
-        });
-      }, 2500);
     }
   };
 
@@ -732,7 +1034,7 @@ export default function App() {
     setScannedStudents(prev => prev.filter(s => s.roll !== student.roll));
     setPendingStudents(prev => {
       if (prev.some(s => s.roll === student.roll)) return prev;
-      return [...prev, { id: student.id, name: student.name, roll: student.roll, email: student.email }];
+      return sortStudentsByRoll([...prev, { id: student.id, name: student.name, roll: student.roll, email: student.email }]);
     });
     setLivenessStatus({
       message: `Removed: ${student.name} (${student.roll}) marked Absent`,
@@ -753,12 +1055,12 @@ export default function App() {
     if (prefHaptics) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    setScannedStudents(prev => [...prev, { 
+    setScannedStudents(prev => sortStudentsByRoll([...prev, { 
       ...student, 
       status: 'Present', 
       isManual: true,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-    }]);
+    }]));
     setPendingStudents(prev => prev.filter(s => s.roll !== student.roll));
     setLivenessStatus({
       message: `Manually Added: ${student.name} (${student.roll})`,
@@ -783,7 +1085,7 @@ export default function App() {
     const payload = {
       sessionId: activeSession?.id,
       sessionCode: activeSession?.code,
-      conducted_by_name: teacher?.full_name || profileDetails?.full_name || 'Prof. Priya Nair',
+      conducted_by_name: teacher?.full_name || teacher?.name || profileDetails?.full_name || 'Faculty In-Charge',
       custom_subject_name: activeSession?.name || null,
       session_type: activeSession?.isGuest ? 'guest_lecture' : 'lecture',
       notes: activeSession?.notes || null,
@@ -807,14 +1109,35 @@ export default function App() {
       );
     } else {
       try {
-        await fetch(`${API_BASE_URL}/attendance/submit_final/${activeSession?.id || 1}`, {
+        let res = await fetch(`${API_BASE_URL}/attendance/submit_final/${activeSession?.id || 1}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${teacher?.token || ''}`
+          },
           body: JSON.stringify(payload)
-        });
+        }).catch(() => null);
+
+        if (!res || !res.ok) {
+          res = await fetch(`${CLOUD_API_URL}/attendance/submit_final/${activeSession?.id || 1}`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${teacher?.token || ''}`
+            },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.detail || errJson.error || `Server responded with status ${res.status}`);
+        }
+
         if (prefHaptics) {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+        triggerDynamicIsland('attendance', 'Session Finalized', `Committed ${scannedStudents.length} Present to Database`, 3000, 'COMMITTED', '✓');
         Alert.alert(
           "Session Submitted", 
           `Attendance successfully committed to institutional records!\n\nPresent: ${scannedStudents.length} Students\nAbsent: ${pendingStudents.length} Students`
@@ -879,7 +1202,7 @@ export default function App() {
   if (!teacher) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         <ScrollView contentContainerStyle={styles.loginScroll}>
           <View style={styles.loginHeader}>
             <View style={styles.emblemBadge}>
@@ -887,6 +1210,32 @@ export default function App() {
             </View>
             <Text style={styles.loginAppTitle}>Faculty Kiosk</Text>
             <Text style={styles.loginAppSubtitle}>Smart Attendance • Teacher Tablet Engine</Text>
+
+            {/* In-App Server IP Quick Configurator Button */}
+            <TouchableOpacity
+              style={{
+                alignSelf: 'center',
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderColor: '#E2E8F0',
+                borderWidth: 1,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20,
+                marginTop: 8,
+                gap: 6,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.06,
+                shadowRadius: 2,
+                elevation: 1
+              }}
+              onPress={() => { setIsServerModalVisible(true); setPingStatus('idle'); }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#1e293b' }}>📡 Server: {currentServerHost}:8000</Text>
+              <Text style={{ fontSize: 10, color: '#2563eb', fontWeight: 'bold' }}>⚙️ Config</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.cardContainer}>
@@ -899,7 +1248,7 @@ export default function App() {
                 style={styles.textInput}
                 value={authEmail}
                 onChangeText={setAuthEmail}
-                placeholder="teacher@college.edu"
+                placeholder="faculty@university.ac.in"
                 placeholderTextColor="#64748b"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -935,26 +1284,9 @@ export default function App() {
               )}
             </TouchableOpacity>
 
-            {/* Demo Credentials Quick-Fill Pill */}
-            <View style={styles.demoPillContainer}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.demoPillLabel}>Demo Faculty Account:</Text>
-                <Text style={styles.demoPillValue}>teacher@college.edu / TeacherPass123!</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.demoFillBtn} 
-                onPress={() => {
-                  setAuthEmail('teacher@college.edu');
-                  setAuthPassword('TeacherPass123!');
-                }}
-              >
-                <Text style={styles.demoFillBtnText}>Fill</Text>
-              </TouchableOpacity>
-            </View>
-
             {/* Subtle Creator Credit Badge */}
             <View style={{ alignItems: 'center', marginTop: 22, marginBottom: 4 }}>
-              <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
+              <Text style={{ color: '#78716C', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
               <View style={{ backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 4 }}>
                 <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
               </View>
@@ -989,7 +1321,7 @@ export default function App() {
                       style={styles.textInput}
                       value={forgotEmail}
                       onChangeText={setForgotEmail}
-                      placeholder="teacher@college.edu"
+                      placeholder="faculty@university.ac.in"
                       placeholderTextColor="#64748b"
                       autoCapitalize="none"
                       keyboardType="email-address"
@@ -1064,13 +1396,16 @@ export default function App() {
                     style={{ marginTop: 12, alignItems: 'center' }}
                     onPress={() => setForgotStep('request')}
                   >
-                    <Text style={{ color: '#94a3b8', fontSize: 12 }}>← Change Email</Text>
+                    <Text style={{ color: '#78716C', fontSize: 12 }}>← Change Email</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
           </View>
         </Modal>
+
+        {/* Server Config Modal */}
+        {renderServerConfigModal()}
       </SafeAreaView>
     );
   }
@@ -1081,7 +1416,7 @@ export default function App() {
   if (currentView === 'hub') {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="dark-content" />
         {/* Top App Bar */}
         <View style={styles.appBar}>
           <View>
@@ -1091,13 +1426,19 @@ export default function App() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity 
+              style={[styles.profilePill, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' }]} 
+              onPress={() => { setIsServerModalVisible(true); setPingStatus('idle'); }}
+            >
+              <Text style={styles.profilePillText}>📡 {currentServerHost}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
               style={styles.profilePill} 
               onPress={() => {
                 setIsProfileModalVisible(true);
                 loadTeacherProfile();
               }}
             >
-              <Text style={styles.profilePillText}>⚙️ Settings & Profile</Text>
+              <Text style={styles.profilePillText}>⚙️ Settings</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.logoutPill} onPress={handleTeacherLogout}>
               <Text style={styles.logoutText}>Log Out</Text>
@@ -1163,7 +1504,7 @@ export default function App() {
 
           {/* Subtle Creator Credit Footer */}
           <View style={{ alignItems: 'center', paddingVertical: 20, marginTop: 8 }}>
-            <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
+            <Text style={{ color: '#78716C', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
             <View style={{ backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 4 }}>
               <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
             </View>
@@ -1206,30 +1547,34 @@ export default function App() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text style={styles.profileSectionTitle}>Teacher Identity</Text>
                     <View style={styles.empIdBadge}>
-                      <Text style={styles.empIdBadgeText}>{profileDetails.employee_id || 'FAC-0004'}</Text>
+                      <Text style={styles.empIdBadgeText}>{profileDetails.employee_id || (teacher?.id ? `FAC-${String(teacher.id).padStart(4, '0')}` : 'FACULTY')}</Text>
                     </View>
                   </View>
 
                   <View style={styles.profileMetaRow}>
                     <Text style={styles.profileMetaLabel}>Name:</Text>
-                    <Text style={styles.profileMetaValue}>{profileDetails.full_name || teacher.name}</Text>
+                    <Text style={styles.profileMetaValue}>{profileDetails.full_name || teacher?.name || 'Faculty Member'}</Text>
                   </View>
                   <View style={styles.profileMetaRow}>
                     <Text style={styles.profileMetaLabel}>Department:</Text>
-                    <Text style={styles.profileMetaValue}>{profileDetails.department || teacher.department}</Text>
+                    <Text style={styles.profileMetaValue}>{profileDetails.department || teacher?.department || 'Department Faculty'}</Text>
                   </View>
                   <View style={styles.profileMetaRow}>
                     <Text style={styles.profileMetaLabel}>Email:</Text>
-                    <Text style={styles.profileMetaValue}>{profileDetails.email || teacher.email}</Text>
+                    <Text style={styles.profileMetaValue}>{profileDetails.email || teacher?.email || 'N/A'}</Text>
                   </View>
 
                   <Text style={[styles.profileMetaLabel, { marginTop: 8, marginBottom: 4 }]}>Assigned Lecture Courses:</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    {(profileDetails.assigned_subjects || ['Machine Learning & Neural Nets', 'Computer Networks & Security']).map((sub, idx) => (
-                      <View key={idx} style={styles.assignedSubjectPill}>
-                        <Text style={styles.assignedSubjectText}>📚 {sub}</Text>
-                      </View>
-                    ))}
+                    {(profileDetails.assigned_subjects && profileDetails.assigned_subjects.length > 0) ? (
+                      profileDetails.assigned_subjects.map((sub, idx) => (
+                        <View key={idx} style={styles.assignedSubjectPill}>
+                          <Text style={styles.assignedSubjectText}>📚 {sub}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={{ fontSize: 12, color: '#8E8E93', fontStyle: 'italic' }}>Curriculum active across department</Text>
+                    )}
                   </View>
                 </View>
 
@@ -1363,7 +1708,7 @@ export default function App() {
                     </View>
                   </View>
 
-                  <Text style={{ fontSize: 11, color: '#94a3b8', marginBottom: 12, lineHeight: 16 }}>
+                  <Text style={{ fontSize: 11, color: '#78716C', marginBottom: 12, lineHeight: 16 }}>
                     {kioskExitPin 
                       ? "Kiosk scanner is locked. To change your PIN, enter your current (purani) PIN first."
                       : "Default is set to No PIN (open exit). Set a custom 4-digit PIN below so students cannot exit or cancel the walk-up attendance scanner."}
@@ -1682,7 +2027,7 @@ export default function App() {
 
               {/* Students List in Modal */}
               <ScrollView style={{ maxHeight: 380 }}>
-                {[...scannedStudents, ...pendingStudents]
+                {sortStudentsByRoll([...scannedStudents, ...pendingStudents])
                   .filter(s => 
                     s.name.toLowerCase().includes(manualSearchQuery.toLowerCase()) || 
                     s.roll.toLowerCase().includes(manualSearchQuery.toLowerCase())
@@ -1788,8 +2133,8 @@ export default function App() {
 
                 <TouchableOpacity 
                   style={{
-                    backgroundColor: '#1e293b',
-                    borderColor: '#334155',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E8E3DA',
                     borderWidth: 1,
                     borderRadius: 14,
                     paddingHorizontal: 16,
@@ -1802,7 +2147,7 @@ export default function App() {
                     setExitPinError(null);
                   }}
                 >
-                  <Text style={{ color: '#94a3b8', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                  <Text style={{ color: '#78716C', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1815,7 +2160,7 @@ export default function App() {
   // --------------------------------------------------------------------------
   // SCREEN 4: PRE-SUBMISSION REVIEW & MANUAL OVERRIDE ROSTER
   // --------------------------------------------------------------------------
-  const allList = [...scannedStudents, ...pendingStudents];
+  const allList = sortStudentsByRoll(sortStudentsByRoll([...scannedStudents, ...pendingStudents]));
   const filteredList = allList.filter(s => {
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           s.roll.toLowerCase().includes(searchQuery.toLowerCase());
@@ -1832,7 +2177,8 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
+      {renderDynamicIsland()}
       
       {/* Review Header with Complete Turnout HUD */}
       <View style={styles.reviewHeader}>
@@ -2050,20 +2396,183 @@ export default function App() {
 // STYLESHEET (Ultra-Premium Modern Dark Theme)
 // ----------------------------------------------------------------------------
 const styles = StyleSheet.create({
+
+  // 🏝️ Apple Dynamic Island Styles
+  islandContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 44 : 12,
+    alignSelf: 'center',
+    zIndex: 999999,
+    elevation: 99,
+    backgroundColor: '#000000',
+    borderRadius: 33,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    overflow: 'hidden',
+  },
+  islandInner: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  islandIdleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  islandPulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  islandIdleText: {
+    color: '#F4F4F5',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  islandExpandedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  islandCheckBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(16, 185, 129, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  islandCheckText: {
+    color: '#34D399',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  islandTextCol: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 6,
+  },
+  islandTitleText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  islandSubText: {
+    color: '#A1A1AA',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  islandTagBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  islandTagText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  // Interactive Demo Bar in Hub
+  islandDemoBar: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8E3DA',
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+  },
+  islandDemoInfo: {
+    marginBottom: 10,
+  },
+  islandDemoTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1C1917',
+  },
+  islandDemoSub: {
+    fontSize: 11,
+    color: '#78716C',
+    marginTop: 2,
+  },
+  islandDemoButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  islandDemoBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  islandDemoBtnGreen: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  islandDemoBtnGreenText: {
+    color: '#059669',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  islandDemoBtnAmber: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  islandDemoBtnAmberText: {
+    color: '#D97706',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  islandDemoBtnBlue: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  islandDemoBtnBlueText: {
+    color: '#4F46E5',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
   container: {
     flex: 1,
-    backgroundColor: '#090d16',
+    backgroundColor: '#FAF7F2',
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#090d16',
+    backgroundColor: '#FAF7F2',
     padding: 24,
   },
   loadingText: {
     marginTop: 16,
-    color: '#94a3b8',
+    color: '#78716C',
     fontSize: 14,
   },
 
@@ -2095,7 +2604,7 @@ const styles = StyleSheet.create({
   },
   permissionDesc: {
     fontSize: 14,
-    color: '#94a3b8',
+    color: '#78716C',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
@@ -2130,20 +2639,20 @@ const styles = StyleSheet.create({
   loginAppTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
     letterSpacing: -0.5,
   },
   loginAppSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 4,
   },
   cardContainer: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#E8E3DA',
   },
   cardTitle: {
     fontSize: 20,
@@ -2152,7 +2661,7 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 4,
     marginBottom: 20,
   },
@@ -2163,14 +2672,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    color: '#94a3b8',
+    color: '#78716C',
     marginBottom: 8,
     letterSpacing: 0.5,
   },
   textInput: {
-    backgroundColor: '#020617',
+    backgroundColor: '#FAF7F2',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 13,
@@ -2207,7 +2716,7 @@ const styles = StyleSheet.create({
   },
   demoPillValue: {
     fontSize: 11,
-    color: '#cbd5e1',
+    color: '#57534E',
     marginTop: 2,
   },
   demoFillBtn: {
@@ -2227,22 +2736,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 16,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: '#E8E3DA',
   },
   facultyGreeting: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#78716C',
     fontWeight: '600',
   },
   facultyName: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
     marginTop: 1,
   },
   facultyDept: {
@@ -2255,12 +2764,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   logoutText: {
-    color: '#94a3b8',
+    color: '#78716C',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -2268,7 +2777,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     paddingVertical: 10,
-    backgroundColor: '#020617',
+    backgroundColor: '#FAF7F2',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -2303,21 +2812,21 @@ const styles = StyleSheet.create({
   sectionHeaderTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   sectionHeaderSubtitle: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 2,
     marginBottom: 16,
   },
   lectureCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 18,
     padding: 18,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#E8E3DA',
   },
   lectureCardLive: {
     borderColor: '#0284c7',
@@ -2330,7 +2839,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   codeBadge: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -2349,7 +2858,7 @@ const styles = StyleSheet.create({
   tagUpcoming: { backgroundColor: 'rgba(148, 163, 184, 0.15)' },
   statusTagText: { fontSize: 11, fontWeight: '700' },
   textLive: { color: '#34d399' },
-  textUpcoming: { color: '#94a3b8' },
+  textUpcoming: { color: '#78716C' },
   lectureName: {
     fontSize: 16,
     fontWeight: '700',
@@ -2364,8 +2873,8 @@ const styles = StyleSheet.create({
   },
   metaItem: {
     fontSize: 12,
-    color: '#94a3b8',
-    backgroundColor: '#020617',
+    color: '#78716C',
+    backgroundColor: '#FAF7F2',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -2376,10 +2885,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionBannerLive: { backgroundColor: '#0284c7' },
-  actionBannerDefault: { backgroundColor: '#1e293b' },
+  actionBannerDefault: {
+    backgroundColor: '#F0ECE4',
+    borderWidth: 1,
+    borderColor: '#E8E3DA',
+  },
   actionBannerText: { fontWeight: '700', fontSize: 13 },
   actionTextLive: { color: '#ffffff' },
-  actionTextDefault: { color: '#94a3b8' },
+  actionTextDefault: {
+    color: '#1C1917',
+  },
 
   // Live Camera Scanner Screen
   scannerRoot: {
@@ -2413,12 +2928,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scannerSessionCode: {
-    color: '#ffffff',
+    color: '#1C1917',
     fontSize: 15,
     fontWeight: '800',
   },
   scannerSessionSub: {
-    color: '#94a3b8',
+    color: '#78716C',
     fontSize: 11,
   },
   livenessAlertBar: {
@@ -2483,7 +2998,7 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: -2, left: -2, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 12 },
   cornerBR: { bottom: -2, right: -2, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 12 },
   reticleSubtext: {
-    color: '#94a3b8',
+    color: '#78716C',
     fontSize: 12,
     marginTop: 16,
     fontWeight: '600',
@@ -2518,12 +3033,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   scannerFooter: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 32,
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: '#E8E3DA',
   },
   counterGroup: {
     flexDirection: 'row',
@@ -2542,7 +3057,7 @@ const styles = StyleSheet.create({
   },
   counterBadgeSlate: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
@@ -2555,7 +3070,7 @@ const styles = StyleSheet.create({
   },
   counterLabel: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '600',
     marginTop: 2,
   },
@@ -2579,13 +3094,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-    backgroundColor: '#0f172a',
+    borderBottomColor: '#E8E3DA',
+    backgroundColor: '#FAF7F2',
   },
   reviewTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   reviewSubtitle: {
     fontSize: 12,
@@ -2594,13 +3109,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   turnoutGaugeBox: {
-    backgroundColor: '#020617',
+    backgroundColor: '#FAF7F2',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   turnoutPctText: {
     fontSize: 18,
@@ -2609,19 +3124,19 @@ const styles = StyleSheet.create({
   },
   turnoutLabel: {
     fontSize: 10,
-    color: '#64748b',
+    color: '#78716C',
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   searchBarContainer: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
   },
   searchInput: {
-    backgroundColor: '#020617',
+    backgroundColor: '#FAF7F2',
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#E8E3DA',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -2632,14 +3147,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     paddingBottom: 12,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     gap: 8,
   },
   filterTab: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
   },
   filterTabActive: {
@@ -2648,7 +3163,7 @@ const styles = StyleSheet.create({
   filterTabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: '#78716C',
   },
   filterTabTextActive: {
     color: '#ffffff',
@@ -2660,7 +3175,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   rosterCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
@@ -2668,7 +3183,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#E8E3DA',
   },
   rosterInfo: {
     flexDirection: 'row',
@@ -2683,7 +3198,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarPresent: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
-  avatarAbsent: { backgroundColor: '#1e293b' },
+  avatarAbsent: { backgroundColor: '#FFFFFF' },
   avatarInitial: {
     fontSize: 16,
     fontWeight: '700',
@@ -2692,11 +3207,11 @@ const styles = StyleSheet.create({
   rosterStudentName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   rosterRollNumber: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 1,
   },
   rosterTimestamp: {
@@ -2716,33 +3231,33 @@ const styles = StyleSheet.create({
     borderColor: '#10b981',
   },
   btnAbsent: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   toggleBtnText: {
     fontSize: 12,
     fontWeight: '700',
   },
   textPresent: { color: '#10b981' },
-  textAbsent: { color: '#94a3b8' },
+  textAbsent: { color: '#78716C' },
   reviewFooter: {
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: '#E8E3DA',
     gap: 10,
   },
   secondaryButton: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '700',
     fontSize: 13,
   },
@@ -2764,10 +3279,10 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   forgotModalCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
     padding: 22,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -2781,7 +3296,7 @@ const styles = StyleSheet.create({
   },
   forgotModalDesc: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#78716C',
     marginBottom: 16,
     lineHeight: 18,
   },
@@ -2789,12 +3304,12 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeBtnText: {
-    color: '#94a3b8',
+    color: '#78716C',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -2814,10 +3329,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   profileModalCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -2831,25 +3346,25 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: '#E8E3DA',
   },
   profileModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   profileModalSubtitle: {
     fontSize: 11,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 1,
   },
   profileSectionBox: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   profileSectionTitle: {
     fontSize: 13,
@@ -2876,7 +3391,7 @@ const styles = StyleSheet.create({
   },
   profileMetaLabel: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '600',
     width: 90,
   },
@@ -2887,21 +3402,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   assignedSubjectPill: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   assignedSubjectText: {
     fontSize: 10,
-    color: '#cbd5e1',
+    color: '#57534E',
     fontWeight: '600',
   },
   prefLabel: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '600',
     marginBottom: 6,
   },
@@ -2913,9 +3428,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
     alignItems: 'center',
   },
   prefToggleBtnActive: {
@@ -2924,7 +3439,7 @@ const styles = StyleSheet.create({
   },
   prefToggleBtnText: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '700',
   },
   prefToggleBtnTextActive: {
@@ -2946,7 +3461,7 @@ const styles = StyleSheet.create({
   },
   prefSwitchDesc: {
     fontSize: 10,
-    color: '#64748b',
+    color: '#78716C',
     marginTop: 1,
   },
   switchPill: {
@@ -3018,7 +3533,7 @@ const styles = StyleSheet.create({
   },
   recentScansLabel: {
     fontSize: 9,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '700',
     textTransform: 'uppercase',
   },
@@ -3060,13 +3575,13 @@ const styles = StyleSheet.create({
 
   // Manual Attendance Modal
   manualModalCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 24,
     padding: 20,
     width: '92%',
     maxHeight: '85%',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   manualModalHeader: {
     flexDirection: 'row',
@@ -3081,7 +3596,7 @@ const styles = StyleSheet.create({
   },
   manualModalSubtitle: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#78716C',
     marginTop: 2,
   },
   manualRosterRow: {
@@ -3090,11 +3605,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   manualStudentName: {
     fontSize: 13,
@@ -3137,7 +3652,7 @@ const styles = StyleSheet.create({
   // Review View Elements
   reviewMetaNotice: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#78716C',
     marginTop: 4,
     fontWeight: '500',
   },
@@ -3196,13 +3711,13 @@ const styles = StyleSheet.create({
 
   // Pre-Submission Summary Review Modal
   summaryModalCard: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#FAF7F2',
     borderRadius: 24,
     padding: 22,
     width: '92%',
     maxHeight: '85%',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
   },
   summaryModalHeader: {
     alignItems: 'center',
@@ -3226,12 +3741,12 @@ const styles = StyleSheet.create({
   summaryModalTitle: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#ffffff',
+    color: '#1C1917',
     textAlign: 'center',
   },
   summaryModalSubtitle: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#78716C',
     marginTop: 3,
     textAlign: 'center',
   },
@@ -3284,13 +3799,13 @@ const styles = StyleSheet.create({
   },
   summaryKpiLabel: {
     fontSize: 10,
-    color: '#94a3b8',
+    color: '#78716C',
     fontWeight: '700',
     marginTop: 2,
   },
   summaryProgressContainer: {
     height: 8,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 16,
@@ -3303,18 +3818,18 @@ const styles = StyleSheet.create({
   summaryAbsentHeader: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#cbd5e1',
+    color: '#57534E',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
   },
   summaryAbsentScroll: {
     maxHeight: 160,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E8E3DA',
     marginBottom: 16,
   },
   summaryAbsentRow: {
@@ -3322,7 +3837,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: '#E8E3DA',
   },
   summaryAbsentName: {
     fontSize: 12,
@@ -3332,7 +3847,7 @@ const styles = StyleSheet.create({
   summaryAbsentRoll: {
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: '#94a3b8',
+    color: '#78716C',
   },
   allPresentText: {
     fontSize: 12,

@@ -1,15 +1,20 @@
 'use client';
 
+import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
-import { Camera, Upload, User, CheckCircle2, AlertCircle, RefreshCw, ScanFace, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Camera, Upload, User, CheckCircle2, AlertCircle, RefreshCw, ScanFace, ArrowRight, ShieldCheck, Building2, BookOpen, LogIn } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE_URL } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function StudentEnrollment() {
   const [formData, setFormData] = useState({
     fullName: '',
     rollNumber: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
     branch: 'Computer Science',
     semester: '6',
     section: 'A',
@@ -19,6 +24,21 @@ export default function StudentEnrollment() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sName = localStorage.getItem('student_name');
+      const sRoll = localStorage.getItem('student_roll');
+      if (sName || sRoll) {
+        setFormData(prev => ({
+          ...prev,
+          fullName: sName || prev.fullName,
+          rollNumber: sRoll || prev.rollNumber
+        }));
+      }
+    }
+  }, []);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,17 +100,26 @@ export default function StudentEnrollment() {
     setIsSubmitting(true);
     setStatus('idle');
     setErrorMessage(null);
+    setIsDuplicate(false);
+
+    if (formData.password && formData.password !== formData.confirmPassword) {
+      setErrorMessage("Passwords do not match. Please verify.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const res = await fetch(capturedImage);
       const blob = await res.blob();
 
       const form = new FormData();
-      form.append('full_name', formData.fullName);
-      form.append('roll_number', formData.rollNumber);
+      form.append('full_name', formData.fullName.trim());
+      form.append('roll_number', formData.rollNumber.trim().toUpperCase());
       form.append('branch', formData.branch);
       form.append('semester', formData.semester);
       form.append('section', formData.section);
+      if (formData.email?.trim()) form.append('email', formData.email.trim().toLowerCase());
+      if (formData.password?.trim()) form.append('password', formData.password.trim());
       form.append('selfie', blob, 'selfie.jpg');
 
       const response = await fetch(`${API_BASE_URL}/students/register`, {
@@ -99,16 +128,32 @@ export default function StudentEnrollment() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || "Registration failed. Ensure face is clearly visible.");
+        const errData = await response.json().catch(() => ({ detail: "Registration failed." }));
+        const detailMsg = errData.detail || "Registration failed. Ensure face is clearly visible.";
+        if (detailMsg.toLowerCase().includes('already registered')) {
+          setIsDuplicate(true);
+        }
+        throw new Error(detailMsg);
+      }
+
+      const createdStudent = await response.json();
+
+      // Store student details locally for instant seamless experience
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('student_name', createdStudent.full_name || formData.fullName);
+        localStorage.setItem('student_roll', createdStudent.roll_number || formData.rollNumber);
+        localStorage.setItem('student_branch', createdStudent.branch || formData.branch);
+        if (formData.email?.trim()) localStorage.setItem('student_email', formData.email.trim().toLowerCase());
       }
 
       // Auto-authenticate student so they can navigate directly to the dashboard
       try {
+        const loginIdentifier = formData.email?.trim().toLowerCase() || formData.rollNumber.trim().toUpperCase();
+        const loginPwd = formData.password?.trim() || formData.rollNumber.trim().toUpperCase();
         const loginRes = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.rollNumber, password: 'StudentPass123!' })
+          body: JSON.stringify({ email: loginIdentifier, password: loginPwd })
         });
         if (loginRes.ok) {
           const loginData = await loginRes.json();
@@ -121,6 +166,17 @@ export default function StudentEnrollment() {
       }
 
       setStatus('success');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('campus-notification', {
+          detail: {
+            type: 'enrollment_alert',
+            title: 'Face ID Biometrics Active',
+            detail: `128-d face embedding enrolled for ${formData.fullName || 'Student'} (${formData.rollNumber.toUpperCase()}) in ${formData.branch} (Sem ${formData.semester})`,
+            time: 'Just now',
+            badge: 'Active'
+          }
+        }));
+      }
     } catch (err: any) {
       setStatus('error');
       setErrorMessage(err.message || 'An error occurred during facial vector extraction.');
@@ -130,7 +186,8 @@ export default function StudentEnrollment() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
+    <AppleDeluxeShell studentName={formData.fullName || 'Student'} rollNumber={formData.rollNumber || 'ROLL-NEW'}>
+      <div className="w-full space-y-6">
       <div className="text-center space-y-2">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-stone-200/70 border border-stone-300/60 text-stone-800 text-xs font-semibold">
           <ScanFace className="h-3.5 w-3.5 text-stone-700" />
@@ -138,14 +195,12 @@ export default function StudentEnrollment() {
         </div>
         <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Student Face Enrollment</h1>
         <p className="text-xs text-stone-500 max-w-xl mx-auto">
-          Create your unique 128-d biometric attendance signature. Raw selfie photos are destroyed from memory immediately after vector extraction.
+          Self-register directly into the college database. Categorized automatically by department, semester, and section.
         </p>
       </div>
 
       {status === 'success' ? (
         <motion.div 
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
           className="rounded-[2.5rem] bg-white/80 border border-stone-200/80 p-10 text-center space-y-6 backdrop-blur-xl shadow-sm"
         >
           <div className="h-16 w-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
@@ -154,20 +209,28 @@ export default function StudentEnrollment() {
           <div className="space-y-1.5">
             <h2 className="text-xl font-bold text-stone-900">Enrollment Successfully Completed!</h2>
             <p className="text-stone-500 text-xs max-w-md mx-auto">
-              Your biometric face profile for <strong>{formData.rollNumber}</strong> is active. You can now mark walk-up attendance in all lecture halls and practical labs.
+              Your biometric face profile for <strong>{formData.rollNumber.toUpperCase()}</strong> is directly registered in the database under <strong>{formData.branch} (Semester {formData.semester} - Section {formData.section})</strong>.
             </p>
           </div>
 
           {/* Credentials Card */}
           <div className="max-w-md mx-auto p-4 rounded-2xl bg-stone-50 border border-stone-200/80 text-left space-y-2">
-            <div className="text-[11px] font-bold text-stone-600 uppercase tracking-wider">Your Login Credentials</div>
+            <div className="text-[11px] font-bold text-stone-600 uppercase tracking-wider">Your Official Login Credentials</div>
             <div className="flex justify-between text-xs text-stone-600">
-              <span>Roll Number / ID:</span>
-              <span className="font-mono font-bold text-stone-900">{formData.rollNumber}</span>
+              <span>Full Name:</span>
+              <span className="font-semibold text-stone-900">{formData.fullName}</span>
             </div>
             <div className="flex justify-between text-xs text-stone-600">
-              <span>Password:</span>
-              <span className="font-mono font-semibold text-stone-900">StudentPass123!</span>
+              <span>Roll Number / ID:</span>
+              <span className="font-mono font-bold text-stone-900">{formData.rollNumber.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between text-xs text-stone-600">
+              <span>Department & Class:</span>
+              <span className="font-semibold text-stone-800">{formData.branch} (Sem {formData.semester}, Sec {formData.section})</span>
+            </div>
+            <div className="flex justify-between text-xs text-stone-600">
+              <span>Default Password:</span>
+              <span className="font-mono font-semibold text-stone-900">Provided upon registration</span>
             </div>
           </div>
 
@@ -191,9 +254,26 @@ export default function StudentEnrollment() {
             </h2>
 
             {status === 'error' && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200/80 text-rose-900 text-xs flex items-center space-x-3">
-                <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-                <span>{errorMessage}</span>
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-rose-950">Registration Notice</p>
+                    <p className="text-rose-800 leading-relaxed">{errorMessage}</p>
+                  </div>
+                </div>
+                {isDuplicate && (
+                  <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between">
+                    <span className="text-[11px] text-rose-700">Already have an institutional account?</span>
+                    <Link
+                      href="/login"
+                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] transition inline-flex items-center space-x-1.5 shadow-xs"
+                    >
+                      <LogIn className="h-3 w-3" />
+                      <span>Sign In Now</span>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
@@ -205,8 +285,10 @@ export default function StudentEnrollment() {
                 <input
                   type="text"
                   name="fullName"
+                  id="fullName"
+                  autoComplete="name"
                   required
-                  placeholder="e.g. Aarav Sharma"
+                  placeholder="e.g. Student Full Name"
                   value={formData.fullName}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
@@ -220,9 +302,82 @@ export default function StudentEnrollment() {
                 <input
                   type="text"
                   name="rollNumber"
+                  id="rollNumber"
+                  autoComplete="username"
                   required
-                  placeholder="e.g. 23CSE001"
+                  placeholder="e.g. 2024CS101"
                   value={formData.rollNumber}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition font-mono uppercase"
+                />
+              </div>
+
+              {/* Department / Branch */}
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-2">
+                  Department / Branch
+                </label>
+                <AppleSelect
+                  value={formData.branch}
+                  onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
+                  options={[
+                    { value: 'Computer Science', label: 'Computer Science & Engineering', badge: 'CSE' },
+                    { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
+                    { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'ECE' },
+                    { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' },
+                    { value: 'Civil Engineering', label: 'Civil Engineering', badge: 'CE' }
+                  ]}
+                />
+              </div>
+
+              {/* Semester & Section */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-2">
+                    Class / Semester
+                  </label>
+                  <AppleSelect
+                    value={formData.semester}
+                    onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
+                    options={[
+                      { value: '1', label: 'Semester 1 (1st Yr)', badge: 'Sem 1' },
+                      { value: '2', label: 'Semester 2 (1st Yr)', badge: 'Sem 2' },
+                      { value: '3', label: 'Semester 3 (2nd Yr)', badge: 'Sem 3' },
+                      { value: '4', label: 'Semester 4 (2nd Yr)', badge: 'Sem 4' },
+                      { value: '5', label: 'Semester 5 (3rd Yr)', badge: 'Sem 5' },
+                      { value: '6', label: 'Semester 6 (3rd Yr)', badge: 'Sem 6' },
+                      { value: '7', label: 'Semester 7 (4th Yr)', badge: 'Sem 7' },
+                      { value: '8', label: 'Semester 8 (4th Yr)', badge: 'Sem 8' }
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-2">
+                    Section
+                  </label>
+                  <AppleSelect
+                    value={formData.section}
+                    onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
+                    options={[
+                      { value: 'A', label: 'Section A', badge: 'Sec A' },
+                      { value: 'B', label: 'Section B', badge: 'Sec B' },
+                      { value: 'C', label: 'Section C', badge: 'Sec C' }
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-2">
+                  Institutional Email (Optional)
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  id="email"
+                  autoComplete="email"
+                  placeholder="e.g. student@university.edu"
+                  value={formData.email}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
                 />
@@ -231,34 +386,33 @@ export default function StudentEnrollment() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Branch
+                    Create Password
                   </label>
-                  <select
-                    name="branch"
-                    value={formData.branch}
+                  <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    autoComplete="new-password"
+                    placeholder="Custom login password"
+                    value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                  >
-                    <option value="Computer Science">Computer Science</option>
-                    <option value="Information Tech">Information Tech</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Mechanical">Mechanical</option>
-                  </select>
+                    className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Section
+                    Confirm Password
                   </label>
-                  <select
-                    name="section"
-                    value={formData.section}
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    id="confirmPassword"
+                    autoComplete="new-password"
+                    placeholder="Re-enter password"
+                    value={formData.confirmPassword}
                     onChange={handleInputChange}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                  >
-                    <option value="A">Section A</option>
-                    <option value="B">Section B</option>
-                    <option value="C">Section C</option>
-                  </select>
+                    className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                  />
                 </div>
               </div>
             </form>
@@ -343,11 +497,12 @@ export default function StudentEnrollment() {
               className="w-full py-3 px-4 rounded-2xl font-semibold text-xs bg-stone-900 hover:bg-stone-800 text-white shadow-sm transition duration-200 flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               <ShieldCheck className="h-4 w-4" />
-              <span>{isSubmitting ? 'Verifying Liveness & Enrolling...' : 'Confirm & Complete Enrollment'}</span>
+              <span>{isSubmitting ? 'Verifying Liveness & Saving to Database...' : 'Register Directly into College Database'}</span>
             </button>
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

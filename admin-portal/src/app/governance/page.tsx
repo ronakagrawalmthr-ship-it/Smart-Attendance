@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function GovernancePage() {
   const [holidayDate, setHolidayDate] = useState('2026-09-15');
@@ -69,7 +70,8 @@ export default function GovernancePage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <AppleDeluxeShell userRole="Institutional Governance">
+      <div className="space-y-6">
       {/* Back Link */}
       <div className="flex items-center justify-between">
         <Link 
@@ -202,6 +204,7 @@ export default function GovernancePage() {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

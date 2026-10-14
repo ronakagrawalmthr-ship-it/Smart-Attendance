@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { 
   Users, 
@@ -21,10 +22,16 @@ import {
   Shield,
   Layers,
   Sparkles,
-  X
+  X,
+  FileText,
+  Download,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
+import AppleSelect from '@/components/AppleSelect';
 
 type TabType = 'hods' | 'teachers' | 'students' | 'subjects';
 
@@ -32,6 +39,11 @@ export default function DirectoryManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>('hods');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Student Category Filters (Department, Semester, Section)
+  const [studentDeptFilter, setStudentDeptFilter] = useState<string>('all');
+  const [studentSemFilter, setStudentSemFilter] = useState<string>('all');
+  const [studentSecFilter, setStudentSecFilter] = useState<string>('all');
   
   // Data stores
   const [hods, setHods] = useState<any[]>([]);
@@ -48,6 +60,7 @@ export default function DirectoryManagementPage() {
   // Batch Promotion Modal States
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [promoteBranch, setPromoteBranch] = useState('all');
+  const [promoteMode, setPromoteMode] = useState<'annual' | 'next_sem'>('annual');
   const [isPromoting, setIsPromoting] = useState(false);
 
   // Faculty Handover / Transfer Modal States
@@ -56,12 +69,130 @@ export default function DirectoryManagementPage() {
   const [transferToTeacher, setTransferToTeacher] = useState<number | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
 
+  // Bulk CSV Import Modal States
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [isImportingCsv, setIsImportingCsv] = useState(false);
+  const [csvResult, setCsvResult] = useState<any>(null);
+  const [isExportingAttendance, setIsExportingAttendance] = useState(false);
+
   // Form inputs
   const [formData, setFormData] = useState<any>({});
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (modalMode || showPromoteModal || showTransferModal || showCsvModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [modalMode, showPromoteModal, showTransferModal, showCsvModal]);
+
+  // Dynamic Department list for student filter
+  const departmentFilterOptions = useMemo(() => {
+    const standard = [
+      { value: 'all', label: 'All Departments', badge: 'All' },
+      { value: 'Computer Science', label: 'Computer Science & Engineering', badge: 'CSE' },
+      { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
+      { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'ECE' },
+      { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' },
+      { value: 'Civil Engineering', label: 'Civil Engineering', badge: 'CE' }
+    ];
+    students.forEach(s => {
+      if (s.branch && !standard.some(opt => opt.value.toLowerCase() === s.branch.toLowerCase() || (opt.value === 'Computer Science' && s.branch.toLowerCase().includes('computer')))) {
+        standard.push({ value: s.branch, label: s.branch, badge: s.branch.slice(0, 3).toUpperCase() });
+      }
+    });
+    return standard;
+  }, [students]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/management/templates/students-csv`);
+      if (!res.ok) throw new Error("Template download failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'students_import_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast("CSV Template downloaded successfully!");
+    } catch {
+      showToast("Failed to download CSV template.");
+    }
+  };
+
+  const handleExportAttendanceRegister = async () => {
+    try {
+      setIsExportingAttendance(true);
+      const params = new URLSearchParams();
+      if (studentDeptFilter !== 'all') params.append('branch', studentDeptFilter);
+      if (studentSemFilter !== 'all') params.append('semester', studentSemFilter);
+      if (studentSecFilter !== 'all') params.append('section', studentSecFilter);
+      
+      const res = await authFetch(`${API_BASE_URL}/management/export/attendance-csv?${params.toString()}`);
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_master_register_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast("Master Attendance Register CSV exported successfully!");
+    } catch {
+      showToast("Failed to export attendance register.");
+    } finally {
+      setIsExportingAttendance(false);
+    }
+  };
+
+  const handleImportCsv = async () => {
+    if (!csvFile) {
+      showToast("Please choose a .csv file to import.");
+      return;
+    }
+    try {
+      setIsImportingCsv(true);
+      setCsvResult(null);
+      const data = new FormData();
+      data.append('file', csvFile);
+      
+      const res = await authFetch(`${API_BASE_URL}/management/crud/students/batch-csv`, {
+        method: 'POST',
+        body: data
+      });
+      
+      const resJson = await res.json();
+      if (res.ok) {
+        setCsvResult(resJson);
+        showToast(resJson.message || `Imported ${resJson.imported} students!`);
+        fetchAllData();
+      } else {
+        showToast(resJson.detail || "CSV Import failed.");
+      }
+    } catch {
+      showToast("Error executing CSV batch import.");
+    } finally {
+      setIsImportingCsv(false);
+    }
   };
 
   const handleTransferClasses = async () => {
@@ -75,13 +206,9 @@ export default function DirectoryManagementPage() {
     }
     try {
       setIsTransferring(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-      const res = await fetch(`${API_BASE_URL}/management/crud/teachers/transfer-classes`, {
+      const res = await authFetch(`${API_BASE_URL}/management/crud/teachers/transfer-classes`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from_teacher_id: transferFromTeacher,
           to_teacher_id: transferToTeacher
@@ -105,16 +232,12 @@ export default function DirectoryManagementPage() {
   const handleBatchPromotion = async () => {
     try {
       setIsPromoting(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-      const res = await fetch(`${API_BASE_URL}/management/crud/students/batch-promote`, {
+      const res = await authFetch(`${API_BASE_URL}/management/crud/students/batch-promote`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branch: promoteBranch,
-          promote_mode: 'annual',
+          promote_mode: promoteMode,
           academic_year: '2026-2027'
         })
       });
@@ -136,18 +259,11 @@ export default function DirectoryManagementPage() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      const headers = { 'Authorization': `Bearer ${token}` };
-
       const [resHods, resTeachers, resStudents, resSubjects] = await Promise.all([
-        fetch(`${API_BASE_URL}/management/crud/hods`, { headers }),
-        fetch(`${API_BASE_URL}/management/crud/teachers`, { headers }),
-        fetch(`${API_BASE_URL}/management/crud/students`, { headers }),
-        fetch(`${API_BASE_URL}/management/crud/subjects`, { headers }),
+        authFetch(`${API_BASE_URL}/management/crud/hods`),
+        authFetch(`${API_BASE_URL}/management/crud/teachers`),
+        authFetch(`${API_BASE_URL}/management/crud/students`),
+        authFetch(`${API_BASE_URL}/management/crud/subjects`),
       ]);
 
       if (resHods.ok) setHods((await resHods.json()).hods || []);
@@ -169,17 +285,26 @@ export default function DirectoryManagementPage() {
     fetchAllData();
   }, []);
 
+  const generateSecurePassword = (prefix = 'Pass') => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    let res = prefix + '@';
+    for (let i = 0; i < 6; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res + '26';
+  };
+
   const openCreateModal = () => {
     setModalMode('create');
     setSelectedEntity(null);
     if (activeTab === 'hods') {
-      setFormData({ full_name: '', email: '', department: 'Computer Science', password: 'AdminPass123!' });
+      setFormData({ full_name: '', email: '', department: 'Computer Science', password: generateSecurePassword('Hod') });
     } else if (activeTab === 'teachers') {
-      setFormData({ full_name: '', email: '', department: 'Computer Science', password: 'TeacherPass123!' });
+      setFormData({ full_name: '', email: '', department: 'Computer Science', password: generateSecurePassword('Teacher') });
     } else if (activeTab === 'students') {
-      setFormData({ full_name: '', roll_number: '', branch: 'Computer Science', semester: 6, section: 'A', email: '' });
+      setFormData({ full_name: '', roll_number: '', branch: 'Computer Science', semester: 1, section: 'A', email: '' });
     } else if (activeTab === 'subjects') {
-      setFormData({ code: '', name: '', branch: 'Computer Science', semester: 6 });
+      setFormData({ code: '', name: '', branch: 'Computer Science', semester: 1 });
     }
   };
 
@@ -198,11 +323,6 @@ export default function DirectoryManagementPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    };
 
     try {
       let endpoint = `${API_BASE_URL}/management/crud/${activeTab}`;
@@ -214,22 +334,27 @@ export default function DirectoryManagementPage() {
         endpoint = `${API_BASE_URL}/management/crud/${activeTab}/${targetId}`;
       }
 
-      const res = await fetch(endpoint, {
+      const res = await authFetch(endpoint, {
         method,
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
       if (res.ok) {
         showToast(modalMode === 'create' ? `Successfully added new record to ${activeTab.toUpperCase()}!` : `Updated record successfully!`);
+        if (activeTab === 'hods' && formData.full_name) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('admin_name', formData.full_name);
+          }
+        }
         closeModal();
         fetchAllData();
       } else {
-        const err = await res.json();
-        alert(err.detail || "Operation failed.");
+        const err = await res.json().catch(() => ({ detail: "Operation failed." }));
+        showToast(err.detail || "Operation failed. Please verify form details.");
       }
     } catch (err: any) {
-      alert("Error contacting management API.");
+      showToast("Error contacting management API.");
     } finally {
       setIsSubmitting(false);
     }
@@ -239,21 +364,19 @@ export default function DirectoryManagementPage() {
     if (!confirm(`Are you sure you want to delete "${name}" from ${activeTab.toUpperCase()}? This action is immediate.`)) {
       return;
     }
-    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
     try {
-      const res = await fetch(`${API_BASE_URL}/management/crud/${activeTab}/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await authFetch(`${API_BASE_URL}/management/crud/${activeTab}/${id}`, {
+        method: 'DELETE'
       });
       if (res.ok) {
         showToast(`Deleted ${name} successfully.`);
         fetchAllData();
       } else {
-        const err = await res.json();
-        alert(err.detail || "Failed to delete.");
+        const err = await res.json().catch(() => ({ detail: "Failed to delete." }));
+        showToast(err.detail || "Failed to delete record.");
       }
     } catch {
-      alert("Error deleting record.");
+      showToast("Error deleting record from database.");
     }
   };
 
@@ -267,7 +390,26 @@ export default function DirectoryManagementPage() {
       return teachers.filter(t => t.full_name?.toLowerCase().includes(q) || t.email?.toLowerCase().includes(q) || t.department?.toLowerCase().includes(q));
     }
     if (activeTab === 'students') {
-      return students.filter(s => s.full_name?.toLowerCase().includes(q) || s.roll_number?.toLowerCase().includes(q) || s.branch?.toLowerCase().includes(q));
+      const filtered = students.filter(s => {
+        const matchesSearch = !q || 
+          s.full_name?.toLowerCase().includes(q) || 
+          s.roll_number?.toLowerCase().includes(q) || 
+          s.branch?.toLowerCase().includes(q) ||
+          s.email?.toLowerCase().includes(q);
+
+        const matchesDept = studentDeptFilter === 'all' || 
+          s.branch?.toLowerCase() === studentDeptFilter.toLowerCase() || 
+          (studentDeptFilter === 'Computer Science' && s.branch?.toLowerCase().includes('computer'));
+
+        const matchesSem = studentSemFilter === 'all' || String(s.semester) === String(studentSemFilter);
+        const matchesSec = studentSecFilter === 'all' || s.section?.toUpperCase() === studentSecFilter.toUpperCase();
+
+        return matchesSearch && matchesDept && matchesSem && matchesSec;
+      });
+
+      return filtered.sort((a, b) => {
+        return a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' });
+      });
     }
     if (activeTab === 'subjects') {
       return subjects.filter(sub => sub.code?.toLowerCase().includes(q) || sub.name?.toLowerCase().includes(q) || sub.branch?.toLowerCase().includes(q));
@@ -276,7 +418,8 @@ export default function DirectoryManagementPage() {
   }, [activeTab, searchQuery, hods, teachers, students, subjects]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <AppleDeluxeShell userRole="Institutional Governance">
+      <div className="space-y-8">
       {/* Toast Notification */}
       <AnimatePresence>
         {toastMessage && (
@@ -318,14 +461,44 @@ export default function DirectoryManagementPage() {
           </button>
           
           {activeTab === 'students' && (
-            <button
-              onClick={() => setShowPromoteModal(true)}
-              className="py-2.5 px-4 rounded-full bg-stone-100 hover:bg-stone-200/80 text-violet-700 text-xs font-bold transition flex items-center space-x-2"
-              title="Promote all students to next academic year & archive final year"
-            >
-              <Sparkles className="h-4 w-4 text-violet-600" />
-              <span>Batch Progression</span>
-            </button>
+            <>
+              <button
+                onClick={handleDownloadTemplate}
+                className="py-2.5 px-3.5 rounded-full bg-stone-100 hover:bg-stone-200/80 text-stone-700 text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs"
+                title="Download CSV format template for student registration"
+              >
+                <Download className="h-3.5 w-3.5 text-stone-600" />
+                <span>CSV Template</span>
+              </button>
+
+              <button
+                onClick={() => { setShowCsvModal(true); setCsvFile(null); setCsvResult(null); }}
+                className="py-2.5 px-3.5 rounded-full bg-blue-50 hover:bg-blue-100/80 text-blue-700 text-xs font-bold transition flex items-center space-x-1.5 border border-blue-200 shadow-2xs"
+                title="Bulk import students from CSV spreadsheet"
+              >
+                <Upload className="h-3.5 w-3.5 text-blue-600" />
+                <span>Import CSV</span>
+              </button>
+
+              <button
+                onClick={handleExportAttendanceRegister}
+                disabled={isExportingAttendance}
+                className="py-2.5 px-3.5 rounded-full bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 text-xs font-bold transition flex items-center space-x-1.5 border border-emerald-200 shadow-2xs disabled:opacity-50"
+                title="Export official attendance register logs to CSV"
+              >
+                <FileSpreadsheet className={`h-3.5 w-3.5 text-emerald-600 ${isExportingAttendance ? 'animate-spin' : ''}`} />
+                <span>{isExportingAttendance ? 'Exporting...' : 'Export Register'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowPromoteModal(true)}
+                className="py-2.5 px-4 rounded-full bg-stone-100 hover:bg-stone-200/80 text-violet-700 text-xs font-bold transition flex items-center space-x-2"
+                title="Promote all students to next academic year & archive final year"
+              >
+                <Sparkles className="h-4 w-4 text-violet-600" />
+                <span>Batch Progression</span>
+              </button>
+            </>
           )}
 
           {activeTab === 'teachers' && (
@@ -406,6 +579,95 @@ export default function DirectoryManagementPage() {
 
       {/* Main Table Container */}
       <div className="rounded-[2rem] bg-white border border-stone-200/70 p-6 sm:p-8 shadow-[0_4px_25px_rgba(0,0,0,0.03)] space-y-6">
+        
+        {/* Student Department & Class Categorization Filter Bar */}
+        {activeTab === 'students' && (
+          <div className="p-5 rounded-2xl bg-[#FAF7F2] border border-stone-200/80 space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div className="flex items-center space-x-2">
+                <Building2 className="h-4 w-4 text-stone-700" />
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                  Institutional Department & Class Filter
+                </span>
+              </div>
+              <span className="text-[11px] font-semibold text-stone-500">
+                Categorized by Academic Hierarchy
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+              <div>
+                <label className="block text-[11px] font-bold text-stone-600 mb-1.5 uppercase tracking-wider">
+                  Department / Branch
+                </label>
+                <AppleSelect
+                  value={studentDeptFilter}
+                  onChange={(val) => setStudentDeptFilter(val)}
+                  options={departmentFilterOptions}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-600 mb-1.5 uppercase tracking-wider">
+                  Class / Semester
+                </label>
+                <AppleSelect
+                  value={studentSemFilter}
+                  onChange={(val) => setStudentSemFilter(val)}
+                  options={[
+                    { value: 'all', label: 'All Semesters', badge: 'All' },
+                    { value: '1', label: 'Semester 1', badge: 'Sem 1' },
+                    { value: '2', label: 'Semester 2', badge: 'Sem 2' },
+                    { value: '3', label: 'Semester 3', badge: 'Sem 3' },
+                    { value: '4', label: 'Semester 4', badge: 'Sem 4' },
+                    { value: '5', label: 'Semester 5', badge: 'Sem 5' },
+                    { value: '6', label: 'Semester 6', badge: 'Sem 6' },
+                    { value: '7', label: 'Semester 7', badge: 'Sem 7' },
+                    { value: '8', label: 'Semester 8', badge: 'Sem 8' }
+                  ]}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-600 mb-1.5 uppercase tracking-wider">
+                  Section
+                </label>
+                <AppleSelect
+                  value={studentSecFilter}
+                  onChange={(val) => setStudentSecFilter(val)}
+                  options={[
+                    { value: 'all', label: 'All Sections', badge: 'All' },
+                    { value: 'A', label: 'Section A', badge: 'Sec A' },
+                    { value: 'B', label: 'Section B', badge: 'Sec B' },
+                    { value: 'C', label: 'Section C', badge: 'Sec C' }
+                  ]}
+                />
+              </div>
+
+              <div>
+                {(studentDeptFilter !== 'all' || studentSemFilter !== 'all' || studentSecFilter !== 'all') ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudentDeptFilter('all');
+                      setStudentSemFilter('all');
+                      setStudentSecFilter('all');
+                    }}
+                    className="w-full py-2.5 px-3 rounded-2xl bg-white border border-stone-200 text-stone-700 hover:bg-stone-100 text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-2xs"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-stone-500" />
+                    <span>Reset Category Filters</span>
+                  </button>
+                ) : (
+                  <div className="text-center py-2 text-[11px] font-medium text-stone-400">
+                    Showing all categories
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Search Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-stone-100 pb-4">
           <div className="relative w-full sm:w-96">
@@ -641,31 +903,31 @@ export default function DirectoryManagementPage() {
               </table>
             )}
           </div>
-
         )}
       </div>
-
-      {/* CRUD Modal Form */}
-      <AnimatePresence>
-        {modalMode && (
-          <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-md flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
-            >
-              <div className="flex justify-between items-center border-b border-stone-100 pb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-stone-900">
-                    {modalMode === 'create' ? 'Add New' : 'Edit'} {activeTab === 'hods' ? 'HOD' : (activeTab === 'teachers' ? 'Faculty Member' : (activeTab === 'students' ? 'Student Record' : 'Subject'))}
-                  </h3>
-                  <p className="text-xs text-stone-500">Institutional Database Operation</p>
+      {/* Portalled Modals attached directly to document.body for instant zero-scroll centering */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {modalMode && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+              <div className="fixed inset-0" onClick={closeModal} />
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                className="relative z-10 bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto"
+              >
+                <div className="flex justify-between items-center border-b border-stone-100 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-stone-900">
+                      {modalMode === 'create' ? 'Add New' : 'Edit'} {activeTab === 'hods' ? 'HOD' : (activeTab === 'teachers' ? 'Faculty Member' : (activeTab === 'students' ? 'Student Record' : 'Subject'))}
+                    </h3>
+                    <p className="text-xs text-stone-500">Institutional Database Operation</p>
+                  </div>
+                  <button onClick={closeModal} className="p-2 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-800 transition">
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
-                <button onClick={closeModal} className="p-2 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-800 transition">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
 
               <form onSubmit={handleFormSubmit} className="space-y-4 text-xs">
                 {/* HOD FORM */}
@@ -679,7 +941,7 @@ export default function DirectoryManagementPage() {
                         value={formData.full_name || ''}
                         onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        placeholder="Dr. Rajesh Sharma"
+                        placeholder="Dr. Faculty Name"
                       />
                     </div>
                     <div className="space-y-1">
@@ -690,7 +952,7 @@ export default function DirectoryManagementPage() {
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        placeholder="hod.cse@college.edu"
+                        placeholder="hod@university.ac.in"
                       />
                     </div>
                     <div className="space-y-1">
@@ -709,15 +971,28 @@ export default function DirectoryManagementPage() {
                       </select>
                     </div>
                     {modalMode === 'create' && (
-                      <div className="space-y-1">
-                        <label className="text-stone-700 font-semibold">Temporary Password</label>
+                      <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                        <div className="flex items-center justify-between">
+                          <label className="text-stone-800 font-bold text-[11px] uppercase tracking-wider">HOD Portal Login Password</label>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, password: generateSecurePassword('Hod') })}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2 py-0.5 rounded-lg border border-indigo-200 transition"
+                          >
+                            ⚡ Auto-Generate
+                          </button>
+                        </div>
                         <input
-                          type="password"
+                          type="text"
+                          required
                           value={formData.password || ''}
                           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono focus:outline-none focus:ring-2 focus:ring-stone-400"
-                          placeholder="AdminPass123!"
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-stone-400"
+                          placeholder="Create custom HOD password"
                         />
+                        <span className="text-[10px] text-stone-500 block">
+                          Provide this password to the HOD to log in on port 3003.
+                        </span>
                       </div>
                     )}
                   </>
@@ -745,7 +1020,7 @@ export default function DirectoryManagementPage() {
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        placeholder="teacher@college.edu"
+                        placeholder="faculty@university.ac.in"
                       />
                     </div>
                     <div className="space-y-1">
@@ -761,6 +1036,31 @@ export default function DirectoryManagementPage() {
                         <option value="Mechanical">Mechanical</option>
                       </select>
                     </div>
+                    {modalMode === 'create' && (
+                      <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                        <div className="flex items-center justify-between">
+                          <label className="text-stone-800 font-bold text-[11px] uppercase tracking-wider">Teacher Portal Login Password</label>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, password: generateSecurePassword('Teacher') })}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2 py-0.5 rounded-lg border border-indigo-200 transition"
+                          >
+                            ⚡ Auto-Generate
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={formData.password || ''}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-stone-400"
+                          placeholder="Create custom faculty password"
+                        />
+                        <span className="text-[10px] text-stone-500 block">
+                          Provide this password to the teacher to log in on port 3000.
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -776,7 +1076,7 @@ export default function DirectoryManagementPage() {
                           value={formData.roll_number || ''}
                           onChange={(e) => setFormData({ ...formData, roll_number: e.target.value })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono focus:outline-none focus:ring-2 focus:ring-stone-400"
-                          placeholder="23CSE001"
+                          placeholder="ROLL101"
                         />
                       </div>
                       <div className="space-y-1">
@@ -787,7 +1087,7 @@ export default function DirectoryManagementPage() {
                           value={formData.full_name || ''}
                           onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                          placeholder="Rahul Verma"
+                          placeholder="Student Name"
                         />
                       </div>
                     </div>
@@ -796,13 +1096,17 @@ export default function DirectoryManagementPage() {
                       <div className="space-y-1">
                         <label className="text-stone-700 font-semibold">Semester</label>
                         <select
-                          value={formData.semester || 6}
+                          value={formData.semester || 1}
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
+                          <option value="1">Sem 1</option>
                           <option value="2">Sem 2</option>
+                          <option value="3">Sem 3</option>
                           <option value="4">Sem 4</option>
+                          <option value="5">Sem 5</option>
                           <option value="6">Sem 6</option>
+                          <option value="7">Sem 7</option>
                           <option value="8">Sem 8</option>
                         </select>
                       </div>
@@ -828,6 +1132,42 @@ export default function DirectoryManagementPage() {
                         />
                       </div>
                     </div>
+
+                    <div className="space-y-1">
+                      <label className="text-stone-700 font-semibold">Student Email (Optional)</label>
+                      <input
+                        type="email"
+                        value={formData.email || ''}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                        placeholder="student@university.edu"
+                      />
+                    </div>
+
+                    {modalMode === 'create' && (
+                      <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                        <div className="flex items-center justify-between">
+                          <label className="text-stone-800 font-bold text-[11px] uppercase tracking-wider">Student Portal Login Password</label>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, password: generateSecurePassword('Student') })}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2 py-0.5 rounded-lg border border-indigo-200 transition"
+                          >
+                            ⚡ Auto-Generate
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={formData.password || ''}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-stone-400"
+                          placeholder="Optional custom password (defaults to roll number)"
+                        />
+                        <span className="text-[10px] text-stone-500 block">
+                          Optional: If left blank, student logs in with their uppercase Roll Number.
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -860,13 +1200,17 @@ export default function DirectoryManagementPage() {
                       <div className="space-y-1">
                         <label className="text-stone-700 font-semibold">Semester</label>
                         <select
-                          value={formData.semester || 6}
+                          value={formData.semester || 1}
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
+                          <option value="1">Semester 1</option>
                           <option value="2">Semester 2</option>
+                          <option value="3">Semester 3</option>
                           <option value="4">Semester 4</option>
+                          <option value="5">Semester 5</option>
                           <option value="6">Semester 6</option>
+                          <option value="7">Semester 7</option>
                           <option value="8">Semester 8</option>
                         </select>
                       </div>
@@ -907,12 +1251,13 @@ export default function DirectoryManagementPage() {
 
         {/* Annual Batch Progression Modal */}
         {showPromoteModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+            <div className="fixed inset-0" onClick={() => setShowPromoteModal(false)} />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
+              
+              
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[92vh] overflow-y-auto"
             >
               <button 
                 onClick={() => setShowPromoteModal(false)}
@@ -941,13 +1286,44 @@ export default function DirectoryManagementPage() {
                 </ul>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-stone-700">Select Target Department</label>
-                <select
-                  value={promoteBranch}
-                  onChange={(e) => setPromoteBranch(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                >
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-stone-700 uppercase tracking-wider">Promotion Mode</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPromoteMode('annual')}
+                      className={`p-3 rounded-2xl border text-left transition ${
+                        promoteMode === 'annual'
+                          ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold shadow-2xs'
+                          : 'border-stone-200 bg-stone-50 hover:bg-white text-stone-600'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold">Annual Progression</span>
+                      <span className="block text-[10px] text-stone-500 mt-0.5">1st Yr → 2nd Yr (+2 Sems)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromoteMode('next_sem')}
+                      className={`p-3 rounded-2xl border text-left transition ${
+                        promoteMode === 'next_sem'
+                          ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold shadow-2xs'
+                          : 'border-stone-200 bg-stone-50 hover:bg-white text-stone-600'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold">Semester Advance</span>
+                      <span className="block text-[10px] text-stone-500 mt-0.5">Sem 1 → Sem 2 (+1 Sem)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-stone-700">Select Target Department</label>
+                  <select
+                    value={promoteBranch}
+                    onChange={(e) => setPromoteBranch(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  >
                   <option value="all">All Departments (Entire College)</option>
                   <option value="Computer Science">Computer Science & Engineering</option>
                   <option value="Information Technology">Information Technology</option>
@@ -956,6 +1332,7 @@ export default function DirectoryManagementPage() {
                   <option value="Civil">Civil Engineering</option>
                 </select>
               </div>
+            </div>
 
               <div className="flex justify-end space-x-3 pt-2">
                 <button
@@ -981,12 +1358,13 @@ export default function DirectoryManagementPage() {
 
         {/* Faculty Handover & Class Transfer Modal */}
         {showTransferModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+            <div className="fixed inset-0" onClick={() => setShowTransferModal(false)} />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
+              className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[92vh] overflow-y-auto"
             >
               <button 
                 onClick={() => setShowTransferModal(false)}
@@ -1069,7 +1447,141 @@ export default function DirectoryManagementPage() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
-    </div>
+      </AnimatePresence>,
+      document.body
+    )}
+
+    {/* 📤 Bulk Student CSV Import Modal */}
+    {mounted && createPortal(
+      <AnimatePresence>
+        {showCsvModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-5 max-h-[90vh] overflow-y-auto"
+            >
+              <button 
+                onClick={() => { setShowCsvModal(false); setCsvFile(null); setCsvResult(null); }}
+                className="absolute top-6 right-6 p-2 rounded-xl bg-stone-100 text-stone-400 hover:text-stone-800 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-stone-900">Bulk Student CSV Import</h3>
+                  <p className="text-xs text-stone-500">Auto-create student profiles & authentication credentials</p>
+                </div>
+              </div>
+
+              {/* Template Download Prompt */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#FAF7F2] border border-stone-200/80 text-xs">
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4 text-stone-600" />
+                  <span className="font-medium text-stone-700">Need standardized headers?</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="inline-flex items-center space-x-1 font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Download Template</span>
+                </button>
+              </div>
+
+              {/* File Dropzone */}
+              <div className="border-2 border-dashed border-stone-200 rounded-2xl p-6 text-center space-y-3 hover:border-blue-400 transition bg-stone-50/50">
+                <div className="h-12 w-12 rounded-2xl bg-blue-100 text-blue-600 mx-auto flex items-center justify-center">
+                  <FileSpreadsheet className="h-6 w-6" />
+                </div>
+                <div>
+                  <label className="cursor-pointer font-bold text-xs text-blue-600 hover:text-blue-800">
+                    <span>Click to browse CSV file</span>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          setCsvFile(f);
+                          setCsvResult(null);
+                        }
+                      }}
+                    />
+                  </label>
+                  <p className="text-[11px] text-stone-400 mt-1">Columns: roll_number, full_name, branch, semester, section, email, password</p>
+                </div>
+
+                {csvFile && (
+                  <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-blue-900">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <span>{csvFile.name} ({(csvFile.size / 1024).toFixed(1)} KB)</span>
+                    <button
+                      type="button"
+                      onClick={() => setCsvFile(null)}
+                      className="text-stone-400 hover:text-rose-600 transition ml-1"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Result Summary */}
+              {csvResult && (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs space-y-2">
+                  <div className="flex items-center space-x-2 text-emerald-800 font-bold">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>{csvResult.message}</span>
+                  </div>
+                  <div className="flex space-x-4 text-[11px] font-mono text-stone-600 pt-1 border-t border-emerald-200/60">
+                    <span>Total Rows: <strong>{csvResult.total}</strong></span>
+                    <span>Imported: <strong className="text-emerald-700">{csvResult.imported}</strong></span>
+                    <span>Skipped: <strong className="text-amber-700">{csvResult.skipped}</strong></span>
+                  </div>
+                  {csvResult.errors && csvResult.errors.length > 0 && (
+                    <div className="max-h-28 overflow-y-auto space-y-1 pt-2 border-t border-emerald-200/60 text-[11px] text-stone-600">
+                      <span className="font-bold text-rose-700 block">Notice / Skipped Rows:</span>
+                      {csvResult.errors.map((err: string, idx: number) => (
+                        <div key={idx} className="truncate text-stone-600">• {err}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCsvModal(false); setCsvFile(null); setCsvResult(null); }}
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={!csvFile || isImportingCsv}
+                  onClick={handleImportCsv}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center space-x-2 shadow-sm disabled:opacity-50"
+                >
+                  {isImportingCsv ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  <span>{isImportingCsv ? 'Importing Students...' : 'Execute Batch Import'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )}
+      </div>
+    </AppleDeluxeShell>
   );
 }

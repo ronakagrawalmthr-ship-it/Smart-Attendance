@@ -5,11 +5,11 @@ import json
 
 try:
     from .. import models, schemas, database
-    from ..services.biometrics import compare_group_faces, verify_liveness
+    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
     from ..sort_utils import natural_sort_key
 except (ImportError, ValueError):
     import models, schemas, database
-    from services.biometrics import compare_group_faces, verify_liveness
+    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
     try:
         from sort_utils import natural_sort_key
     except (ImportError, ValueError):
@@ -27,7 +27,27 @@ except (ImportError, ValueError):
                 else:
                     key.append((1, chunk.lower()))
             return key
+from typing import Optional, List, Dict, Any
+from jose import jwt, JWTError
+try:
+    from .. import security
+except (ImportError, ValueError):
+    import security
 from .auth import get_current_user
+
+def get_current_user_optional(request: Request, db: Session = Depends(database.get_db)) -> Optional[models.User]:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+        email = payload.get("sub")
+        if email:
+            return db.query(models.User).filter(models.User.email == email).first()
+    except Exception:
+        pass
+    return None
 
 router = APIRouter(
     prefix="/attendance",
@@ -96,14 +116,16 @@ async def process_classroom_scan(
 
     image_bytes = await image.read()
     
-    # Process the group scan
-    present_roll_numbers = compare_group_faces(image_bytes, known_vectors)
-    present_roll_numbers = sorted(present_roll_numbers, key=natural_sort_key)
+    # Process the group scan — returns {roll_number: confidence_pct}
+    matched_scores = compare_group_faces_with_scores(image_bytes, known_vectors)
+    present_roll_numbers = sorted(matched_scores.keys(), key=natural_sort_key)
     
     # Mark attendance in database in sequential roll number order
     attendance_records = []
     for student in students:
-        is_present = student.roll_number in present_roll_numbers
+        roll = student.roll_number
+        is_present = roll in matched_scores
+        confidence = matched_scores.get(roll, None)  # Real face-match score
         
         # Anti-proxy safeguard: Check if attendance already marked
         existing_log = db.query(models.AttendanceLog).filter(
@@ -115,11 +137,14 @@ async def process_classroom_scan(
             # Update only if they were marked absent before and are now present
             if not existing_log.is_present and is_present:
                 existing_log.is_present = True
+                if confidence is not None:
+                    existing_log.confidence_score = confidence
         else:
             new_log = models.AttendanceLog(
                 session_id=session_id,
                 student_id=student.id,
-                is_present=is_present
+                is_present=is_present,
+                confidence_score=confidence
             )
             db.add(new_log)
             attendance_records.append(new_log)
@@ -150,14 +175,33 @@ async def verify_single_student_walkup(
 ):
     """
     Teacher Mobile Kiosk: Single Student Walk-Up & Anti-Spoofing Scan.
-    Verifies liveness (anti-photo spoofing), matches face, and prevents duplicate scans.
+    Verifies liveness, matches face, and prevents duplicate scans.
     """
-    if current_user.role != models.RoleEnum.teacher:
-        raise HTTPException(status_code=403, detail="Only teachers can perform scans.")
-        
+    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
+        raise HTTPException(status_code=403, detail="Faculty authorization required for classroom biometric verification.")
+
     session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found.")
+        # If session does not exist, check if session_id is a subject ID or temporary ID
+        sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
+        branch = sub.branch if sub else (current_user.teacher_profile.department if current_user.teacher_profile else "Computer Science")
+        semester = sub.semester if sub else 6
+        conductor = current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title()
+        now = datetime.utcnow()
+        session = models.AcademicSession(
+            teacher_id=current_user.teacher_profile.id if current_user.teacher_profile else None,
+            subject_id=sub.id if sub else None,
+            session_type=models.SessionType.lecture,
+            start_time=now,
+            end_time=now + timedelta(hours=1),
+            branch=branch,
+            semester=semester,
+            section="A",
+            conducted_by_name=conductor
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
 
     image_bytes = await image.read()
 
@@ -196,14 +240,26 @@ async def verify_single_student_walkup(
     matched_roll = matched_rolls[0]
     matched_student = student_map[matched_roll]
 
-    # 4. Check for duplicate scan within the current session
+    # 4. Check for duplicate and record Attendance Log immediately in SQLite database
+    target_session_id = session.id
     existing_log = db.query(models.AttendanceLog).filter(
-        models.AttendanceLog.session_id == session_id,
+        models.AttendanceLog.session_id == target_session_id,
         models.AttendanceLog.student_id == matched_student.id,
         models.AttendanceLog.is_present == True
     ).first()
 
     is_duplicate = existing_log is not None
+
+    if not is_duplicate:
+        log = models.AttendanceLog(
+            session_id=target_session_id,
+            student_id=matched_student.id,
+            is_present=True,
+            status_tag="PRESENT",
+            timestamp=datetime.utcnow()
+        )
+        db.add(log)
+        db.commit()
 
     return {
         "success": True,
@@ -316,19 +372,16 @@ def get_class_students(
 def create_session_and_submit_attendance(
     payload: dict,
     request: Request,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
     """
     Unified Teacher Classroom Submission:
-    Allows ANY teacher to select:
-    - Department / Branch
-    - Year / Semester
-    - Section
-    - Subject (Regular) OR Guest Lecture / Special Session (with Custom Topic & Guest Conductor)
-    - Conductor name (identifies who took the lecture: regular faculty, proxy, or guest speaker)
-    - Session Notes (e.g. "Lecture 2 of the day", "Guest Lecture on Generative AI")
-    - Submits attendance records in one seamless transaction.
+    Submits attendance records under authenticated faculty credentials.
     """
+    if current_user and current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Faculty authorization required to submit attendance records.")
+
     branch = payload.get("branch", "Computer Science")
     semester = payload.get("semester", 6)
     section = payload.get("section", "A")
@@ -344,32 +397,16 @@ def create_session_and_submit_attendance(
     except Exception:
         resolved_session_type = models.SessionType.guest_lecture if session_type_str == "guest_lecture" else models.SessionType.lecture
 
-    # Find teacher profile if auth token or conductor name matches
-    teacher_prof = None
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-        try:
-            from jose import jwt
-            import security
-            token_data = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
-            email = token_data.get("sub")
-            if email:
-                u = db.query(models.User).filter(models.User.email == email).first()
-                if u and u.teacher_profile:
-                    teacher_prof = u.teacher_profile
-        except Exception:
-            pass
-
+    # Use authenticated user's teacher profile or fallback to matching conductor/first teacher
+    teacher_prof = current_user.teacher_profile if (current_user and current_user.teacher_profile) else None
     if not teacher_prof and conducted_by_name:
         teacher_prof = db.query(models.TeacherProfile).filter(
             models.TeacherProfile.full_name.ilike(f"%{conducted_by_name}%")
         ).first()
-
     if not teacher_prof:
         teacher_prof = db.query(models.TeacherProfile).first()
 
-    conductor_final = conducted_by_name or (teacher_prof.full_name if teacher_prof else "Faculty Coordinator")
+    conductor_final = conducted_by_name or (teacher_prof.full_name if teacher_prof else (current_user.email.split('@')[0].title() if current_user else "Faculty Coordinator"))
 
     # If guest lecture, subject_id is optional and custom_subject_name is set
     if resolved_session_type == models.SessionType.guest_lecture and not custom_subject_name:
@@ -495,31 +532,19 @@ def submit_final_attendance(
     session_id: int,
     payload: dict,
     request: Request,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Review Screen: Teacher submits the final reviewed and adjusted attendance roster.
     Supports both facial scan and manual additions/removals, along with conductor and guest lecture metadata.
     """
-    # Authenticate teacher via header or fallback to default faculty
-    teacher_user = None
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-        try:
-            from jose import jwt
-            import security
-            token_data = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
-            email = token_data.get("sub")
-            if email:
-                teacher_user = db.query(models.User).filter(models.User.email == email).first()
-        except Exception:
-            pass
+    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
+        raise HTTPException(status_code=403, detail="Faculty authorization required to finalize attendance.")
 
-    if not teacher_user:
-        teacher_user = db.query(models.User).filter(models.User.role == models.RoleEnum.teacher).first()
+    teacher_user = current_user
 
-    # Update session metadata if provided
+    # Update session metadata if provided, or initialize new session
     session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
     if session:
         if payload.get("conducted_by_name"):
@@ -535,6 +560,35 @@ def submit_final_attendance(
                 session.session_type = models.SessionType(payload["session_type"])
             except Exception:
                 pass
+    else:
+        sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
+        branch = payload.get("branch") or (sub.branch if sub else (current_user.teacher_profile.department if current_user.teacher_profile else "Computer Science"))
+        semester = int(payload.get("semester") or (sub.semester if sub else 6))
+        section = payload.get("section") or "A"
+        conductor = (payload.get("conducted_by_name") or (current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title())).strip()
+        custom_sub = payload.get("custom_subject_name") or (sub.name if sub else None)
+        sess_type_str = payload.get("session_type", "lecture")
+        try:
+            sess_type = models.SessionType(sess_type_str)
+        except Exception:
+            sess_type = models.SessionType.lecture
+        
+        now = datetime.utcnow()
+        session = models.AcademicSession(
+            teacher_id=current_user.teacher_profile.id if current_user.teacher_profile else None,
+            subject_id=sub.id if sub else None,
+            session_type=sess_type,
+            start_time=now,
+            end_time=now + timedelta(hours=1),
+            branch=branch,
+            semester=semester,
+            section=section,
+            conducted_by_name=conductor,
+            custom_subject_name=custom_sub,
+            notes=payload.get("notes")
+        )
+        db.add(session)
+        db.flush()
 
     present_ids = {resolve_student_id(s, db) for s in payload.get("present", [])} - {None}
     absent_ids = {resolve_student_id(s, db) for s in payload.get("absent", [])} - {None}
@@ -559,14 +613,14 @@ def submit_final_attendance(
         is_pres = action["is_present"]
         tag = action["status_tag"]
         log = db.query(models.AttendanceLog).filter(
-            models.AttendanceLog.session_id == session_id,
+            models.AttendanceLog.session_id == session.id,
             models.AttendanceLog.student_id == student_id
         ).first()
         if log:
             log.is_present = is_pres
             log.status_tag = tag
         else:
-            db.add(models.AttendanceLog(session_id=session_id, student_id=student_id, is_present=is_pres, status_tag=tag))
+            db.add(models.AttendanceLog(session_id=session.id, student_id=student_id, is_present=is_pres, status_tag=tag))
 
     # Audit Log
     user_id = teacher_user.id if teacher_user else 1
@@ -574,7 +628,7 @@ def submit_final_attendance(
     conductor_name = session.conducted_by_name if (session and session.conducted_by_name) else "Faculty"
     db.add(models.AuditLog(
         user_id=user_id,
-        action=f"Teacher ({conductor_name}) finalized attendance for session {session_id}: {len(present_ids)} present, {len(absent_ids)} absent.",
+        action=f"Teacher ({conductor_name}) finalized attendance for session {session.id}: {len(present_ids)} present, {len(absent_ids)} absent.",
         ip_address=client_host,
         device_info=request.headers.get("user-agent", "Teacher Mobile App")
     ))
@@ -586,4 +640,354 @@ def submit_final_attendance(
         "present_count": len(present_ids),
         "absent_count": len(absent_ids)
     }
+
+# ==============================================================================
+# DYNAMIC 10-SECOND ROTATING QR ATTENDANCE SYSTEM (ANTI-PROXY & SYSTEMATIC)
+# ==============================================================================
+
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+import time
+import secrets
+from jose import jwt, JWTError
+try:
+    from .. import security
+except (ImportError, ValueError):
+    import security
+
+class QRSessionInitRequest(BaseModel):
+    subject_id: Optional[int] = None
+    branch: str
+    semester: int
+    section: str = "A"
+    session_type: str = "lecture"
+    conducted_by_name: Optional[str] = None
+    custom_subject_name: Optional[str] = None
+    notes: Optional[str] = None
+
+class QRVerifyStudentRequest(BaseModel):
+    token: str
+    student_roll: Optional[str] = None
+
+def generate_dynamic_qr_jwt(session: models.AcademicSession) -> str:
+    now_ts = int(time.time())
+    # 15 seconds TTL (10s display + 5s network grace margin)
+    payload = {
+        "type": "dynamic_attendance_qr",
+        "session_id": session.id,
+        "subject_id": session.subject_id,
+        "branch": session.branch,
+        "semester": session.semester,
+        "section": session.section,
+        "iat": now_ts,
+        "exp": now_ts + 15,
+        "nonce": secrets.token_hex(4)
+    }
+    return jwt.encode(payload, security.SECRET_KEY, algorithm=security.ALGORITHM)
+
+def check_branch_compatibility(student_branch: str, session_branch: str) -> bool:
+    if not student_branch or not session_branch:
+        return True
+    s_clean = student_branch.lower().replace("&", "and").replace("engineering", "").strip()
+    sess_clean = session_branch.lower().replace("&", "and").replace("engineering", "").strip()
+    return s_clean in sess_clean or sess_clean in s_clean
+
+@router.post("/qr/init-session")
+def init_dynamic_qr_session(
+    data: QRSessionInitRequest,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Teacher Portal: Initializes a live lecture session and generates the first 10-second Dynamic QR token.
+    """
+    if current_user and current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Students are not authorized to initialize a QR session.")
+
+    sub = db.query(models.Subject).filter(models.Subject.id == data.subject_id).first() if data.subject_id else None
+    
+    # Resolve conductor and teacher profile gracefully
+    teacher_prof = current_user.teacher_profile if (current_user and current_user.teacher_profile) else None
+    if not teacher_prof and data.conducted_by_name:
+        teacher_prof = db.query(models.TeacherProfile).filter(
+            models.TeacherProfile.full_name.ilike(f"%{data.conducted_by_name}%")
+        ).first()
+    if not teacher_prof:
+        teacher_prof = db.query(models.TeacherProfile).first()
+
+    conductor = (data.conducted_by_name or (teacher_prof.full_name if teacher_prof else (current_user.email.split("@")[0].title() if current_user else "Faculty Coordinator"))).strip()
+    subj_name = data.custom_subject_name or (sub.name if sub else "Classroom Session")
+
+    sess_type_str = data.session_type or "lecture"
+    try:
+        sess_type = models.SessionType(sess_type_str)
+    except Exception:
+        sess_type = models.SessionType.lecture
+
+    now = datetime.utcnow()
+    session = models.AcademicSession(
+        teacher_id=teacher_prof.id if teacher_prof else None,
+        subject_id=sub.id if sub else None,
+        session_type=sess_type,
+        start_time=now,
+        end_time=now + timedelta(hours=1),
+        branch=data.branch,
+        semester=data.semester,
+        section=data.section.upper(),
+        conducted_by_name=conductor,
+        custom_subject_name=subj_name,
+        notes=data.notes or "Live Dynamic QR Broadcast Active"
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    token = generate_dynamic_qr_jwt(session)
+
+    total_expected = db.query(models.StudentProfile).filter(
+        models.StudentProfile.branch == session.branch,
+        models.StudentProfile.semester == session.semester,
+        models.StudentProfile.section == session.section
+    ).count()
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "token": token,
+        "expires_in": 10,
+        "subject_name": subj_name,
+        "subject_code": sub.code if sub else "CORE",
+        "conducted_by": conductor,
+        "branch": session.branch,
+        "semester": session.semester,
+        "section": session.section,
+        "total_expected": total_expected,
+        "checked_in_count": 0,
+        "recent_checkins": []
+    }
+
+@router.get("/qr/token/{session_id}")
+def rotate_dynamic_qr_token(
+    session_id: int,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Teacher Portal (Polls every 10 seconds):
+    Rotates the cryptographic QR token and returns live verified check-in stats.
+    """
+    if current_user and current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Students are not authorized to view teacher QR broadcast.")
+
+    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Live academic session not found.")
+
+    token = generate_dynamic_qr_jwt(session)
+
+    # Fetch all students checked in so far
+    present_logs = db.query(models.AttendanceLog, models.StudentProfile).join(
+        models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
+    ).filter(
+        models.AttendanceLog.session_id == session.id,
+        models.AttendanceLog.is_present == True
+    ).order_by(models.AttendanceLog.id.desc()).all()
+
+    recent_checkins = [
+        {
+            "id": sp.id,
+            "roll_number": sp.roll_number,
+            "name": sp.full_name,
+            "time": (log.timestamp or datetime.utcnow()).strftime("%I:%M:%S %p")
+        } for log, sp in present_logs[:15]
+    ]
+
+    total_expected = db.query(models.StudentProfile).filter(
+        models.StudentProfile.branch == session.branch,
+        models.StudentProfile.semester == session.semester,
+        models.StudentProfile.section == session.section
+    ).count()
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "token": token,
+        "expires_in": 10,
+        "checked_in_count": len(present_logs),
+        "total_expected": total_expected,
+        "recent_checkins": recent_checkins
+    }
+
+@router.post("/qr/verify-and-mark")
+def verify_and_mark_qr_attendance(
+    payload: QRVerifyStudentRequest,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Student Portal:
+    Scans the teacher's dynamic 10-second QR code.
+    Verifies cryptographic signature, expiration, academic eligibility, and registers attendance.
+    """
+    if current_user and current_user.role != models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Only verified students can mark attendance via QR scan.")
+
+    # 1. Decode & Verify Token Expiry (Strict 15s window prevents screenshots)
+    try:
+        decoded = jwt.decode(payload.token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+    except JWTError:
+        raise HTTPException(
+            status_code=400, 
+            detail="QR code has expired or is invalid! Please scan directly from the live faculty screen."
+        )
+
+    if decoded.get("type") != "dynamic_attendance_qr":
+        raise HTTPException(status_code=400, detail="Unrecognized attendance QR token.")
+
+    session_id = decoded.get("session_id")
+    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Active lecture session not found or closed by faculty.")
+
+    # 2. Resolve Student Profile (Self-healing & fallback support)
+    student = None
+    if current_user:
+        student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
+        if not student:
+            roll_candidate = current_user.email.split("@")[0].upper()
+            student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == roll_candidate).first()
+            if student:
+                student.user_id = current_user.id
+                db.commit()
+                db.refresh(student)
+
+    if not student and payload.student_roll:
+        student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == payload.student_roll.strip().upper()).first()
+
+    if not student:
+        raise HTTPException(status_code=401, detail="Student authentication required. Please log into the Student Portal before scanning.")
+
+    # 3. Systematic Academic Isolation & Verification (HTTP 400 Bad Request to prevent client session wipes)
+    # A. Check Semester
+    if session.semester and student.semester and student.semester != session.semester:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Academic mismatch: This lecture is designated for Semester {session.semester}, but you are registered in Semester {student.semester}."
+        )
+
+    # B. Check Section
+    if session.section and student.section and student.section.upper() != session.section.upper():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Section mismatch: This lecture is for Section {session.section.upper()}, but you belong to Section {student.section.upper()}."
+        )
+
+    # C. Check Branch
+    if session.branch and student.branch and not check_branch_compatibility(student.branch, session.branch):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Branch mismatch: This lecture belongs to {session.branch}, but your department is {student.branch}."
+        )
+
+    subj_name = session.custom_subject_name or (session.subject.name if session.subject else "Classroom Lecture")
+    conductor = session.conducted_by_name or (session.teacher.full_name if session.teacher else "Faculty")
+
+    # 4. Duplicate Check
+    existing_log = db.query(models.AttendanceLog).filter(
+        models.AttendanceLog.session_id == session.id,
+        models.AttendanceLog.student_id == student.id
+    ).first()
+
+    now_dt = datetime.utcnow()
+
+    if existing_log and existing_log.is_present:
+        log_time_str = (existing_log.timestamp or now_dt).strftime("%I:%M %p")
+        return {
+            "success": True,
+            "already_marked": True,
+            "status": "Verified",
+            "message": f"Already checked in! Your presence was logged at {log_time_str}.",
+            "subject_name": subj_name,
+            "conducted_by": conductor,
+            "marked_at": log_time_str
+        }
+
+    # 5. Mark Attendance
+    if existing_log:
+        existing_log.is_present = True
+        existing_log.status_tag = "QR_VERIFIED"
+        existing_log.remarks = f"Dynamic QR Verified (Faculty: {conductor})"
+        existing_log.timestamp = now_dt
+    else:
+        new_log = models.AttendanceLog(
+            session_id=session.id,
+            student_id=student.id,
+            is_present=True,
+            status_tag="QR_VERIFIED",
+            remarks=f"Dynamic QR Verified (Faculty: {conductor})",
+            timestamp=now_dt
+        )
+        db.add(new_log)
+
+    db.commit()
+
+    return {
+        "success": True,
+        "already_marked": False,
+        "status": "Present",
+        "message": f"Attendance successfully verified for {subj_name}!",
+        "subject_name": subj_name,
+        "conducted_by": conductor,
+        "marked_at": now_dt.strftime("%I:%M %p")
+    }
+
+@router.get("/qr/live-status/{session_id}")
+def get_qr_live_status(
+    session_id: int,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Teacher Portal Live Status Poller
+    """
+    if current_user and current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Faculty authorization required.")
+
+    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    present_logs = db.query(models.AttendanceLog, models.StudentProfile).join(
+        models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
+    ).filter(
+        models.AttendanceLog.session_id == session.id,
+        models.AttendanceLog.is_present == True
+    ).order_by(models.AttendanceLog.id.desc()).all()
+
+    total_expected = db.query(models.StudentProfile).filter(
+        models.StudentProfile.branch == session.branch,
+        models.StudentProfile.semester == session.semester,
+        models.StudentProfile.section == session.section
+    ).count()
+
+    recent_checkins = [
+        {
+            "id": sp.id,
+            "roll_number": sp.roll_number,
+            "name": sp.full_name,
+            "time": (log.timestamp or datetime.utcnow()).strftime("%I:%M:%S %p")
+        } for log, sp in present_logs[:20]
+    ]
+
+    return {
+        "session_id": session.id,
+        "checked_in_count": len(present_logs),
+        "total_expected": total_expected,
+        "recent_checkins": recent_checkins
+    }
+
 

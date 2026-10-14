@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Clock, AlertCircle, ShieldCheck, MessageSquare, ChevronRight, RefreshCw, Settings, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, getStudentPortalUrl } from '@/lib/api';
 
 export default function StudentPortal() {
   const [showGrievanceForm, setShowGrievanceForm] = useState(false);
@@ -12,6 +12,7 @@ export default function StudentPortal() {
   const [grievanceReason, setGrievanceReason] = useState('');
   const [isSubmittingGrievance, setIsSubmittingGrievance] = useState(false);
   const [grievanceFeedback, setGrievanceFeedback] = useState<string | null>(null);
+  const [standaloneUrl, setStandaloneUrl] = useState('http://localhost:3002');
 
   const [showAllLogs, setShowAllLogs] = useState(false);
 
@@ -25,35 +26,37 @@ export default function StudentPortal() {
     attendedClasses: number | null;
     recentLogs: any[];
   }>({
-    name: 'Aarav Sharma',
-    roll: '23CSE001',
+    name: '',
+    roll: '',
     semester: 6,
-    overallAttendance: '92.3%',
-    eligibility: 'Eligible',
-    totalClasses: 13,
-    attendedClasses: 12,
-    recentLogs: [
-      { id: 1, date: '2026-09-02', subject: 'Computer Networks & Security (CS303)', status: 'Present' },
-      { id: 2, date: '2026-09-01', subject: 'Design & Analysis of Algorithms (CS305)', status: 'Present' },
-      { id: 3, date: '2026-08-30', subject: 'Database Management Systems (CS302)', status: 'Present' },
-      { id: 4, date: '2026-08-28', subject: 'Operating Systems (CS301)', status: 'Present' },
-      { id: 5, date: '2026-08-27', subject: 'Software Engineering Principles (CS304)', status: 'Present' },
-    ]
+    overallAttendance: null,
+    eligibility: null,
+    totalClasses: null,
+    attendedClasses: null,
+    recentLogs: []
   });
 
   const fetchLiveMetrics = async () => {
     try {
       setLoading(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('student_token') || localStorage.getItem('token')) : null;
       const res = await fetch(`${API_BASE_URL}/portal/metrics`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       if (res.ok) {
         const data = await res.json();
         const overall = data.metrics?.overall_percentage != null ? `${data.metrics.overall_percentage}%` : null;
+        const sName = data.profile?.name || (typeof window !== 'undefined' ? localStorage.getItem('student_name') || '' : '');
+        const sRoll = data.profile?.roll_number || (typeof window !== 'undefined' ? localStorage.getItem('student_roll') || '' : '');
+        
+        if (typeof window !== 'undefined' && data.profile) {
+          if (data.profile.name) localStorage.setItem('student_name', data.profile.name);
+          if (data.profile.roll_number) localStorage.setItem('student_roll', data.profile.roll_number);
+        }
+
         setStudentData({
-          name: data.profile?.name || 'Aarav Sharma',
-          roll: data.profile?.roll_number || '23CSE001',
+          name: sName,
+          roll: sRoll,
           semester: data.profile?.semester || 6,
           overallAttendance: overall,
           eligibility: data.metrics?.eligibility_status || (overall ? 'Eligible' : null),
@@ -62,19 +65,20 @@ export default function StudentPortal() {
           recentLogs: data.recent_logs?.length ? data.recent_logs.map((l: any, idx: number) => ({
             id: idx + 1,
             date: l.date,
-            subject: l.subject || `Session #${l.session_id}`,
-            status: l.status
-          })) : studentData.recentLogs
+            subject: l.subject_name || l.subject || `Session #${l.session_id}`,
+            status: l.is_present ? 'Present' : 'Absent'
+          })) : []
         });
       }
     } catch {
-      console.log("Using cached/preview student profile metrics.");
+      console.log("Using cached student profile metrics.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    setStandaloneUrl(getStudentPortalUrl());
     fetchLiveMetrics();
   }, []);
 
@@ -128,7 +132,7 @@ export default function StudentPortal() {
             <span>Back to Launchpad</span>
           </Link>
           <a
-            href="http://localhost:3002"
+            href={standaloneUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs font-bold text-stone-900 bg-white border border-stone-200 px-3.5 py-2 rounded-2xl shadow-sm hover:bg-stone-50 transition"
@@ -166,18 +170,18 @@ export default function StudentPortal() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <motion.div whileHover={{ y: -3 }} className="bg-white/90 border border-stone-200/80 p-6 rounded-3xl shadow-sm relative overflow-hidden">
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Overall Attendance</h3>
-            <p className="text-4xl font-black text-stone-900">{studentData.overallAttendance ?? '92.3%'}</p>
+            <p className="text-4xl font-black text-stone-900">{studentData.overallAttendance ?? '0.0%'}</p>
             <div className="mt-4 w-full bg-stone-100 rounded-full h-2">
               <div 
                 className="bg-emerald-500 h-2 rounded-full" 
-                style={{ width: studentData.overallAttendance || '92.3%' }}
+                style={{ width: studentData.overallAttendance || '0%' }}
               />
             </div>
           </motion.div>
 
           <motion.div whileHover={{ y: -3 }} className="bg-white/90 border border-stone-200/80 p-6 rounded-3xl shadow-sm relative overflow-hidden">
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Exam Eligibility</h3>
-            <p className="text-3xl font-extrabold text-emerald-700">{studentData.eligibility ?? 'Eligible'}</p>
+            <p className="text-3xl font-extrabold text-emerald-700">{studentData.eligibility ?? 'Pending Data'}</p>
             <p className="text-xs text-stone-500 mt-2">Above 75% threshold requirement</p>
           </motion.div>
 

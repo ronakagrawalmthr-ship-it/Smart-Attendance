@@ -12,69 +12,17 @@ import {
   RefreshCw,
   Eye
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function FacultyLecturesPage() {
-  const [loading, setLoading] = useState(false);
-  const [sessions, setSessions] = useState<any[]>([
-    {
-      id: 13,
-      subject: 'Design & Analysis of Algorithms (CS305)',
-      faculty: 'Prof. Manoj Joshi',
-      room: 'Room A - Lab 2',
-      semester: 'Semester 6 - Sec A',
-      scanned: 15,
-      total: 15,
-      status: 'In Progress (Active Scan)',
-      startTime: '10:00 AM - 11:00 AM'
-    },
-    {
-      id: 12,
-      subject: 'Computer Networks & Security (CS303)',
-      faculty: 'Dr. Rajesh Sharma',
-      room: 'Room A - Lab 1',
-      semester: 'Semester 6 - Sec A',
-      scanned: 13,
-      total: 15,
-      status: 'Attendance Committed',
-      startTime: '10:00 AM - 11:00 AM'
-    },
-    {
-      id: 11,
-      subject: 'Database Management Systems (CS302)',
-      faculty: 'Prof. Kavita Reddy',
-      room: 'Room A - Lab 4',
-      semester: 'Semester 6 - Sec A',
-      scanned: 13,
-      total: 15,
-      status: 'In Progress (Active Scan)',
-      startTime: '10:00 AM - 11:00 AM'
-    },
-    {
-      id: 10,
-      subject: 'Operating Systems (CS301)',
-      faculty: 'Dr. Rajesh Sharma',
-      room: 'Room A - Lab 3',
-      semester: 'Semester 6 - Sec A',
-      scanned: 12,
-      total: 15,
-      status: 'Attendance Committed',
-      startTime: '09:00 AM - 10:00 AM'
-    }
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<any[]>([]);
 
   const fetchLectures = async () => {
     try {
       setLoading(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      const res = await fetch(`${API_BASE_URL}/management/department/faculty-lectures?branch=Computer%20Science`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await authFetch(`${API_BASE_URL}/management/department/faculty-lectures?branch=Computer%20Science`);
       if (res.ok) {
         const data = await res.json();
         if (data.sessions && data.sessions.length > 0) {
@@ -95,7 +43,8 @@ export default function FacultyLecturesPage() {
   const liveCount = sessions.filter(s => s.status && s.status.includes('In Progress')).length;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <Link 
           href="/dashboard"
@@ -149,7 +98,7 @@ export default function FacultyLecturesPage() {
                     {s.semester || 'Semester 6'}
                   </span>
                   <h3 className="text-base font-extrabold text-stone-900 mt-2">{s.subject || 'Compiler Design'}</h3>
-                  <p className="text-xs text-stone-500 font-medium">{s.faculty || 'Dr. Rajesh Sharma'} • {s.room || 'Room 402'}</p>
+                  <p className="text-xs text-stone-500 font-medium">{s.faculty || 'Faculty Member'} • {s.room || 'Room 402'}</p>
                 </div>
 
                 <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -197,6 +146,7 @@ export default function FacultyLecturesPage() {
           );
         })}
       </div>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

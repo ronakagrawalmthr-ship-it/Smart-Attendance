@@ -20,7 +20,8 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 type TabType = 'dutyleave' | 'holidays' | 'proxy' | 'classtests';
 
@@ -59,28 +60,19 @@ export default function AcademicOperationsPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const getAuthHeaders = () => {
-    const token = typeof window !== 'undefined' ? (localStorage.getItem('hod_token') || localStorage.getItem('token')) : null;
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
-  };
-
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const headers = getAuthHeaders();
 
-      // Fetch basic metadata
+      // Fetch operational metadata and ledgers
       const [stRes, tRes, sRes, odRes, hRes, pRes, testRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/management/crud/students`, { headers }),
-        fetch(`${API_BASE_URL}/management/crud/teachers`, { headers }),
-        fetch(`${API_BASE_URL}/management/crud/subjects`, { headers }),
-        fetch(`${API_BASE_URL}/management/hod/duty-leave/records`, { headers }),
-        fetch(`${API_BASE_URL}/management/holidays`, { headers }),
-        fetch(`${API_BASE_URL}/management/hod/proxy/list`, { headers }),
-        fetch(`${API_BASE_URL}/management/attendance/test-records`, { headers })
+        authFetch(`${API_BASE_URL}/management/crud/students`),
+        authFetch(`${API_BASE_URL}/management/crud/teachers`),
+        authFetch(`${API_BASE_URL}/management/crud/subjects`),
+        authFetch(`${API_BASE_URL}/management/hod/duty-leave/records`),
+        authFetch(`${API_BASE_URL}/management/holidays`),
+        authFetch(`${API_BASE_URL}/management/hod/proxy/list`),
+        authFetch(`${API_BASE_URL}/management/attendance/test-records`)
       ]);
 
       if (stRes.ok) setStudents((await stRes.json()).students || []);
@@ -112,9 +104,9 @@ export default function AcademicOperationsPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/management/hod/duty-leave/grant`, {
+      const res = await authFetch(`${API_BASE_URL}/management/hod/duty-leave/grant`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_ids: [matched.id],
           date: odDate,
@@ -125,6 +117,17 @@ export default function AcademicOperationsPage() {
       if (res.ok) {
         const data = await res.json();
         showToast(data.message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'od_leave_alert',
+              title: 'Duty Leave (OD) Credited',
+              detail: `OD approved for ${matched.full_name} (${matched.roll_number}) • ${odEvent}`,
+              time: 'Just now',
+              badge: 'OD Approved'
+            }
+          }));
+        }
         setOdStudentRoll('');
         fetchAllData();
       } else {
@@ -143,9 +146,9 @@ export default function AcademicOperationsPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/management/holidays`, {
+      const res = await authFetch(`${API_BASE_URL}/management/holidays`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: holidayTitle,
           date: holidayDate,
@@ -156,6 +159,17 @@ export default function AcademicOperationsPage() {
       if (res.ok) {
         const data = await res.json();
         showToast(data.message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'holiday_alert',
+              title: 'Holiday Declared',
+              detail: `${holidayTitle} scheduled on ${holidayDate} for Computer Science department`,
+              time: holidayDate,
+              badge: 'Class Suspended'
+            }
+          }));
+        }
         setHolidayTitle('');
         setHolidayDesc('');
         fetchAllData();
@@ -169,13 +183,14 @@ export default function AcademicOperationsPage() {
 
   const handleDeleteHoliday = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/management/holidays/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
+      const res = await authFetch(`${API_BASE_URL}/management/holidays/${id}`, {
+        method: 'DELETE'
       });
       if (res.ok) {
         showToast('Holiday removed.');
         fetchAllData();
+      } else {
+        showToast('Failed to remove holiday.');
       }
     } catch {
       showToast('Network error.');
@@ -194,9 +209,9 @@ export default function AcademicOperationsPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/management/hod/proxy/assign`, {
+      const res = await authFetch(`${API_BASE_URL}/management/hod/proxy/assign`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           original_teacher_id: proxyOrigTeacher,
           proxy_teacher_id: proxySubTeacher,
@@ -208,6 +223,20 @@ export default function AcademicOperationsPage() {
       if (res.ok) {
         const data = await res.json();
         showToast(data.message);
+        const subTeacherObj = teachers.find(t => t.id === proxySubTeacher);
+        const origTeacherObj = teachers.find(t => t.id === proxyOrigTeacher);
+        const subjObj = subjects.find(s => s.id === proxySubject);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'proxy_alert',
+              title: 'Proxy Faculty Assigned',
+              detail: `${subTeacherObj?.full_name || 'Proxy Faculty'} taking ${subjObj?.name || 'Lecture'} for ${origTeacherObj?.full_name || 'Faculty'} on ${proxyDate}`,
+              time: proxyDate,
+              badge: 'Proxy Active'
+            }
+          }));
+        }
         fetchAllData();
       } else {
         showToast('Failed to allocate proxy teacher.');
@@ -224,9 +253,9 @@ export default function AcademicOperationsPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/management/attendance/test-absentees/notify-parents`, {
+      const res = await authFetch(`${API_BASE_URL}/management/attendance/test-absentees/notify-parents`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id,
           subject_name,
@@ -236,6 +265,17 @@ export default function AcademicOperationsPage() {
       if (res.ok) {
         const data = await res.json();
         showToast(data.message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'parent_alert',
+              title: 'Guardian Alert Dispatched',
+              detail: `Official Class Test Absentee notice sent to parents of ${absentees.length} students (${subject_name})`,
+              time: 'Just now',
+              badge: 'Parents Notified'
+            }
+          }));
+        }
       } else {
         showToast('Failed to dispatch parent alerts.');
       }
@@ -245,13 +285,14 @@ export default function AcademicOperationsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       {/* Toast Notification */}
       <AnimatePresence>
         {toastMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
+            
+            
             exit={{ opacity: 0, y: -20 }}
             className="fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl bg-emerald-600 text-white font-semibold text-xs shadow-2xl flex items-center space-x-2"
           >
@@ -755,7 +796,8 @@ export default function AcademicOperationsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }
 

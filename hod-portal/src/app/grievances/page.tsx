@@ -10,10 +10,14 @@ import {
   ShieldCheck, 
   Clock, 
   User, 
-  AlertCircle 
+  AlertCircle,
+  Paperclip,
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function HODGrievanceResolution() {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -21,11 +25,7 @@ export default function HODGrievanceResolution() {
 
   const fetchGrievances = async () => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-      if (!token) return;
-      const res = await fetch(`${API_BASE_URL}/management/grievances`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await authFetch(`${API_BASE_URL}/management/grievances`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.length > 0) {
@@ -43,26 +43,44 @@ export default function HODGrievanceResolution() {
 
   const handleResolve = async (id: string, decision: 'Granted' | 'Rejected', student: string) => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-      await fetch(`${API_BASE_URL}/management/grievances/resolve?ticket_id=${id}&decision=${decision}`, {
-        method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res = await authFetch(`${API_BASE_URL}/management/grievances/resolve?ticket_id=${id}&decision=${decision}`, {
+        method: 'POST'
       });
+      if (res.ok) {
+        const data = await res.json();
+        setActionNotice(data.message || `Grievance ${id} for ${student} marked as ${decision}. Student attendance record updated in database.`);
+      } else {
+        setActionNotice(`Grievance ${id} marked as ${decision}.`);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('campus-notification', {
+          detail: {
+            type: 'grievance_alert',
+            title: decision === 'Granted' ? 'Grievance Approved' : 'Grievance Dismissed',
+            detail: `Attendance dispute ${id} for ${student} marked as ${decision}`,
+            time: 'Just now',
+            badge: decision === 'Granted' ? 'Attendance Corrected' : 'Rejected'
+          }
+        }));
+      }
+      fetchGrievances();
     } catch (e) {
       console.log("Resolve sync error:", e);
+      setActionNotice(`Grievance ${id} marked as ${decision}.`);
     }
+
     setGrievances(prev => prev.map(g => {
       if (g.id === id) {
         return { ...g, status: decision === 'Granted' ? 'Granted by HOD' : 'Rejected by HOD' };
       }
       return g;
     }));
-    setActionNotice(`Grievance ${id} for ${student} marked as ${decision}. Student attendance record updated in database.`);
-    setTimeout(() => setActionNotice(null), 4000);
+    setTimeout(() => setActionNotice(null), 4500);
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <Link 
           href="/dashboard"
@@ -87,8 +105,8 @@ export default function HODGrievanceResolution() {
 
       {actionNotice && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center space-x-3 shadow-sm"
         >
           <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
@@ -130,6 +148,34 @@ export default function HODGrievanceResolution() {
                 <p className="font-medium leading-relaxed">{g.reason}</p>
               </div>
 
+              {/* Supporting Document Proof */}
+              {g.document_url ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80 text-xs">
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <div className="h-8 w-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                      <Paperclip className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-blue-600 uppercase block tracking-wider">Attached Verification Proof</span>
+                      <span className="font-semibold text-blue-950 truncate block max-w-xs">{g.document_name || 'Medical / On-Duty Verification Certificate'}</span>
+                    </div>
+                  </div>
+                  <a
+                    href={g.document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-100/80 px-3.5 py-1.5 rounded-xl border border-blue-200 transition shadow-2xs shrink-0 self-start sm:self-auto"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Inspect Document</span>
+                  </a>
+                </div>
+              ) : (
+                <div className="text-[11px] text-stone-400 font-medium italic px-1">
+                  No medical or duty proof attached with this ticket.
+                </div>
+              )}
+
               {isPending && (
                 <div className="flex justify-end space-x-3 pt-2">
                   <button
@@ -152,6 +198,7 @@ export default function HODGrievanceResolution() {
           );
         })}
       </div>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

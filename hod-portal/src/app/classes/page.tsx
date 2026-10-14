@@ -1,5 +1,6 @@
 'use client';
 
+import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
@@ -28,7 +29,8 @@ import {
   Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 interface SessionLogItem {
   session_id: number;
@@ -154,9 +156,6 @@ export default function ClassAttendancePage() {
   const fetchAttendanceData = async () => {
     try {
       setLoading(true);
-      const token = typeof window !== 'undefined' ? localStorage.getItem('hod_token') : null;
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const params = new URLSearchParams();
       params.append('branch', selectedBranch);
@@ -179,7 +178,7 @@ export default function ClassAttendancePage() {
       }
 
       // 1. Fetch Comprehensive Analytics (Sessions + Cumulative Students)
-      const analyticsRes = await fetch(`${API_BASE_URL}/management/attendance/comprehensive-analytics?${params.toString()}`, { headers });
+      const analyticsRes = await authFetch(`${API_BASE_URL}/management/attendance/comprehensive-analytics?${params.toString()}`);
       if (analyticsRes.ok) {
         const data = await analyticsRes.json();
         setSessionsLog(data.sessions_log || []);
@@ -192,7 +191,7 @@ export default function ClassAttendancePage() {
       }
 
       // 2. Fetch Raw Class Records (for detailed log exports)
-      const rawRes = await fetch(`${API_BASE_URL}/management/attendance/class-records?${params.toString()}`, { headers });
+      const rawRes = await authFetch(`${API_BASE_URL}/management/attendance/class-records?${params.toString()}`);
       if (rawRes.ok) {
         const rawData = await rawRes.json();
         setRawRecords(rawData.records || []);
@@ -307,7 +306,8 @@ export default function ClassAttendancePage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       {/* Page Header */}
       <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -435,64 +435,68 @@ export default function ClassAttendancePage() {
           {/* Semester Selector */}
           <div>
             <label className="block text-stone-600 font-bold mb-1.5">Semester</label>
-            <select
+            <AppleSelect
               value={selectedSemester}
-              onChange={(e) => setSelectedSemester(e.target.value)}
-              className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500 transition"
-            >
-              <option value="all">All Semesters</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-                <option key={s} value={s.toString()}>Semester {s}</option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedSemester(String(val))}
+              options={[
+                { value: 'all', label: 'All Semesters', badge: 'All' },
+                ...[1, 2, 3, 4, 5, 6, 7, 8].map(s => ({
+                  value: String(s),
+                  label: `Semester ${s}`,
+                  badge: `Sem ${s}`
+                }))
+              ]}
+            />
           </div>
 
           {/* Section Selector */}
           <div>
             <label className="block text-stone-600 font-bold mb-1.5">Class Section</label>
-            <select
+            <AppleSelect
               value={selectedSection}
-              onChange={(e) => setSelectedSection(e.target.value)}
-              className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500 transition"
-            >
-              <option value="all">All Sections</option>
-              <option value="A">Section A</option>
-              <option value="B">Section B</option>
-              <option value="C">Section C</option>
-            </select>
+              onChange={(val) => setSelectedSection(String(val))}
+              options={[
+                { value: 'all', label: 'All Sections', badge: 'All' },
+                { value: 'A', label: 'Section A', badge: 'Sec A' },
+                { value: 'B', label: 'Section B', badge: 'Sec B' },
+                { value: 'C', label: 'Section C', badge: 'Sec C' }
+              ]}
+            />
           </div>
 
           {/* Subject Filter */}
           <div>
             <label className="block text-stone-600 font-bold mb-1.5">Subject Scope</label>
-            <select
+            <AppleSelect
               value={selectedSubject}
-              onChange={(e) => setSelectedSubject(e.target.value)}
-              className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500 transition"
-            >
-              <option value="all">All Lectures (Cumulative Total)</option>
-              <option value="GUEST">🌟 Guest Lectures Only</option>
-              {availableSubjects.map(subj => (
-                <option key={subj.code} value={subj.code}>
-                  {subj.code} - {subj.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedSubject(String(val))}
+              options={[
+                { value: 'all', label: 'All Lectures (Cumulative Total)', badge: 'All' },
+                { value: 'GUEST', label: '🌟 Guest Lectures Only', badge: 'Guest' },
+                ...availableSubjects.map(subj => ({
+                  value: subj,
+                  label: subj,
+                  badge: 'Subject'
+                }))
+              ]}
+            />
           </div>
 
           {/* Teacher Conductor Filter */}
           <div>
             <label className="block text-stone-600 font-bold mb-1.5">Conducted By (Faculty)</label>
-            <select
+            <AppleSelect
               value={selectedTeacher}
-              onChange={(e) => setSelectedTeacher(e.target.value)}
-              className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium focus:bg-white focus:outline-none focus:border-emerald-500 transition"
-            >
-              <option value="all">All Conductor Teachers</option>
-              {availableTeachers.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedTeacher(String(val))}
+              options={[
+                { value: 'all', label: 'All Conductor Teachers', badge: 'All' },
+                ...availableTeachers.map(t => ({
+                  value: t,
+                  label: t,
+                  badge: 'Faculty'
+                }))
+              ]}
+            />
           </div>
 
           {/* Custom Date Input */}
@@ -896,8 +900,8 @@ export default function ClassAttendancePage() {
         {selectedSessionModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              
+              
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white/95 border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
             >
@@ -986,6 +990,7 @@ export default function ClassAttendancePage() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }

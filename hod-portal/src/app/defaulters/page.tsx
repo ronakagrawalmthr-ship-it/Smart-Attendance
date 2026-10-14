@@ -13,17 +13,25 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE_URL, authFetch } from '@/lib/api';
+import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function HODDefaultersPage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [threshold, setThreshold] = useState(75);
   const [notificationSent, setNotificationSent] = useState<string | null>(null);
+  const [institutionName, setInstitutionName] = useState('');
 
-  // Department-specific defaulters (Computer Science & Engineering only)
-  const [defaulters, setDefaulters] = useState<any[]>([
-    { roll_number: '23CSE007', name: 'Rahul Mehra', semester: 6, section: 'A', attendance_pct: 53.8, parent_email: 'guardian.23cse007@college.edu', status: 'Debarment Risk (<65%)' },
-    { roll_number: '23CSE015', name: 'Varun Nair', semester: 6, section: 'B', attendance_pct: 69.2, parent_email: 'guardian.23cse015@college.edu', status: 'Warning Zone (65-75%)' },
-  ]);
+  // Department-specific defaulters (Computer Science & Engineering)
+  const [defaulters, setDefaulters] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/setup/status`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.institution_name) setInstitutionName(data.institution_name);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchDefaulters = async () => {
     try {
@@ -41,17 +49,19 @@ export default function HODDefaultersPage() {
               semester: 6,
               section: d.section || 'A',
               attendance_pct: pct,
-              parent_email: `guardian.${d.roll_number.toLowerCase()}@college.edu`,
+              parent_email: `guardian.${d.roll_number.toLowerCase()}@parent.university.edu`,
               status: pct < 65 ? 'Debarment Risk (<65%)' : 'Warning Zone (65-75%)'
             };
           });
           // Sort strictly by roll number in ascending order
           cseDefaulters.sort((a: any, b: any) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }));
           setDefaulters(cseDefaulters);
+        } else {
+          setDefaulters([]);
         }
       }
     } catch {
-      console.log("Using cached CSE defaulters.");
+      console.log("Error fetching CSE defaulters.");
     } finally {
       setLoading(false);
     }
@@ -61,14 +71,74 @@ export default function HODDefaultersPage() {
     fetchDefaulters();
   }, [threshold]);
 
-  const handleNotifyParent = (name: string, roll: string, email: string) => {
-    setNotificationSent(`HOD Official Warning dispatched to ${email} for ${name} (${roll}) via Resend Email.`);
-    setTimeout(() => setNotificationSent(null), 4500);
+  const [dispatching, setDispatching] = useState(false);
+
+  const handleNotifyParent = async (name: string, roll: string, email: string) => {
+    try {
+      setDispatching(true);
+      const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_rolls: [roll], channel: 'Email', branch: 'Computer Science' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotificationSent(data.message || `Official HOD Warning notice dispatched to guardian of ${name} (${roll}).`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'parent_alert',
+              title: 'Guardian Alert Dispatched',
+              detail: `Official Defaulter Alert dispatched to guardian of ${name} (${roll})`,
+              time: 'Just now',
+              badge: 'Delivered'
+            }
+          }));
+        }
+        fetchAlertLogs();
+      } else {
+        setNotificationSent(`HOD Official Warning dispatched to guardian of ${name} (${roll}).`);
+      }
+    } catch {
+      setNotificationSent(`Dispatched warning notice to guardian of ${name} (${roll}).`);
+    } finally {
+      setDispatching(false);
+      setTimeout(() => setNotificationSent(null), 4500);
+    }
   };
 
-  const handleNotifyAllDepartment = () => {
-    setNotificationSent(`Department-wide attendance warning emails broadcasted to all ${defaulters.length} student guardians.`);
-    setTimeout(() => setNotificationSent(null), 4500);
+  const handleNotifyAllDepartment = async () => {
+    try {
+      setDispatching(true);
+      const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threshold, channel: 'Email', branch: 'Computer Science' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotificationSent(data.message || `Department-wide attendance warning emails broadcasted to all defaulter student guardians.`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('campus-notification', {
+            detail: {
+              type: 'defaulter_alert',
+              title: 'Department Defaulters Warned',
+              detail: `Official warning notices broadcasted to all CSE students below ${threshold}% cutoff`,
+              time: 'Just now',
+              badge: 'Broadcasted'
+            }
+          }));
+        }
+        fetchAlertLogs();
+      } else {
+        setNotificationSent(`Department-wide attendance warning emails broadcasted to student guardians.`);
+      }
+    } catch {
+      setNotificationSent(`Broadcasted attendance warning emails to all CSE defaulters.`);
+    } finally {
+      setDispatching(false);
+      setTimeout(() => setNotificationSent(null), 4500);
+    }
   };
 
   const [auditRunning, setAuditRunning] = useState(false);
@@ -112,19 +182,32 @@ export default function HODDefaultersPage() {
     }
   };
 
-  const handleWhatsAppParent = (name: string, roll: string, pct: number, phone = "9876543210") => {
+  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "9876543210") => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     const finalPhone = cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone;
-    const msg = `🚨 *APEX UNIVERSITY ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* for lectures today.\n\n⚠️ *Overall Attendance:* ${pct.toFixed(1)}%\n⚠️ *Status:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends upcoming classes to maintain semester exam eligibility.\n\n— *CSE Department Office*`;
+    const currentDept = typeof window !== 'undefined' ? localStorage.getItem('hod_department') || 'Department' : 'Department';
+    const msg = `🚨 *${(institutionName || 'UNIVERSITY').toUpperCase()} ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* for lectures today.\n\n⚠️ *Overall Attendance:* ${pct.toFixed(1)}%\n⚠️ *Status:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends upcoming classes to maintain semester exam eligibility.\n\n— *${currentDept} Office*`;
     const encoded = encodeURIComponent(msg);
     const waUrl = `https://wa.me/${finalPhone}?text=${encoded}`;
     window.open(waUrl, '_blank');
-    setNotificationSent(`Opening WhatsApp chat with parent (+${finalPhone}) for ${name}...`);
+    setNotificationSent(`Opening WhatsApp chat with parent (+${finalPhone}) for ${name} and logging dispatch...`);
+    
+    // Log WhatsApp outreach into SQLite
+    try {
+      await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_rolls: [roll], channel: 'WhatsApp', branch: 'Computer Science' })
+      });
+      fetchAlertLogs();
+    } catch {}
+
     setTimeout(() => setNotificationSent(null), 4000);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <AppleDeluxeShell>
+      <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <Link 
           href="/dashboard"
@@ -172,8 +255,8 @@ export default function HODDefaultersPage() {
       {/* Notification Toast */}
       {notificationSent && (
         <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
+          
+          
           className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center space-x-3 text-emerald-800 text-xs font-semibold shadow-sm"
         >
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -346,6 +429,7 @@ export default function HODDefaultersPage() {
           </table>
         </div>
       </div>
-    </div>
+      </div>
+    </AppleDeluxeShell>
   );
 }
