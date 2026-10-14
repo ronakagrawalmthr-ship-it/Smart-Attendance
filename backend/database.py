@@ -72,6 +72,10 @@ def ensure_sqlite_columns():
                         cur.execute("ALTER TABLE student_profiles ADD COLUMN photo_thumbnail TEXT")
                     if "parent_email" not in st_cols:
                         cur.execute("ALTER TABLE student_profiles ADD COLUMN parent_email TEXT")
+                    if "phone" not in st_cols:
+                        cur.execute("ALTER TABLE student_profiles ADD COLUMN phone TEXT")
+                    if "emergency_contact" not in st_cols:
+                        cur.execute("ALTER TABLE student_profiles ADD COLUMN emergency_contact TEXT")
 
                 # Check attendance_logs
                 cur.execute("PRAGMA table_info(attendance_logs)")

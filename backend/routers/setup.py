@@ -66,7 +66,7 @@ def get_setup_status(db: Session = Depends(database.get_db)):
     return {
         "is_initialized": is_initialized,
         "institution_name": inst_name.value if inst_name else "",
-        "admin_count": admin_count
+        "admin_count": 1 if admin_count > 0 else 0
     }
 
 @router.post("/send-otp")

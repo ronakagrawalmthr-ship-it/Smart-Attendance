@@ -174,6 +174,7 @@ def get_recent_scans_telemetry(
 def get_live_events(
     branch: str = None,
     limit: int = 15,
+    request: Request = None,
     db: Session = Depends(database.get_db)
 ):
     """
@@ -184,7 +185,7 @@ def get_live_events(
     - Upcoming / Current Holiday Declarations
     - Real Duty Leave (OD) credits recorded today
     - Real Proxy faculty assignments for today or upcoming days
-    Never returns fake mock events or past stale logs from days ago.
+    Unauthenticated callers only receive safe public announcements (no PII or roster telemetry).
     """
     import re
     from datetime import datetime
@@ -194,7 +195,38 @@ def get_live_events(
     today_str = today_date.strftime("%Y-%m-%d")
     now_iso = datetime.utcnow().isoformat()
     
-    # 1. Real Attendance Finalizations strictly from TODAY
+    # Check if caller has valid authentication token
+    is_authenticated = False
+    if request:
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            if security.decode_access_token(token):
+                is_authenticated = True
+
+    # 1. Upcoming / Active Institutional Holidays (Public & Safe)
+    holidays = db.query(models.Holiday).filter(models.Holiday.date >= today_str).order_by(models.Holiday.date.asc()).limit(3).all()
+    for h in holidays:
+        if branch and h.department != "all" and branch.lower() not in (h.department or "").lower():
+            continue
+        events.append({
+            "id": f"hol-{h.id}",
+            "type": "holiday_alert",
+            "title": "Holiday Declared",
+            "teacher_name": "Dean & HOD Office",
+            "subject": h.title,
+            "code": "HOLIDAY",
+            "detail": f"{h.title} on {h.date} ({h.department.title()} Dept)",
+            "time": h.date,
+            "raw_time": now_iso,
+            "badge": "Class Suspended"
+        })
+
+    # Unauthenticated callers only receive safe public announcements (no PII or roster telemetry)
+    if not is_authenticated:
+        return events[:limit]
+
+    # 2. Real Attendance Finalizations strictly from TODAY
     audit_submissions = db.query(models.AuditLog).filter(
         models.AuditLog.timestamp >= today_dt,
         (models.AuditLog.action.ilike("%finalized attendance%") | models.AuditLog.action.ilike("%Submitted attendance%") | models.AuditLog.action.ilike("%Lecture conducted%"))
@@ -230,24 +262,6 @@ def get_live_events(
             "time": a.timestamp.strftime("%I:%M %p") if a.timestamp else "Today",
             "raw_time": a.timestamp.isoformat() if a.timestamp else now_iso,
             "badge": f"{present_count} Present"
-        })
-
-    # 2. Upcoming / Active Institutional Holidays (date >= today)
-    holidays = db.query(models.Holiday).filter(models.Holiday.date >= today_str).order_by(models.Holiday.date.asc()).limit(3).all()
-    for h in holidays:
-        if branch and h.department != "all" and branch.lower() not in (h.department or "").lower():
-            continue
-        events.append({
-            "id": f"hol-{h.id}",
-            "type": "holiday_alert",
-            "title": "Holiday Declared",
-            "teacher_name": "Dean & HOD Office",
-            "subject": h.title,
-            "code": "HOLIDAY",
-            "detail": f"{h.title} on {h.date} ({h.department.title()} Dept)",
-            "time": h.date,
-            "raw_time": now_iso,
-            "badge": "Class Suspended"
         })
 
     # 3. Student Attendance Grievance Disputes for HOD Review (Pending or filed today)
@@ -712,7 +726,20 @@ def global_spotlight_search(
         if not query_str or query_str in item["title"].lower() or query_str in item["subtitle"].lower():
             results.append(item)
 
-    # 2. Search Students in database
+    # Check caller authentication
+    is_authenticated = False
+    if request:
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            if security.decode_access_token(token):
+                is_authenticated = True
+
+    # If unauthenticated, return ONLY navigation gateways, protecting directory roster PII
+    if not is_authenticated:
+        return {"results": results[:20], "total": len(results)}
+
+    # 2. Search Students in database (Authenticated Only)
     st_query = db.query(models.StudentProfile)
     if query_str:
         st_query = st_query.filter(
@@ -2622,9 +2649,9 @@ def export_attendance_register_csv(
         date_str = log.timestamp.strftime("%d/%m/%Y") if log.timestamp else ""
         time_str = log.timestamp.strftime("%I:%M %p") if log.timestamp else ""
         
-        subj_code = subject.code if subject else (session.custom_subject_code if session and session.custom_subject_code else "N/A")
-        subj_name = subject.name if subject else (session.custom_subject_name if session and session.custom_subject_name else "General Lecture")
-        faculty_name = teacher.full_name if teacher else (session.teacher_name if session and session.teacher_name else "Designated Faculty")
+        subj_code = subject.code if subject else (getattr(session, 'custom_subject_code', None) or "N/A")
+        subj_name = subject.name if subject else (getattr(session, 'custom_subject_name', None) or "General Lecture")
+        faculty_name = teacher.full_name if teacher else (getattr(session, 'conducted_by_name', None) or getattr(session, 'teacher_name', None) or "Designated Faculty")
         sess_type = session.session_type.value if (session and hasattr(session.session_type, 'value')) else (str(session.session_type) if session else "Regular")
         status_label = "Present" if log.is_present else "Absent"
         status_tag = getattr(log, 'status_tag', None) or status_label
