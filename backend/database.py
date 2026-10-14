@@ -57,6 +57,13 @@ def ensure_sqlite_columns():
                 con = sqlite3.connect(db_path)
                 cur = con.cursor()
                 
+                # Check teacher_profiles
+                cur.execute("PRAGMA table_info(teacher_profiles)")
+                tp_cols = [r[1] for r in cur.fetchall()]
+                if tp_cols:
+                    if "phone_number" not in tp_cols:
+                        cur.execute("ALTER TABLE teacher_profiles ADD COLUMN phone_number TEXT")
+
                 # Check student_profiles
                 cur.execute("PRAGMA table_info(student_profiles)")
                 st_cols = [r[1] for r in cur.fetchall()]
@@ -73,10 +80,23 @@ def ensure_sqlite_columns():
                     if "confidence_score" not in att_cols:
                         cur.execute("ALTER TABLE attendance_logs ADD COLUMN confidence_score FLOAT")
 
+                # Check academic_sessions
+                cur.execute("PRAGMA table_info(academic_sessions)")
+                as_cols = [r[1] for r in cur.fetchall()]
+                if as_cols:
+                    if "conducted_by_name" not in as_cols:
+                        cur.execute("ALTER TABLE academic_sessions ADD COLUMN conducted_by_name TEXT")
+                    if "custom_subject_name" not in as_cols:
+                        cur.execute("ALTER TABLE academic_sessions ADD COLUMN custom_subject_name TEXT")
+                    if "notes" not in as_cols:
+                        cur.execute("ALTER TABLE academic_sessions ADD COLUMN notes TEXT")
+                    if "section" not in as_cols:
+                        cur.execute("ALTER TABLE academic_sessions ADD COLUMN section TEXT")
+
                 con.commit()
                 con.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"SQLite column migration note: {e}")
 
 ensure_sqlite_columns()
 

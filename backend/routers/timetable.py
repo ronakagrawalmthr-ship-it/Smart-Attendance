@@ -402,7 +402,7 @@ def get_gemini_ai_academic_advisory(
             student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == roll_candidate).first()
 
     if not student:
-        student = db.query(models.StudentProfile).first()
+        raise HTTPException(status_code=404, detail="Student profile not found. Please ensure your student account is registered.")
 
     student_name = student.full_name if student else "Student"
     roll_num = student.roll_number if student else ""
@@ -580,7 +580,7 @@ def campus_copilot_chat(
             student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == roll_candidate).first()
 
     if not student:
-        student = db.query(models.StudentProfile).first()
+        raise HTTPException(status_code=404, detail="Student profile not found. Please ensure your student account is registered.")
 
     student_name = student.full_name if student else "Student"
     roll_num = student.roll_number if student else ""

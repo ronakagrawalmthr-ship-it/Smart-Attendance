@@ -256,12 +256,12 @@ def submit_grievance(
     if not student:
         roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
         student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
-        if not student:
-            student = db.query(models.StudentProfile).first()
         if student and not student.user_id:
             student.user_id = current_user.id
             db.commit()
             db.refresh(student)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student profile not found for this account.")
 
     ticket_id = f"GRV-{random.randint(100, 999)}"
     
@@ -319,11 +319,12 @@ def get_student_grievances(
     if not student:
         roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
         student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
-        if not student:
-            student = db.query(models.StudentProfile).first()
         if student and not student.user_id:
             student.user_id = current_user.id
             db.commit()
+            db.refresh(student)
+    if not student:
+        return []
     if not student:
         return []
     records = db.query(models.Grievance).filter(models.Grievance.student_id == student.id).order_by(models.Grievance.created_at.desc()).all()
@@ -549,8 +550,6 @@ def get_student_live_notifications(
     if not student:
         roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
         student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
-        if not student:
-            student = db.query(models.StudentProfile).first()
 
     if not student:
         return []

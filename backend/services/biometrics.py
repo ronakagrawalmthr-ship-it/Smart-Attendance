@@ -169,7 +169,7 @@ def verify_liveness(image_bytes: bytes) -> dict:
             "faces_found": len(faces)
         }
     except Exception as e:
-        return {"is_live": True, "score": 0.8, "reason": f"Fallback check: {str(e)}"}
+        return {"is_live": False, "score": 0.0, "reason": f"Liveness check error: {str(e)}"}
 
 def compare_group_faces(live_image_file: bytes, known_vectors: dict) -> list[str]:
     """

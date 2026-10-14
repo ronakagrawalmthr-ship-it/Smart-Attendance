@@ -72,7 +72,10 @@ def get_user_department_scope(current_user: models.User, db: Optional[Session] =
     return None
 
 @router.get("/telemetry/latest-scan")
-def get_latest_scan_telemetry(db: Session = Depends(database.get_db)):
+def get_latest_scan_telemetry(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     """
     Returns the real latest attendance scan logged in the database for Dynamic Island display.
     """
@@ -109,7 +112,8 @@ def get_latest_scan_telemetry(db: Session = Depends(database.get_db)):
 def get_recent_scans_telemetry(
     branch: Optional[str] = None,
     limit: int = 20,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Returns a stream of recent real student attendance recognitions from SQLite.
@@ -3519,100 +3523,9 @@ def universal_campus_search(
 ):
     """
     Real-time universal database search across students, faculty, subjects, and campus gateways.
+    Delegates to the canonical spotlight search engine.
     """
-    term = q.strip()
-    host_name = "localhost"
-    scheme = "http"
-    if request:
-        client_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-        if client_host:
-            host_name = client_host.split(":")[0]
-        if request.headers.get("x-forwarded-proto"):
-            scheme = request.headers.get("x-forwarded-proto")
-        elif request.url.scheme:
-            scheme = request.url.scheme
-
-    base_3000 = f"{scheme}://{host_name}:3000"
-    base_3001 = f"{scheme}://{host_name}:3001"
-    base_3002 = f"{scheme}://{host_name}:3002"
-    base_3003 = f"{scheme}://{host_name}:3003"
-
-    results = []
-
-    # 1. Gateways / System Portals (Filtered if term provided)
-    gateways = [
-        {"type": "page", "title": "Teacher Attendance Terminal", "subtitle": "Live webcam face detection & session marking", "url": "/teacher", "category": "Gateways"},
-        {"type": "page", "title": "Student Academic Portal", "subtitle": "Attendance %, subject thresholds & grievances (:3002)", "url": base_3002, "category": "Gateways"},
-        {"type": "page", "title": "HOD Command Center", "subtitle": "Departmental rosters, analytics & live telemetry (:3003)", "url": base_3003, "category": "Gateways"},
-        {"type": "page", "title": "College Administrator Portal", "subtitle": "Executive accreditation, directory CRUD & audits (:3001)", "url": base_3001, "category": "Gateways"},
-        {"type": "page", "title": "Biometric Face Enrollment", "subtitle": "128-d AI face vector registration kiosk", "url": "/register", "category": "Gateways"},
-        {"type": "page", "title": "System Settings & Diagnostics", "subtitle": "Camera FPS, biometric confidence & port health", "url": "/settings", "category": "Gateways"},
-        {"type": "page", "title": "Defaulters Roster (<75%)", "subtitle": "Statutory attendance alerts & warning notices", "url": f"{base_3001}/defaulters", "category": "Gateways"},
-        {"type": "page", "title": "Academic Directory Management", "subtitle": "CRUD students, faculty, HODs and subjects", "url": f"{base_3001}/directory", "category": "Gateways"}
-    ]
-
-    for gw in gateways:
-        if not term or term.lower() in gw["title"].lower() or term.lower() in gw["subtitle"].lower():
-            results.append(gw)
-
-    if term:
-        # 2. Search Students
-        students = db.query(models.StudentProfile).filter(
-            or_(
-                models.StudentProfile.full_name.ilike(f"%{term}%"),
-                models.StudentProfile.roll_number.ilike(f"%{term}%"),
-                models.StudentProfile.branch.ilike(f"%{term}%")
-            )
-        ).limit(10).all()
-
-        for s in students:
-            results.append({
-                "type": "student",
-                "title": s.full_name,
-                "subtitle": f"Roll: {s.roll_number} • {s.branch} (Sem {s.semester})",
-                "url": f"{base_3001}/directory?tab=students&search={s.roll_number}",
-                "category": "Students",
-                "meta": {"roll_number": s.roll_number, "branch": s.branch, "semester": s.semester}
-            })
-
-        # 3. Search Faculty / HODs
-        teachers = db.query(models.TeacherProfile).filter(
-            or_(
-                models.TeacherProfile.full_name.ilike(f"%{term}%"),
-                models.TeacherProfile.department.ilike(f"%{term}%")
-            )
-        ).limit(10).all()
-
-        for t in teachers:
-            results.append({
-                "type": "faculty",
-                "title": t.full_name,
-                "subtitle": f"Department: {t.department}",
-                "url": f"{base_3001}/directory?tab=teachers&search={t.full_name}",
-                "category": "Faculty & HODs",
-                "meta": {"department": t.department}
-            })
-
-        # 4. Search Subjects
-        subjects = db.query(models.Subject).filter(
-            or_(
-                models.Subject.name.ilike(f"%{term}%"),
-                models.Subject.code.ilike(f"%{term}%"),
-                models.Subject.branch.ilike(f"%{term}%")
-            )
-        ).limit(10).all()
-
-        for sub in subjects:
-            results.append({
-                "type": "subject",
-                "title": f"{sub.name} ({sub.code})",
-                "subtitle": f"Branch: {sub.branch} • Sem {sub.semester}",
-                "url": f"{base_3001}/directory?tab=subjects&search={sub.code}",
-                "category": "Curriculum Subjects",
-                "meta": {"code": sub.code, "branch": sub.branch, "semester": sub.semester}
-            })
-
-    return {"results": results, "total": len(results)}
+    return global_spotlight_search(q=q, request=request, db=db)
 
 
 

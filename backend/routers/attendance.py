@@ -387,13 +387,13 @@ def create_session_and_submit_attendance(
     payload: dict,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(get_current_user_optional)
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Unified Teacher Classroom Submission:
     Submits attendance records under authenticated faculty credentials.
     """
-    if current_user and current_user.role == models.RoleEnum.student:
+    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Faculty authorization required to submit attendance records.")
 
     branch = payload.get("branch", "Computer Science")
@@ -411,16 +411,14 @@ def create_session_and_submit_attendance(
     except Exception:
         resolved_session_type = models.SessionType.guest_lecture if session_type_str == "guest_lecture" else models.SessionType.lecture
 
-    # Use authenticated user's teacher profile or fallback to matching conductor/first teacher
+    # Use authenticated user's teacher profile or conductor name
     teacher_prof = current_user.teacher_profile if (current_user and current_user.teacher_profile) else None
     if not teacher_prof and conducted_by_name:
         teacher_prof = db.query(models.TeacherProfile).filter(
             models.TeacherProfile.full_name.ilike(f"%{conducted_by_name}%")
         ).first()
-    if not teacher_prof:
-        teacher_prof = db.query(models.TeacherProfile).first()
 
-    conductor_final = conducted_by_name or (teacher_prof.full_name if teacher_prof else (current_user.email.split('@')[0].title() if current_user else "Faculty Coordinator"))
+    conductor_final = conducted_by_name or (teacher_prof.full_name if teacher_prof else current_user.email.split('@')[0].title())
 
     # If guest lecture, subject_id is optional and custom_subject_name is set
     if resolved_session_type == models.SessionType.guest_lecture and not custom_subject_name:
