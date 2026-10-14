@@ -398,9 +398,15 @@ export default function App() {
     try {
       const savedHost = await AsyncStorage.getItem('@custom_server_host');
       if (savedHost && savedHost.trim()) {
-        currentServerHost = savedHost.trim();
-        API_BASE_URL = `http://${currentServerHost}:8000`;
-        setServerHostInput(savedHost.trim());
+        const cleanSaved = savedHost.trim().replace(/\/+$/, '');
+        if (cleanSaved.startsWith('http://') || cleanSaved.startsWith('https://')) {
+          currentServerHost = cleanSaved;
+          API_BASE_URL = cleanSaved;
+        } else {
+          currentServerHost = cleanSaved;
+          API_BASE_URL = `http://${currentServerHost}:8000`;
+        }
+        setServerHostInput(cleanSaved);
       }
       const saved = await AsyncStorage.getItem('@teacher_user');
       if (saved) {
@@ -417,11 +423,15 @@ export default function App() {
 
   const handlePingServer = async () => {
     setPingStatus('testing');
-    setPingMessage('Pinging server at http://' + serverHostInput.trim() + ':' + serverPortInput.trim() + '...');
+    let target = serverHostInput.trim().replace(/\/+$/, '');
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+      target = `http://${target}:${serverPortInput.trim()}`;
+    }
+    setPingMessage(`Pinging backend at ${target}...`);
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`http://${serverHostInput.trim()}:${serverPortInput.trim()}/`, { signal: timer });
+      const timer = setTimeout(() => controller.abort(), 4500);
+      const res = await fetch(`${target}/health`, { signal: timer });
       clearTimeout(timer);
       if (res.ok) {
         setPingStatus('success');
@@ -432,17 +442,20 @@ export default function App() {
       }
     } catch (e) {
       setPingStatus('failed');
-      setPingMessage('✕ Connection timed out. Ensure PC & phone share the same Wi-Fi network.');
+      setPingMessage('✕ Connection timed out. Check IP/Ngrok URL and Wi-Fi.');
     }
   };
 
   const handleSaveServerConfig = async () => {
-    const cleanHost = serverHostInput.trim();
+    let cleanHost = serverHostInput.trim().replace(/\/+$/, '');
+    if (!cleanHost.startsWith('http://') && !cleanHost.startsWith('https://')) {
+      cleanHost = `http://${cleanHost}:${serverPortInput.trim()}`;
+    }
     currentServerHost = cleanHost;
-    API_BASE_URL = `http://${currentServerHost}:${serverPortInput.trim()}`;
+    API_BASE_URL = cleanHost;
     await AsyncStorage.setItem('@custom_server_host', cleanHost);
     setIsServerModalVisible(false);
-    triggerDynamicIsland('attendance', 'Server Configured', `Connected to ${cleanHost}`, 2500, 'Online');
+    triggerDynamicIsland('attendance', 'Server Configured', `Connected to backend`, 2500, 'Online');
     fetchLiveRoster();
   };
 
@@ -456,21 +469,21 @@ export default function App() {
       <View style={styles.modalOverlay}>
         <View style={styles.forgotModalCard}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={styles.forgotModalTitle}>Backend Server IP Config</Text>
+            <Text style={styles.forgotModalTitle}>Backend Server Config</Text>
             <TouchableOpacity onPress={() => setIsServerModalVisible(false)} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.forgotModalDesc}>
-            Configure the IPv4 address of your computer running the FastAPI server. Both device and host PC must be on the same Wi-Fi network.
+            Enter your PC local Wi-Fi IPv4 address (e.g. 192.168.1.155) OR your public Ngrok HTTPS URL.
           </Text>
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Host IP Address (Computer IPv4)</Text>
+            <Text style={styles.inputLabel}>Server IP / Ngrok URL</Text>
             <TextInput 
               style={styles.textInput}
               value={serverHostInput}
               onChangeText={(val) => { setServerHostInput(val); setPingStatus('idle'); }}
-              placeholder="e.g. 192.168.1.100 or 10.125.98.38"
+              placeholder="e.g. 192.168.1.155 or https://xxxx.ngrok-free.app"
               placeholderTextColor="#64748b"
               autoCapitalize="none"
             />
