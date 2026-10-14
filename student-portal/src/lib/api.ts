@@ -1,8 +1,9 @@
 // API Client for Student Portal
 export const API_BASE_URL = 
-  typeof window !== 'undefined' && window.location?.hostname
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location?.hostname
     ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
-    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+    : 'http://localhost:8000');
 
 export function getPortalUrl(port: number, path: string = ''): string {
   if (typeof window !== 'undefined' && window.location?.hostname) {

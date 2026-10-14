@@ -20,10 +20,17 @@ build/
 *.sqlite3
 *.tsbuildinfo
 chrome_audit_profile/
+scratch/
 scratch/chrome_audit_profile/
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+AGENTS.md
+*/AGENTS.md
+CLAUDE.md
+*/CLAUDE.md
+.claude/
+*/.claude/
 
 
