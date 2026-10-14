@@ -3216,11 +3216,12 @@ def grant_duty_leave(
         ).all()
         
         if not sessions:
-            first_teacher = db.query(models.TeacherProfile).first()
-            first_subject = db.query(models.Subject).first()
+            caller_teacher = current_user.teacher_profile if current_user else None
+            first_subject = db.query(models.Subject).filter(models.Subject.branch.ilike(f"%{st.branch}%")).first()
             od_session = models.AcademicSession(
                 subject_id=first_subject.id if first_subject else None,
-                teacher_id=first_teacher.id if first_teacher else None,
+                teacher_id=caller_teacher.id if caller_teacher else None,
+                conducted_by_name=f"HOD Approval ({current_user.email})",
                 branch=st.branch or "Computer Science & Engineering",
                 semester=st.semester or 6,
                 start_time=start_dt,

@@ -725,8 +725,6 @@ def init_dynamic_qr_session(
         teacher_prof = db.query(models.TeacherProfile).filter(
             models.TeacherProfile.full_name.ilike(f"%{data.conducted_by_name}%")
         ).first()
-    if not teacher_prof:
-        teacher_prof = db.query(models.TeacherProfile).first()
 
     conductor = (data.conducted_by_name or (teacher_prof.full_name if teacher_prof else (current_user.email.split("@")[0].title() if current_user else "Faculty Coordinator"))).strip()
     subj_name = data.custom_subject_name or (sub.name if sub else "Classroom Session")
