@@ -290,13 +290,55 @@ def get_departments_meta(db: Session = Depends(database.get_db)):
     Returns available branches/departments, semesters, sections, subjects, and teachers
     for dynamic classroom setup by any faculty member or guest lecturer.
     """
-    branches_db = db.query(models.StudentProfile.branch).distinct().all()
-    branches = sorted(list({b[0] for b in branches_db if b[0]}))
-    if not branches:
-        branches = ["Computer Science", "Information Technology", "Electronics", "Mechanical", "Civil"]
+    all_branches = set()
+    for row in db.query(models.StudentProfile.branch).distinct().all():
+        if row[0] and row[0].strip():
+            all_branches.add(row[0].strip())
+    for row in db.query(models.TeacherProfile.department).distinct().all():
+        if row[0] and row[0].strip():
+            all_branches.add(row[0].strip())
+    for row in db.query(models.Subject.branch).distinct().all():
+        if row[0] and row[0].strip():
+            all_branches.add(row[0].strip())
+    for row in db.query(models.TimetableSlot.branch).distinct().all():
+        if row[0] and row[0].strip():
+            all_branches.add(row[0].strip())
 
-    semesters = [1, 2, 3, 4, 5, 6, 7, 8]
-    sections = ["A", "B", "C"]
+    # If database has no branch entries yet, offer standard institutional engineering departments
+    if not all_branches:
+        all_branches = {
+            "Civil Engineering",
+            "Computer Science & Engineering",
+            "Electrical Engineering",
+            "Electronics & Communication",
+            "Information Technology",
+            "Mechanical Engineering"
+        }
+
+    branches = sorted(list(all_branches))
+
+    # Dynamic Semesters
+    db_semesters = set()
+    for row in db.query(models.StudentProfile.semester).distinct().all():
+        if row[0] and isinstance(row[0], int) and row[0] > 0:
+            db_semesters.add(row[0])
+    for row in db.query(models.Subject.semester).distinct().all():
+        if row[0] and isinstance(row[0], int) and row[0] > 0:
+            db_semesters.add(row[0])
+    for row in db.query(models.TimetableSlot.semester).distinct().all():
+        if row[0] and isinstance(row[0], int) and row[0] > 0:
+            db_semesters.add(row[0])
+    semesters = sorted(list(db_semesters.union({1, 2, 3, 4, 5, 6, 7, 8})))
+
+    # Dynamic Sections
+    db_sections = set()
+    for row in db.query(models.StudentProfile.section).distinct().all():
+        if row[0] and row[0].strip():
+            db_sections.add(row[0].strip().upper())
+    for row in db.query(models.TimetableSlot.section).distinct().all():
+        if row[0] and row[0].strip():
+            db_sections.add(row[0].strip().upper())
+    sections = sorted(list(db_sections.union({"A", "B", "C"})))
 
     subjects_db = db.query(models.Subject).all()
     subjects = [

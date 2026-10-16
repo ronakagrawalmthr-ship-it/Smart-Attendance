@@ -409,53 +409,121 @@ def get_college_departments_summary(
     total_presents = db.query(models.AttendanceLog).filter(models.AttendanceLog.is_present == True).count()
     college_avg_turnout = round((total_presents / total_logs * 100), 1) if total_logs > 0 else None
     
-    dept_configs = [
-        {
+    KNOWN_PRESETS = {
+        "computer": {
             "id": "cse",
             "name": "Computer Science & Engineering",
             "code": "CSE",
             "color": "from-emerald-500 to-teal-600",
             "textColor": "text-emerald-400",
             "borderColor": "border-emerald-500/30",
-            "default_phone": "—",
             "rank": "Tier 1 (NBA Accredited)"
         },
-        {
+        "information": {
             "id": "it",
             "name": "Information Technology",
             "code": "IT",
             "color": "from-cyan-500 to-blue-600",
             "textColor": "text-cyan-400",
             "borderColor": "border-cyan-500/30",
-            "default_phone": "—",
             "rank": "Tier 1 (NBA Accredited)"
         },
-        {
+        "electronic": {
             "id": "ece",
             "name": "Electronics & Communication",
             "code": "ECE",
             "color": "from-amber-500 to-orange-600",
             "textColor": "text-amber-400",
             "borderColor": "border-amber-500/30",
-            "default_phone": "—",
             "rank": "Tier 1 (NBA Accredited)"
         },
-        {
+        "mechanical": {
             "id": "mech",
             "name": "Mechanical Engineering",
             "code": "MECH",
             "color": "from-rose-500 to-red-600",
             "textColor": "text-rose-400",
             "borderColor": "border-rose-500/30",
-            "default_phone": "—",
             "rank": "Tier 2 Accredited"
+        },
+        "civil": {
+            "id": "civil",
+            "name": "Civil Engineering",
+            "code": "CIVIL",
+            "color": "from-yellow-500 to-amber-600",
+            "textColor": "text-yellow-400",
+            "borderColor": "border-yellow-500/30",
+            "rank": "Tier 2 Accredited"
+        },
+        "electrical": {
+            "id": "ee",
+            "name": "Electrical Engineering",
+            "code": "EE",
+            "color": "from-violet-500 to-purple-600",
+            "textColor": "text-violet-400",
+            "borderColor": "border-violet-500/30",
+            "rank": "Tier 1 (NBA Accredited)"
         }
-    ]
+    }
     
+    PALETTES = [
+        ("from-indigo-500 to-blue-600", "text-indigo-400", "border-indigo-500/30"),
+        ("from-fuchsia-500 to-pink-600", "text-fuchsia-400", "border-fuchsia-500/30"),
+        ("from-teal-500 to-emerald-600", "text-teal-400", "border-teal-500/30"),
+        ("from-orange-500 to-amber-600", "text-orange-400", "border-orange-500/30"),
+    ]
+
+    # Dynamically discover all distinct departments from database
+    discovered_branches = set()
+    for row in db.query(models.StudentProfile.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.TeacherProfile.department).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.Subject.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.TimetableSlot.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+
+    if not discovered_branches:
+        discovered_branches = {
+            "Computer Science & Engineering",
+            "Information Technology",
+            "Electronics & Communication",
+            "Mechanical Engineering",
+            "Civil Engineering",
+            "Electrical Engineering"
+        }
+
+    sorted_branches = sorted(list(discovered_branches))
     departments_result = []
-    for cfg in dept_configs:
-        branch_name = cfg["name"]
-        
+
+    for idx, branch_name in enumerate(sorted_branches):
+        b_lower = branch_name.lower()
+        matched_preset = None
+        for key, p in KNOWN_PRESETS.items():
+            if key in b_lower:
+                matched_preset = p
+                break
+
+        if matched_preset:
+            d_id = matched_preset["id"]
+            d_code = matched_preset["code"]
+            d_color = matched_preset["color"]
+            d_textColor = matched_preset["textColor"]
+            d_borderColor = matched_preset["borderColor"]
+            d_rank = matched_preset["rank"]
+        else:
+            d_id = f"dept_{idx+1}"
+            words = [w for w in branch_name.replace("&", "").split() if w]
+            d_code = "".join([w[0] for w in words]).upper()[:6] if words else f"D{idx+1}"
+            pal = PALETTES[idx % len(PALETTES)]
+            d_color, d_textColor, d_borderColor = pal[0], pal[1], pal[2]
+            d_rank = "Academic Faculty"
+
         student_count = db.query(models.StudentProfile).filter(
             models.StudentProfile.branch.ilike(f"%{branch_name}%")
         ).count()
@@ -482,16 +550,16 @@ def get_college_departments_summary(
             models.User.role == models.RoleEnum.hod
         ).first()
         hod_name = hod_profile.full_name if hod_profile else "Not Appointed"
-        hod_email = hod_profile.user.email if (hod_profile and hod_profile.user) else "—"
-        hod_phone = getattr(hod_profile, 'phone_number', None) or "—"
+        hod_email = hod_profile.user.email if (hod_profile and hod_profile.user) else "-"
+        hod_phone = getattr(hod_profile, 'phone_number', None) or "-"
         
         departments_result.append({
-            "id": cfg["id"],
+            "id": d_id,
             "name": branch_name,
-            "code": cfg["code"],
-            "color": cfg["color"],
-            "textColor": cfg["textColor"],
-            "borderColor": cfg["borderColor"],
+            "code": d_code,
+            "color": d_color,
+            "textColor": d_textColor,
+            "borderColor": d_borderColor,
             "hod": hod_name,
             "hodEmail": hod_email,
             "hodPhone": hod_phone,
@@ -499,7 +567,7 @@ def get_college_departments_summary(
             "faculty": faculty_count,
             "labs": labs_count,
             "turnoutToday": turnout_pct,
-            "rank": cfg["rank"]
+            "rank": d_rank
         })
         
     return {
@@ -551,7 +619,16 @@ def get_college_kpi_stats(
     ).count()
     
     unique_branches = {s.branch for s in all_students if s.branch}
-    total_departments = len(unique_branches) if len(unique_branches) > 0 else 4
+    for row in db.query(models.TeacherProfile.department).distinct().all():
+        if row[0] and row[0].strip():
+            unique_branches.add(row[0].strip())
+    for row in db.query(models.Subject.branch).distinct().all():
+        if row[0] and row[0].strip():
+            unique_branches.add(row[0].strip())
+    for row in db.query(models.TimetableSlot.branch).distinct().all():
+        if row[0] and row[0].strip():
+            unique_branches.add(row[0].strip())
+    total_departments = len(unique_branches)
 
     # Calculate real-time risk distribution from database
     safe_count = 0
@@ -581,15 +658,33 @@ def get_college_kpi_stats(
         {"name": "Critical Defaulters (<65%)", "value": critical_count, "percentage": round((critical_count / total_evaluated * 100), 1), "color": "#f43f5e"}
     ]
 
-    # Calculate real-time branch breakdown from database
-    dept_map = [
-        ("Computer Science & Engineering", "CSE"),
-        ("Information Technology", "IT"),
-        ("Electronics & Communication", "ECE"),
-        ("Mechanical Engineering", "ME")
-    ]
+    # Calculate real-time branch breakdown from database dynamically
+    discovered_branches = set()
+    for row in db.query(models.StudentProfile.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.TeacherProfile.department).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.Subject.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+    for row in db.query(models.TimetableSlot.branch).distinct().all():
+        if row[0] and row[0].strip():
+            discovered_branches.add(row[0].strip())
+
+    if not discovered_branches:
+        discovered_branches = {
+            "Computer Science & Engineering",
+            "Information Technology",
+            "Electronics & Communication",
+            "Mechanical Engineering"
+        }
+
     branch_breakdown = []
-    for b_name, b_code in dept_map:
+    for idx, b_name in enumerate(sorted(discovered_branches)):
+        words = [w for w in b_name.replace("&", "").split() if w]
+        b_code = "".join([w[0] for w in words]).upper()[:6] if words else f"D{idx+1}"
         b_enrolled = db.query(models.StudentProfile).filter(models.StudentProfile.branch.ilike(f"%{b_name}%")).count()
         b_logs = db.query(models.AttendanceLog).join(
             models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id

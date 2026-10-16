@@ -127,7 +127,9 @@ export default function ClassAttendancePage() {
   const [rawRecords, setRawRecords] = useState<AttendanceRecord[]>([]);
   
   // Filter Options & States
-  const [availableBranches, setAvailableBranches] = useState<string[]>(['Computer Science']);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [availableTeachers, setAvailableTeachers] = useState<string[]>([]);
   const [summaryStats, setSummaryStats] = useState<any>({
@@ -139,7 +141,7 @@ export default function ClassAttendancePage() {
   });
 
   // Selected Filters
-  const [selectedBranch, setSelectedBranch] = useState<string>('Computer Science');
+  const [selectedBranch, setSelectedBranch] = useState<string>('Computer Science & Engineering');
   const [selectedSemester, setSelectedSemester] = useState<string>('all');
   const [selectedSection, setSelectedSection] = useState<string>('all');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
@@ -147,6 +149,32 @@ export default function ClassAttendancePage() {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [customDate, setCustomDate] = useState<string>(todayStr);
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  useEffect(() => {
+    const savedDept = typeof window !== 'undefined' ? localStorage.getItem('hod_department') : null;
+    if (savedDept && savedDept !== 'undefined' && savedDept !== 'null') {
+      setSelectedBranch(savedDept);
+    }
+    fetch(`${API_BASE_URL}/attendance/departments-meta`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.branches) && data.branches.length > 0) {
+            setAvailableBranches(data.branches);
+            if (!savedDept) {
+              setSelectedBranch(data.branches[0]);
+            }
+          }
+          if (Array.isArray(data.semesters) && data.semesters.length > 0) {
+            setAvailableSemesters(data.semesters);
+          }
+          if (Array.isArray(data.sections) && data.sections.length > 0) {
+            setAvailableSections(data.sections);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Roster Drilldown Modal
   const [selectedSessionModal, setSelectedSessionModal] = useState<SessionLogItem | null>(null);
@@ -431,7 +459,21 @@ export default function ClassAttendancePage() {
         </div>
 
         {/* Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 text-xs">
+          {/* Department / Branch Selector */}
+          <div>
+            <label className="block text-stone-600 font-bold mb-1.5">Department</label>
+            <AppleSelect
+              value={selectedBranch}
+              onChange={(val) => setSelectedBranch(String(val))}
+              options={availableBranches.map((b) => ({
+                value: b,
+                label: b,
+                badge: 'Dept'
+              }))}
+            />
+          </div>
+
           {/* Semester Selector */}
           <div>
             <label className="block text-stone-600 font-bold mb-1.5">Semester</label>
@@ -440,7 +482,7 @@ export default function ClassAttendancePage() {
               onChange={(val) => setSelectedSemester(String(val))}
               options={[
                 { value: 'all', label: 'All Semesters', badge: 'All' },
-                ...[1, 2, 3, 4, 5, 6, 7, 8].map(s => ({
+                ...availableSemesters.map(s => ({
                   value: String(s),
                   label: `Semester ${s}`,
                   badge: `Sem ${s}`
@@ -457,9 +499,11 @@ export default function ClassAttendancePage() {
               onChange={(val) => setSelectedSection(String(val))}
               options={[
                 { value: 'all', label: 'All Sections', badge: 'All' },
-                { value: 'A', label: 'Section A', badge: 'Sec A' },
-                { value: 'B', label: 'Section B', badge: 'Sec B' },
-                { value: 'C', label: 'Section C', badge: 'Sec C' }
+                ...availableSections.map(sec => ({
+                  value: sec,
+                  label: `Section ${sec}`,
+                  badge: `Sec ${sec}`
+                }))
               ]}
             />
           </div>

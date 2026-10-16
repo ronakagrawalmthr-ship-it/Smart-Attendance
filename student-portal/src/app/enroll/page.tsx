@@ -26,6 +26,16 @@ export default function StudentEnrollment() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
 
+  const [availableBranches, setAvailableBranches] = useState<string[]>([
+    'Computer Science & Engineering',
+    'Information Technology',
+    'Electronics & Communication',
+    'Mechanical Engineering',
+    'Civil Engineering'
+  ]);
+  const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C', 'D']);
+
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const sName = localStorage.getItem('student_name');
@@ -38,6 +48,27 @@ export default function StudentEnrollment() {
         }));
       }
     }
+
+    fetch(`${API_BASE_URL}/attendance/departments-meta`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.branches) && data.branches.length > 0) {
+            setAvailableBranches(data.branches);
+            setFormData(prev => ({
+              ...prev,
+              branch: prev.branch || data.branches[0]
+            }));
+          }
+          if (Array.isArray(data.semesters) && data.semesters.length > 0) {
+            setAvailableSemesters(data.semesters);
+          }
+          if (Array.isArray(data.sections) && data.sections.length > 0) {
+            setAvailableSections(data.sections);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -320,13 +351,11 @@ export default function StudentEnrollment() {
                 <AppleSelect
                   value={formData.branch}
                   onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
-                  options={[
-                    { value: 'Computer Science', label: 'Computer Science & Engineering', badge: 'CSE' },
-                    { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
-                    { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'ECE' },
-                    { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' },
-                    { value: 'Civil Engineering', label: 'Civil Engineering', badge: 'CE' }
-                  ]}
+                  options={availableBranches.map((b) => ({
+                    value: b,
+                    label: b,
+                    badge: b.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+                  }))}
                 />
               </div>
 
@@ -339,16 +368,11 @@ export default function StudentEnrollment() {
                   <AppleSelect
                     value={formData.semester}
                     onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
-                    options={[
-                      { value: '1', label: 'Semester 1 (1st Yr)', badge: 'Sem 1' },
-                      { value: '2', label: 'Semester 2 (1st Yr)', badge: 'Sem 2' },
-                      { value: '3', label: 'Semester 3 (2nd Yr)', badge: 'Sem 3' },
-                      { value: '4', label: 'Semester 4 (2nd Yr)', badge: 'Sem 4' },
-                      { value: '5', label: 'Semester 5 (3rd Yr)', badge: 'Sem 5' },
-                      { value: '6', label: 'Semester 6 (3rd Yr)', badge: 'Sem 6' },
-                      { value: '7', label: 'Semester 7 (4th Yr)', badge: 'Sem 7' },
-                      { value: '8', label: 'Semester 8 (4th Yr)', badge: 'Sem 8' }
-                    ]}
+                    options={availableSemesters.map((s) => ({
+                      value: String(s),
+                      label: `Semester ${s}`,
+                      badge: `Sem ${s}`
+                    }))}
                   />
                 </div>
                 <div>
@@ -358,11 +382,11 @@ export default function StudentEnrollment() {
                   <AppleSelect
                     value={formData.section}
                     onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
-                    options={[
-                      { value: 'A', label: 'Section A', badge: 'Sec A' },
-                      { value: 'B', label: 'Section B', badge: 'Sec B' },
-                      { value: 'C', label: 'Section C', badge: 'Sec C' }
-                    ]}
+                    options={availableSections.map((sec) => ({
+                      value: sec,
+                      label: `Section ${sec}`,
+                      badge: `Sec ${sec}`
+                    }))}
                   />
                 </div>
               </div>

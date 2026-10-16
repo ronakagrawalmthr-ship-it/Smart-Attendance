@@ -207,7 +207,7 @@ export default function App() {
   const [profileDetails, setProfileDetails] = useState({
     employee_id: 'FACULTY',
     full_name: 'Faculty Member',
-    department: 'Computer Science & Engineering',
+    department: 'Faculty Department',
     email: '',
     phone: '',
     assigned_subjects: []
@@ -283,17 +283,30 @@ export default function App() {
         metaRes = await fetch(`${CLOUD_API_URL}/attendance/departments-meta`).catch(() => null);
       }
       let subjectsList = [];
+      let targetBranch = teacher?.department || 'Computer Science & Engineering';
+      let targetSem = 6;
+      let targetSec = 'A';
       if (metaRes && metaRes.ok) {
         const metaData = await metaRes.json();
         if (metaData.subjects && metaData.subjects.length > 0) {
           subjectsList = metaData.subjects;
         }
+        if (metaData.branches && metaData.branches.length > 0 && !teacher?.department) {
+          targetBranch = metaData.branches[0];
+        }
+        if (metaData.semesters && metaData.semesters.length > 0) {
+          targetSem = metaData.semesters[0];
+        }
+        if (metaData.sections && metaData.sections.length > 0) {
+          targetSec = metaData.sections[0];
+        }
       }
 
-      // 2. Fetch enrolled students from SQLite database
-      let res = await fetch(`${API_BASE_URL}/attendance/class-students?branch=Computer%20Science%20%26%20Engineering&semester=6&section=A`).catch(() => null);
+      // 2. Fetch enrolled students from SQLite database dynamically
+      const rosterQuery = `/attendance/class-students?branch=${encodeURIComponent(targetBranch)}&semester=${targetSem}&section=${targetSec}`;
+      let res = await fetch(`${API_BASE_URL}${rosterQuery}`).catch(() => null);
       if (!res || !res.ok) {
-        res = await fetch(`${CLOUD_API_URL}/attendance/class-students?branch=Computer%20Science%20%26%20Engineering&semester=6&section=A`).catch(() => null);
+        res = await fetch(`${CLOUD_API_URL}${rosterQuery}`).catch(() => null);
       }
       
       let liveRoster = [];
@@ -564,11 +577,12 @@ export default function App() {
         const teacherProfile = {
           name: data.user?.full_name || 'Faculty Member',
           email: data.user?.email || authEmail,
-          department: data.user?.department || 'Computer Science & Engineering',
+          department: data.user?.department || 'Faculty Department',
           token: data.access_token
         };
         setTeacher(teacherProfile);
         await AsyncStorage.setItem('@teacher_user', JSON.stringify(teacherProfile));
+        setTimeout(() => fetchLiveRoster(), 100);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
         const errData = await res.json().catch(() => ({}));

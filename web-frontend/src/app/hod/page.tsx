@@ -44,10 +44,38 @@ export default function HODDashboard() {
   ]);
 
   // 📅 Timetable Management States
+  const [departmentsList, setDepartmentsList] = useState<string[]>([
+    'Computer Science & Engineering',
+    'Information Technology',
+    'Electronics & Communication',
+    'Mechanical Engineering'
+  ]);
+  const [semestersList, setSemestersList] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [sectionsList, setSectionsList] = useState<string[]>(['A', 'B', 'C', 'D']);
   const [ttBranch, setTtBranch] = useState('Computer Science & Engineering');
   const [ttSemester, setTtSemester] = useState(4);
   const [ttSection, setTtSection] = useState('B');
   const [ttSchedule, setTtSchedule] = useState<Record<string, any[]>>({});
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/attendance/departments-meta`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.branches) && data.branches.length > 0) {
+            setDepartmentsList(data.branches);
+            setTtBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
+          }
+          if (Array.isArray(data.semesters) && data.semesters.length > 0) {
+            setSemestersList(data.semesters);
+          }
+          if (Array.isArray(data.sections) && data.sections.length > 0) {
+            setSectionsList(data.sections);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [loadingTt, setLoadingTt] = useState(false);
   const [selectedDayTab, setSelectedDayTab] = useState('Monday');
 
@@ -486,10 +514,9 @@ export default function HODDashboard() {
                       onChange={(e) => setTtBranch(e.target.value)}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:border-stone-400 focus:bg-white"
                     >
-                      <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                      <option value="Information Technology">Information Technology</option>
-                      <option value="Electronics & Communication">Electronics & Communication</option>
-                      <option value="Mechanical Engineering">Mechanical Engineering</option>
+                      {departmentsList.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -499,7 +526,7 @@ export default function HODDashboard() {
                       onChange={(e) => setTtSemester(Number(e.target.value))}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:border-stone-400 focus:bg-white"
                     >
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                      {semestersList.map((s) => (
                         <option key={s} value={s}>Semester {s}</option>
                       ))}
                     </select>
@@ -511,7 +538,7 @@ export default function HODDashboard() {
                       onChange={(e) => setTtSection(e.target.value)}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:border-stone-400 focus:bg-white"
                     >
-                      {['A', 'B', 'C', 'D'].map((sec) => (
+                      {sectionsList.map((sec) => (
                         <option key={sec} value={sec}>Section {sec}</option>
                       ))}
                     </select>

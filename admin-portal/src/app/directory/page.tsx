@@ -50,6 +50,7 @@ export default function DirectoryManagementPage() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   
   // Modal states
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -95,23 +96,33 @@ export default function DirectoryManagementPage() {
     };
   }, [modalMode, showPromoteModal, showTransferModal, showCsvModal]);
 
-  // Dynamic Department list for student filter
+  // Dynamic Department list for student filter and forms
   const departmentFilterOptions = useMemo(() => {
-    const standard = [
-      { value: 'all', label: 'All Departments', badge: 'All' },
-      { value: 'Computer Science', label: 'Computer Science & Engineering', badge: 'CSE' },
-      { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
-      { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'ECE' },
-      { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' },
-      { value: 'Civil Engineering', label: 'Civil Engineering', badge: 'CE' }
-    ];
-    students.forEach(s => {
-      if (s.branch && !standard.some(opt => opt.value.toLowerCase() === s.branch.toLowerCase() || (opt.value === 'Computer Science' && s.branch.toLowerCase().includes('computer')))) {
-        standard.push({ value: s.branch, label: s.branch, badge: s.branch.slice(0, 3).toUpperCase() });
-      }
+    const list = [{ value: 'all', label: 'All Departments', badge: 'All' }];
+    const allSet = new Set<string>();
+
+    availableBranches.forEach(b => { if (b && b.trim()) allSet.add(b.trim()); });
+    students.forEach(s => { if (s.branch && s.branch.trim()) allSet.add(s.branch.trim()); });
+    teachers.forEach(t => { if (t.department && t.department.trim()) allSet.add(t.department.trim()); });
+    hods.forEach(h => { if (h.department && h.department.trim()) allSet.add(h.department.trim()); });
+    subjects.forEach(sub => { if (sub.branch && sub.branch.trim()) allSet.add(sub.branch.trim()); });
+
+    if (allSet.size === 0) {
+      allSet.add('Computer Science & Engineering');
+      allSet.add('Information Technology');
+      allSet.add('Electronics & Communication');
+      allSet.add('Mechanical Engineering');
+      allSet.add('Civil Engineering');
+      allSet.add('Electrical Engineering');
+    }
+
+    Array.from(allSet).sort().forEach(b => {
+      const words = b.replace(/&/g, '').split(' ').filter(Boolean);
+      const badge = words.map(w => w[0]).join('').toUpperCase().slice(0, 4) || 'DEPT';
+      list.push({ value: b, label: b, badge });
     });
-    return standard;
-  }, [students]);
+    return list;
+  }, [availableBranches, students, teachers, hods, subjects]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -259,11 +270,12 @@ export default function DirectoryManagementPage() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [resHods, resTeachers, resStudents, resSubjects] = await Promise.all([
+      const [resHods, resTeachers, resStudents, resSubjects, resMeta] = await Promise.all([
         authFetch(`${API_BASE_URL}/management/crud/hods`),
         authFetch(`${API_BASE_URL}/management/crud/teachers`),
         authFetch(`${API_BASE_URL}/management/crud/students`),
         authFetch(`${API_BASE_URL}/management/crud/subjects`),
+        fetch(`${API_BASE_URL}/attendance/departments-meta`).catch(() => null),
       ]);
 
       if (resHods.ok) setHods((await resHods.json()).hods || []);
@@ -274,6 +286,12 @@ export default function DirectoryManagementPage() {
         setStudents(stds);
       }
       if (resSubjects.ok) setSubjects((await resSubjects.json()).subjects || []);
+      if (resMeta && resMeta.ok) {
+        const meta = await resMeta.json();
+        if (meta.branches && Array.isArray(meta.branches)) {
+          setAvailableBranches(meta.branches);
+        }
+      }
     } catch {
       console.log("Error fetching directory records.");
     } finally {
@@ -958,16 +976,13 @@ export default function DirectoryManagementPage() {
                     <div className="space-y-1">
                       <label className="text-stone-700 font-semibold">Department Authority</label>
                       <select
-                        value={formData.department || 'Computer Science'}
+                        value={formData.department || (departmentFilterOptions.find(d => d.value !== 'all')?.value || '')}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                       >
-                        <option value="Computer Science">Computer Science</option>
-                        <option value="Information Technology">Information Technology</option>
-                        <option value="Electronics">Electronics</option>
-                        <option value="Mechanical">Mechanical</option>
-                        <option value="Civil">Civil</option>
-                        <option value="Electrical">Electrical</option>
+                        {departmentFilterOptions.filter(d => d.value !== 'all').map(d => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
                       </select>
                     </div>
                     {modalMode === 'create' && (
@@ -1026,14 +1041,13 @@ export default function DirectoryManagementPage() {
                     <div className="space-y-1">
                       <label className="text-stone-700 font-semibold">Department</label>
                       <select
-                        value={formData.department || 'Computer Science'}
+                        value={formData.department || (departmentFilterOptions.find(d => d.value !== 'all')?.value || '')}
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                       >
-                        <option value="Computer Science">Computer Science</option>
-                        <option value="Information Technology">Information Technology</option>
-                        <option value="Electronics">Electronics</option>
-                        <option value="Mechanical">Mechanical</option>
+                        {departmentFilterOptions.filter(d => d.value !== 'all').map(d => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
                       </select>
                     </div>
                     {modalMode === 'create' && (
@@ -1124,12 +1138,15 @@ export default function DirectoryManagementPage() {
                       </div>
                       <div className="space-y-1">
                         <label className="text-stone-700 font-semibold">Branch</label>
-                        <input
-                          type="text"
-                          value={formData.branch || 'Computer Science'}
+                        <select
+                          value={formData.branch || (departmentFilterOptions.find(d => d.value !== 'all')?.value || '')}
                           onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        />
+                        >
+                          {departmentFilterOptions.filter(d => d.value !== 'all').map(d => (
+                            <option key={d.value} value={d.value}>{d.label}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -1216,12 +1233,15 @@ export default function DirectoryManagementPage() {
                       </div>
                       <div className="space-y-1">
                         <label className="text-stone-700 font-semibold">Branch</label>
-                        <input
-                          type="text"
-                          value={formData.branch || 'Computer Science'}
+                        <select
+                          value={formData.branch || (departmentFilterOptions.find(d => d.value !== 'all')?.value || '')}
                           onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        />
+                        >
+                          {departmentFilterOptions.filter(d => d.value !== 'all').map(d => (
+                            <option key={d.value} value={d.value}>{d.label}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </>
@@ -1324,13 +1344,11 @@ export default function DirectoryManagementPage() {
                     onChange={(e) => setPromoteBranch(e.target.value)}
                     className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                   >
-                  <option value="all">All Departments (Entire College)</option>
-                  <option value="Computer Science">Computer Science & Engineering</option>
-                  <option value="Information Technology">Information Technology</option>
-                  <option value="Electronics">Electronics & Communication</option>
-                  <option value="Mechanical">Mechanical Engineering</option>
-                  <option value="Civil">Civil Engineering</option>
-                </select>
+                    <option value="all">All Departments (Entire College)</option>
+                    {departmentFilterOptions.filter(d => d.value !== 'all').map(d => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
               </div>
             </div>
 

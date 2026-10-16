@@ -10,7 +10,7 @@ import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function GrievanceDesk() {
   const [sessionId, setSessionId] = useState('1');
-  const [subjectName, setSubjectName] = useState('Operating Systems');
+  const [subjectName, setSubjectName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
@@ -19,12 +19,7 @@ export default function GrievanceDesk() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const [availableSubjects, setAvailableSubjects] = useState<string[]>([
-    'Operating Systems',
-    'Database Management Systems',
-    'Computer Networks',
-    'Design & Analysis of Algorithms'
-  ]);
+  const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
   const [studentName, setStudentName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
@@ -226,11 +221,15 @@ export default function GrievanceDesk() {
               <AppleSelect
                 value={subjectName}
                 onChange={(val) => setSubjectName(val)}
-                options={availableSubjects.map((sub) => ({
-                  value: sub,
-                  label: sub,
-                  badge: 'Subject'
-                }))}
+                options={
+                  availableSubjects.length > 0
+                    ? availableSubjects.map((sub) => ({
+                        value: sub,
+                        label: sub,
+                        badge: 'Subject'
+                      }))
+                    : [{ value: subjectName || 'General Academic Lecture', label: subjectName || 'General Academic Lecture', badge: 'Subject' }]
+                }
               />
             </div>
 

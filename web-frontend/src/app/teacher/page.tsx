@@ -60,13 +60,14 @@ interface Subject {
 }
 
 export default function TeacherAttendancePage() {
-  // Navigation & Metadata
   const [branches, setBranches] = useState<string[]>([
     'Computer Science & Engineering', 
     'Information Technology', 
     'Electronics & Communication', 
     'Mechanical Engineering'
   ]);
+  const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -220,6 +221,8 @@ export default function TeacherAttendancePage() {
           setSelectedBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
         }
         if (data.subjects) setAvailableSubjects(data.subjects);
+        if (data.semesters && data.semesters.length > 0) setAvailableSemesters(data.semesters);
+        if (data.sections && data.sections.length > 0) setAvailableSections(data.sections);
         if (data.teachers && data.teachers.length > 0) {
           setConductedByName(prev => prev || data.teachers[0].name);
         }
@@ -766,7 +769,7 @@ export default function TeacherAttendancePage() {
               icon={<Calendar className="h-4 w-4" />}
               value={selectedSemester}
               onChange={(val) => setSelectedSemester(Number(val))}
-              options={[1, 2, 3, 4, 5, 6, 7, 8].map(s => ({
+              options={availableSemesters.map(s => ({
                 value: s,
                 label: `Semester ${s}`,
                 sublabel: s <= 2 ? 'Year 1' : (s <= 4 ? 'Year 2' : (s <= 6 ? 'Year 3' : 'Year 4')),
@@ -780,7 +783,7 @@ export default function TeacherAttendancePage() {
                 Class Section
               </label>
               <div className="flex p-1 rounded-2xl bg-stone-100/90 border border-stone-200/90 h-[46px] items-center">
-                {['A', 'B', 'C'].map(sec => (
+                {availableSections.map(sec => (
                   <button
                     key={sec}
                     type="button"

@@ -23,6 +23,30 @@ export default function RegisterStudent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
+  const [availableBranches, setAvailableBranches] = useState<string[]>([
+    'Computer Science & Engineering',
+    'Information Technology',
+    'Electronics & Communication',
+    'Mechanical Engineering'
+  ]);
+  const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+
+  React.useEffect(() => {
+    fetch(`${API_BASE_URL}/attendance/departments-meta`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.branches) && data.branches.length > 0) {
+            setAvailableBranches(data.branches);
+          }
+          if (Array.isArray(data.semesters) && data.semesters.length > 0) {
+            setAvailableSemesters(data.semesters);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [streamActive, setStreamActive] = useState(false);
@@ -191,7 +215,7 @@ export default function RegisterStudent() {
                     value={formData.semester}
                     onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
                     placeholder="Select Semester"
-                    options={[1,2,3,4,5,6,7,8].map(s => ({
+                    options={availableSemesters.map(s => ({
                       value: String(s),
                       label: `Semester ${s}`,
                       badge: `Sem ${s}`
@@ -206,12 +230,11 @@ export default function RegisterStudent() {
                     value={formData.branch}
                     onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
                     placeholder="Select Branch"
-                    options={[
-                      { value: 'Computer Science & Engineering', label: 'Computer Science & Engineering', badge: 'CS' },
-                      { value: 'Information Technology', label: 'Information Technology', badge: 'IT' },
-                      { value: 'Electronics & Communication', label: 'Electronics & Communication', badge: 'EC' },
-                      { value: 'Mechanical Engineering', label: 'Mechanical Engineering', badge: 'ME' }
-                    ]}
+                    options={availableBranches.map(b => ({
+                      value: b,
+                      label: b,
+                      badge: b.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()
+                    }))}
                   />
                 </div>
                 <div>
