@@ -3171,10 +3171,16 @@ def get_teacher_profile(
     
     assigned = []
     if tp:
+        tt_slots = db.query(models.TimetableSlot).filter(models.TimetableSlot.teacher_id == tp.id).all()
+        for slot in tt_slots:
+            name = (slot.subject.name if slot.subject else None) or slot.custom_subject_name
+            if name and name not in assigned:
+                assigned.append(name)
         sessions = db.query(models.AcademicSession).filter(models.AcademicSession.teacher_id == tp.id).all()
         for s in sessions:
-            if s.subject and s.subject.name not in assigned:
-                assigned.append(s.subject.name)
+            name = (s.subject.name if s.subject else None) or s.custom_subject_name
+            if name and name not in assigned:
+                assigned.append(name)
                 
     return {
         "id": current_user.id,

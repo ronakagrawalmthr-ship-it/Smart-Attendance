@@ -606,11 +606,11 @@ def campus_copilot_chat(
     if not student:
         raise HTTPException(status_code=404, detail="Student profile not found. Please ensure your student account is registered.")
 
-    student_name = student.full_name if student else "Student"
-    roll_num = student.roll_number if student else ""
-    branch = student.branch if student else "Engineering"
-    semester = student.semester if student else 1
-    section = student.section if student else "A"
+    student_name = student.full_name or "Student"
+    roll_num = student.roll_number or ""
+    branch = student.branch or "Academic Department"
+    semester = student.semester or 1
+    section = student.section or "A"
 
     # Compute Attendance Stats (Strictly dynamic from DB, 0.0% if no sessions yet)
     logs = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == student.id).all() if student else []
@@ -812,13 +812,16 @@ def seed_sample_timetable_for_class(branch: str, semester: int, section: str, db
     dept_teachers = db.query(models.TeacherProfile).filter(
         models.TeacherProfile.department.ilike(f"%{branch}%")
     ).all()
-    teacher_names = [t.full_name for t in dept_teachers] if dept_teachers else [
-        "Dr. Department Professor", "Prof. Academic Faculty", "Faculty Coordinator", "Visiting Specialist"
+    all_teachers = db.query(models.TeacherProfile).all() if not dept_teachers else dept_teachers
+
+    teacher_list = dept_teachers if dept_teachers else all_teachers
+    teacher_names = [t.full_name for t in teacher_list] if teacher_list else [
+        "Faculty Member 1", "Faculty Member 2", "Faculty Coordinator", "Visiting Specialist"
     ]
     
-    if existing_subjects:
-        subject_names = [s.name for s in existing_subjects]
-    else:
+    subj_list = existing_subjects if existing_subjects else []
+    subject_names = [s.name for s in existing_subjects] if existing_subjects else []
+    if not subject_names:
         b_clean = branch.strip()
         b_lower = b_clean.lower()
         if "mech" in b_lower:
@@ -876,6 +879,9 @@ def seed_sample_timetable_for_class(branch: str, semester: int, section: str, db
     idx = 1
     for day, slots in sample_data.items():
         for st_t, end_t, subj, teacher, room, stype in slots:
+            matched_subj = next((s for s in subj_list if s.name.lower() == subj.lower()), None)
+            matched_tid = next((t.id for t in teacher_list if t.full_name.lower() == teacher.lower()), None)
+
             slot = models.TimetableSlot(
                 branch=branch,
                 semester=semester,
@@ -884,7 +890,9 @@ def seed_sample_timetable_for_class(branch: str, semester: int, section: str, db
                 slot_index=idx,
                 start_time=st_t,
                 end_time=end_t,
+                subject_id=matched_subj.id if matched_subj else None,
                 custom_subject_name=subj,
+                teacher_id=matched_tid,
                 custom_teacher_name=teacher,
                 room_number=room,
                 session_type=stype
