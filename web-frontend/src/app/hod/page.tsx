@@ -44,15 +44,10 @@ export default function HODDashboard() {
   ]);
 
   // 📅 Timetable Management States
-  const [departmentsList, setDepartmentsList] = useState<string[]>([
-    'Computer Science & Engineering',
-    'Information Technology',
-    'Electronics & Communication',
-    'Mechanical Engineering'
-  ]);
+  const [departmentsList, setDepartmentsList] = useState<string[]>([]);
   const [semestersList, setSemestersList] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [sectionsList, setSectionsList] = useState<string[]>(['A', 'B', 'C', 'D']);
-  const [ttBranch, setTtBranch] = useState('Computer Science & Engineering');
+  const [ttBranch, setTtBranch] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '');
   const [ttSemester, setTtSemester] = useState(4);
   const [ttSection, setTtSection] = useState('B');
   const [ttSchedule, setTtSchedule] = useState<Record<string, any[]>>({});
@@ -64,7 +59,7 @@ export default function HODDashboard() {
         if (data) {
           if (Array.isArray(data.branches) && data.branches.length > 0) {
             setDepartmentsList(data.branches);
-            setTtBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
+            setTtBranch(prev => prev && data.branches.includes(prev) ? prev : data.branches[0]);
           }
           if (Array.isArray(data.semesters) && data.semesters.length > 0) {
             setSemestersList(data.semesters);
@@ -345,7 +340,7 @@ export default function HODDashboard() {
               HOD Control Center
             </h1>
           </div>
-          <p className="text-xs text-stone-500 mt-0.5">Computer Science & Engineering Department</p>
+          <p className="text-xs text-stone-500 mt-0.5">{ttBranch || 'Academic Department'} Administration</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <button onClick={fetchLiveManagementData} className="flex items-center text-xs font-semibold bg-stone-50 hover:bg-stone-100 text-stone-700 px-3.5 py-2 rounded-2xl transition-colors border border-stone-200 shadow-sm">

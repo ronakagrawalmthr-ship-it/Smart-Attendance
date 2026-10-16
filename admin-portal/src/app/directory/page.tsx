@@ -315,14 +315,15 @@ export default function DirectoryManagementPage() {
   const openCreateModal = () => {
     setModalMode('create');
     setSelectedEntity(null);
+    const defaultDept = departmentFilterOptions.find(o => o.value !== 'all')?.value || '';
     if (activeTab === 'hods') {
-      setFormData({ full_name: '', email: '', department: 'Computer Science', password: generateSecurePassword('Hod') });
+      setFormData({ full_name: '', email: '', department: defaultDept, password: generateSecurePassword('Hod') });
     } else if (activeTab === 'teachers') {
-      setFormData({ full_name: '', email: '', department: 'Computer Science', password: generateSecurePassword('Teacher') });
+      setFormData({ full_name: '', email: '', department: defaultDept, password: generateSecurePassword('Teacher') });
     } else if (activeTab === 'students') {
-      setFormData({ full_name: '', roll_number: '', branch: 'Computer Science', semester: 1, section: 'A', email: '' });
+      setFormData({ full_name: '', roll_number: '', branch: defaultDept, semester: 1, section: 'A', email: '' });
     } else if (activeTab === 'subjects') {
-      setFormData({ code: '', name: '', branch: 'Computer Science', semester: 1 });
+      setFormData({ code: '', name: '', branch: defaultDept, semester: 1 });
     }
   };
 
@@ -416,8 +417,7 @@ export default function DirectoryManagementPage() {
           s.email?.toLowerCase().includes(q);
 
         const matchesDept = studentDeptFilter === 'all' || 
-          s.branch?.toLowerCase() === studentDeptFilter.toLowerCase() || 
-          (studentDeptFilter === 'Computer Science' && s.branch?.toLowerCase().includes('computer'));
+          s.branch?.toLowerCase() === studentDeptFilter.toLowerCase();
 
         const matchesSem = studentSemFilter === 'all' || String(s.semester) === String(studentSemFilter);
         const matchesSec = studentSecFilter === 'all' || s.section?.toUpperCase() === studentSecFilter.toUpperCase();

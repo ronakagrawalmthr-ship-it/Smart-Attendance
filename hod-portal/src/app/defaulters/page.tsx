@@ -21,7 +21,7 @@ export default function HODDefaultersPage() {
   const [notificationSent, setNotificationSent] = useState<string | null>(null);
   const [institutionName, setInstitutionName] = useState('');
 
-  // Department-specific defaulters (Computer Science & Engineering)
+  // Department-specific defaulters
   const [defaulters, setDefaulters] = useState<any[]>([]);
 
   useEffect(() => {
@@ -75,11 +75,13 @@ export default function HODDefaultersPage() {
   const handleNotifyParent = async (name: string, roll: string, email: string) => {
     try {
       setDispatching(true);
-      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Computer Science';
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '';
+      const payload: any = { student_rolls: [roll], channel: 'Email' };
+      if (branch) payload.branch = branch;
       const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_rolls: [roll], channel: 'Email', branch })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const data = await res.json();
@@ -110,11 +112,13 @@ export default function HODDefaultersPage() {
   const handleNotifyAllDepartment = async () => {
     try {
       setDispatching(true);
-      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Computer Science';
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '';
+      const payload: any = { threshold, channel: 'Email' };
+      if (branch) payload.branch = branch;
       const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threshold, channel: 'Email', branch })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const data = await res.json();
@@ -195,10 +199,13 @@ export default function HODDefaultersPage() {
     
     // Log WhatsApp outreach into SQLite
     try {
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '';
+      const payload: any = { student_rolls: [roll], channel: 'WhatsApp' };
+      if (branch) payload.branch = branch;
       await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_rolls: [roll], channel: 'WhatsApp', branch: 'Computer Science' })
+        body: JSON.stringify(payload)
       });
       fetchAlertLogs();
     } catch {}

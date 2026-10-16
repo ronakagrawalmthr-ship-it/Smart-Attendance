@@ -35,8 +35,23 @@ export default function HODStudentRosterPage() {
   const [selectedSection, setSelectedSection] = useState<string>('all');
   const [selectedBiometric, setSelectedBiometric] = useState<string>('all');
   
-  const [departmentName, setDepartmentName] = useState('Computer Science');
+  const [departmentName, setDepartmentName] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Department');
   const [hodName, setHodName] = useState('Head of Department');
+
+  const sectionOptions = useMemo(() => {
+    const list = [{ value: 'all', label: 'All Sections', badge: 'All' }];
+    const discovered = new Set<string>();
+    students.forEach(s => {
+      if (s.section && s.section.trim()) discovered.add(s.section.trim().toUpperCase());
+    });
+    if (discovered.size === 0) {
+      ['A', 'B', 'C'].forEach(sec => discovered.add(sec));
+    }
+    Array.from(discovered).sort().forEach(sec => {
+      list.push({ value: sec, label: `Section ${sec}`, badge: `Sec ${sec}` });
+    });
+    return list;
+  }, [students]);
 
   const fetchStudents = async () => {
     try {
@@ -229,12 +244,7 @@ export default function HODStudentRosterPage() {
               <AppleSelect
                 value={selectedSection}
                 onChange={(val) => setSelectedSection(val)}
-                options={[
-                  { value: 'all', label: 'All Sections', badge: 'All' },
-                  { value: 'A', label: 'Section A', badge: 'Sec A' },
-                  { value: 'B', label: 'Section B', badge: 'Sec B' },
-                  { value: 'C', label: 'Section C', badge: 'Sec C' }
-                ]}
+                options={sectionOptions}
               />
             </div>
 

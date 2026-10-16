@@ -32,9 +32,9 @@ export default function HODSettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Profile fields
-  const [fullName, setFullName] = useState('HOD Computer Science');
+  const [fullName, setFullName] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_name')) || 'Head of Department');
   const [email, setEmail] = useState('');
-  const [department, setDepartment] = useState('Computer Science & Engineering');
+  const [department, setDepartment] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Academic Department');
   const [officeRoom, setOfficeRoom] = useState('Department Office, Block B-302');
   const [phone, setPhone] = useState('+91 98765 22441');
   const [defaulterThreshold, setDefaulterThreshold] = useState<number>(75.0);
@@ -68,13 +68,13 @@ export default function HODSettingsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        const loadedName = data.full_name || 'HOD Computer Science';
+        const loadedName = data.full_name || (typeof window !== 'undefined' && localStorage.getItem('hod_name')) || 'Head of Department';
         setFullName(loadedName);
         if (typeof window !== 'undefined' && data.full_name) {
           localStorage.setItem('hod_name', data.full_name);
         }
         setEmail(data.email || '');
-        setDepartment(data.department || 'Computer Science & Engineering');
+        setDepartment(data.department || (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Academic Department');
         setOfficeRoom(data.office_room || 'Department Office, Block B-302');
         setPhone(data.phone || '+91 98765 22441');
         setDefaulterThreshold(data.defaulter_threshold !== undefined ? data.defaulter_threshold : 75.0);

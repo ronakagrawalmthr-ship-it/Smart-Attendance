@@ -206,7 +206,7 @@ def get_student_metrics(
             "stage": year_info["stage"],
             "section": student.section or "A",
             "photo_thumbnail": student.photo_thumbnail,
-            "branch": student.branch or "Computer Science"
+            "branch": student.branch or "Academic Department"
         },
         "metrics": {
             "overall_percentage": overall_percentage,
@@ -431,7 +431,7 @@ def get_student_profile(
     return {
         "full_name": student.full_name,
         "roll_number": student.roll_number,
-        "branch": student.branch or "Computer Science",
+        "branch": student.branch or "Academic Department",
         "semester": student.semester or 1,
         "academic_year": year_info["academic_year"],
         "academic_year_label": year_info["academic_year_label"],
@@ -596,7 +596,7 @@ def get_student_live_notifications(
         })
 
     # 3. Institutional Holidays applicable to student's department or college
-    student_branch = student.branch or "Computer Science"
+    student_branch = student.branch or ""
     today_str = now.strftime("%Y-%m-%d")
     holidays = db.query(models.Holiday).filter(models.Holiday.date >= today_str).order_by(models.Holiday.date.asc()).limit(2).all()
     for h in holidays:

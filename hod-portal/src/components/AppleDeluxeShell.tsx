@@ -126,18 +126,25 @@ const getNotificationStyle = (type: string) => {
 
 export default function AppleDeluxeShell({
   children,
-  userRole = 'HOD, Computer Science & Engineering',
-  userName = 'HOD Computer Science',
+  userRole = 'HOD, Academic Department',
+  userName = 'Head of Department',
   userAvatar = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
 }: AppleDeluxeShellProps) {
   const pathname = usePathname();
   const [displayName, setDisplayName] = useState(userName);
+  const [displayRole, setDisplayRole] = useState(userRole);
 
   useEffect(() => {
-    if (userName) {
-      setDisplayName(userName);
+    if (typeof window !== 'undefined') {
+      const savedName = localStorage.getItem('hod_name');
+      const savedDept = localStorage.getItem('hod_department');
+      if (savedName) setDisplayName(savedName);
+      else if (userName) setDisplayName(userName);
+      
+      if (savedDept) setDisplayRole(`HOD, ${savedDept}`);
+      else if (userRole) setDisplayRole(userRole);
     }
-  }, [userName]);
+  }, [userName, userRole]);
 
   // Dynamic Island State: 'compact' (resting) vs 'expanded' (5-second notification)
   const [isExpanded, setIsExpanded] = useState(false);
@@ -419,7 +426,7 @@ export default function AppleDeluxeShell({
               />
               <div className="min-w-0 flex-1 hidden lg:block">
                 <p className="text-xs font-bold text-stone-900 truncate">{displayName}</p>
-                <p className="text-[10px] text-teal-700 font-medium truncate">{userRole}</p>
+                <p className="text-[10px] text-teal-700 font-medium truncate">{displayRole}</p>
               </div>
             </div>
             <ChevronDown className="h-3.5 w-3.5 text-stone-400 shrink-0 hidden lg:block" />

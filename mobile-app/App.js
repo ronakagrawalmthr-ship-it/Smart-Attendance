@@ -283,15 +283,15 @@ export default function App() {
         metaRes = await fetch(`${CLOUD_API_URL}/attendance/departments-meta`).catch(() => null);
       }
       let subjectsList = [];
-      let targetBranch = teacher?.department || 'Computer Science & Engineering';
-      let targetSem = 6;
+      let targetBranch = teacher?.department || '';
+      let targetSem = 1;
       let targetSec = 'A';
       if (metaRes && metaRes.ok) {
         const metaData = await metaRes.json();
         if (metaData.subjects && metaData.subjects.length > 0) {
           subjectsList = metaData.subjects;
         }
-        if (metaData.branches && metaData.branches.length > 0 && !teacher?.department) {
+        if (metaData.branches && metaData.branches.length > 0 && !targetBranch) {
           targetBranch = metaData.branches[0];
         }
         if (metaData.semesters && metaData.semesters.length > 0) {

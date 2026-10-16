@@ -166,10 +166,21 @@ def get_today_timetable(
         section = sp.section or "A"
 
     if not branch or not semester:
-        # Default fallback
-        branch = "Computer Science & Engineering"
-        semester = 4
-        section = "B"
+        first_slot = db.query(models.TimetableSlot).first()
+        if first_slot:
+            branch = first_slot.branch
+            semester = first_slot.semester
+            section = first_slot.section or "A"
+        else:
+            first_st = db.query(models.StudentProfile).first()
+            if first_st:
+                branch = first_st.branch
+                semester = first_st.semester
+                section = first_st.section or "A"
+            else:
+                branch = "Academic Department"
+                semester = 1
+                section = "A"
 
     today_name = datetime.utcnow().strftime("%A")
     # If today is Sunday, show Monday as next preview
@@ -406,7 +417,7 @@ def get_gemini_ai_academic_advisory(
 
     student_name = student.full_name if student else "Student"
     roll_num = student.roll_number if student else ""
-    branch = student.branch if student else "Computer Science & Engineering"
+    branch = student.branch if student else "Academic Department"
     semester = student.semester if student else 1
     section = student.section if student else "A"
 
@@ -780,41 +791,72 @@ GUIDELINES:
         )
 
 def seed_sample_timetable_for_class(branch: str, semester: int, section: str, db: Session):
-    """Auto-seeds a realistic weekly college timetable so HOD and students have data instantly."""
+    """Auto-seeds a realistic weekly college timetable adapting to the target branch and DB subjects."""
+    existing_subjects = db.query(models.Subject).filter(
+        models.Subject.branch.ilike(f"%{branch}%")
+    ).all()
+    
+    dept_teachers = db.query(models.TeacherProfile).filter(
+        models.TeacherProfile.department.ilike(f"%{branch}%")
+    ).all()
+    teacher_names = [t.full_name for t in dept_teachers] if dept_teachers else [
+        "Dr. Department Professor", "Prof. Academic Faculty", "Faculty Coordinator", "Visiting Specialist"
+    ]
+    
+    if existing_subjects:
+        subject_names = [s.name for s in existing_subjects]
+    else:
+        b_clean = branch.strip()
+        b_lower = b_clean.lower()
+        if "mech" in b_lower:
+            subject_names = ["Thermodynamics & Heat Transfer", "Fluid Mechanics & Machinery", "Kinematics of Machines", "Manufacturing Technology"]
+        elif "civil" in b_lower:
+            subject_names = ["Structural Analysis", "Surveying & Geomatics", "Geotechnical Engineering", "Hydraulics Engineering"]
+        elif "elec" in b_lower or "ee" in b_lower:
+            subject_names = ["Circuit Theory & Networks", "Electrical Machines", "Power Systems Engineering", "Control Systems"]
+        elif "comm" in b_lower or "ece" in b_lower:
+            subject_names = ["Signals & Systems", "Digital Electronics", "Electromagnetic Fields", "Communication Systems"]
+        elif "it" in b_lower:
+            subject_names = ["Web Technologies", "Database Management Systems", "Data Structures & Algorithms", "Computer Networks"]
+        elif "comp" in b_lower or "cs" in b_lower:
+            subject_names = ["Operating Systems", "Database Management Systems", "Computer Networks", "Design & Analysis of Algorithms"]
+        else:
+            subject_names = [f"{b_clean} Principles", f"{b_clean} Analysis", f"{b_clean} System Engineering", f"{b_clean} Professional Practice"]
+
     sample_data = {
         "Monday": [
-            ("09:00 AM", "10:00 AM", "Cloud Computing & DevOps", "Prof. Rajesh Sharma", "LH-301", "lecture"),
-            ("10:15 AM", "11:15 AM", "Database Management Systems", "Dr. Durga Pooja", "LH-301", "lecture"),
-            ("11:30 AM", "12:30 PM", "Operating Systems", "Dr. Durga Pooja", "LH-301", "lecture"),
-            ("01:30 PM", "03:30 PM", "DevOps & Cloud Practical Lab", "Prof. Rajesh Sharma", "Cloud Lab-1", "practical"),
+            ("09:00 AM", "10:00 AM", subject_names[0 % len(subject_names)], teacher_names[0 % len(teacher_names)], "LH-301", "lecture"),
+            ("10:15 AM", "11:15 AM", subject_names[1 % len(subject_names)], teacher_names[1 % len(teacher_names)], "LH-301", "lecture"),
+            ("11:30 AM", "12:30 PM", subject_names[2 % len(subject_names)], teacher_names[2 % len(teacher_names)], "LH-301", "lecture"),
+            ("01:30 PM", "03:30 PM", f"{subject_names[3 % len(subject_names)]} Lab", teacher_names[0 % len(teacher_names)], "Department Lab-1", "practical"),
         ],
         "Tuesday": [
-            ("09:00 AM", "10:00 AM", "Computer Networks", "Dr. Ananya Roy", "LH-302", "lecture"),
-            ("10:15 AM", "11:15 AM", "Design & Analysis of Algorithms", "Prof. Amit Verma", "LH-302", "lecture"),
-            ("11:30 AM", "12:30 PM", "Database Management Systems", "Dr. Durga Pooja", "LH-302", "lecture"),
-            ("01:30 PM", "03:30 PM", "Algorithms & Data Lab", "Prof. Amit Verma", "Lab-3", "practical"),
+            ("09:00 AM", "10:00 AM", subject_names[1 % len(subject_names)], teacher_names[1 % len(teacher_names)], "LH-302", "lecture"),
+            ("10:15 AM", "11:15 AM", subject_names[2 % len(subject_names)], teacher_names[2 % len(teacher_names)], "LH-302", "lecture"),
+            ("11:30 AM", "12:30 PM", subject_names[0 % len(subject_names)], teacher_names[0 % len(teacher_names)], "LH-302", "lecture"),
+            ("01:30 PM", "03:30 PM", f"{subject_names[1 % len(subject_names)]} Practical", teacher_names[1 % len(teacher_names)], "Department Lab-2", "practical"),
         ],
         "Wednesday": [
-            ("09:00 AM", "10:00 AM", "Operating Systems", "Dr. Durga Pooja", "LH-301", "lecture"),
-            ("10:15 AM", "11:15 AM", "Cloud Computing & DevOps", "Prof. Rajesh Sharma", "LH-301", "lecture"),
-            ("11:30 AM", "12:30 PM", "Discrete Mathematics", "Prof. S. K. Gupta", "LH-301", "lecture"),
-            ("02:00 PM", "03:30 PM", "Department Technical Seminar", "Faculty Panel", "Auditorium", "lecture"),
+            ("09:00 AM", "10:00 AM", subject_names[2 % len(subject_names)], teacher_names[2 % len(teacher_names)], "LH-301", "lecture"),
+            ("10:15 AM", "11:15 AM", subject_names[0 % len(subject_names)], teacher_names[0 % len(teacher_names)], "LH-301", "lecture"),
+            ("11:30 AM", "12:30 PM", subject_names[3 % len(subject_names)], teacher_names[3 % len(teacher_names)], "LH-301", "lecture"),
+            ("02:00 PM", "03:30 PM", f"{branch} Technical Seminar", teacher_names[0 % len(teacher_names)], "Auditorium", "lecture"),
         ],
         "Thursday": [
-            ("09:00 AM", "10:00 AM", "Design & Analysis of Algorithms", "Prof. Amit Verma", "LH-301", "lecture"),
-            ("10:15 AM", "11:15 AM", "Computer Networks", "Dr. Ananya Roy", "LH-301", "lecture"),
-            ("11:30 AM", "12:30 PM", "Database Management Systems", "Dr. Durga Pooja", "LH-301", "lecture"),
-            ("01:30 PM", "03:30 PM", "Database Systems Lab", "Dr. Durga Pooja", "DB Lab-2", "practical"),
+            ("09:00 AM", "10:00 AM", subject_names[0 % len(subject_names)], teacher_names[0 % len(teacher_names)], "LH-301", "lecture"),
+            ("10:15 AM", "11:15 AM", subject_names[1 % len(subject_names)], teacher_names[1 % len(teacher_names)], "LH-301", "lecture"),
+            ("11:30 AM", "12:30 PM", subject_names[2 % len(subject_names)], teacher_names[2 % len(teacher_names)], "LH-301", "lecture"),
+            ("01:30 PM", "03:30 PM", f"{subject_names[0 % len(subject_names)]} Project Workshop", teacher_names[1 % len(teacher_names)], "Innovation Lab", "practical"),
         ],
         "Friday": [
-            ("09:00 AM", "10:00 AM", "Computer Networks", "Dr. Ananya Roy", "LH-301", "lecture"),
-            ("10:15 AM", "11:15 AM", "Operating Systems", "Dr. Durga Pooja", "LH-301", "lecture"),
-            ("11:30 AM", "12:30 PM", "Cloud Computing & DevOps", "Prof. Rajesh Sharma", "LH-301", "lecture"),
-            ("02:00 PM", "04:00 PM", "Industry Expert Guest Lecture", "Visiting Industry Leader", "Seminar Hall", "guest_lecture"),
+            ("09:00 AM", "10:00 AM", subject_names[1 % len(subject_names)], teacher_names[1 % len(teacher_names)], "LH-301", "lecture"),
+            ("10:15 AM", "11:15 AM", subject_names[2 % len(subject_names)], teacher_names[2 % len(teacher_names)], "LH-301", "lecture"),
+            ("11:30 AM", "12:30 PM", subject_names[3 % len(subject_names)], teacher_names[3 % len(teacher_names)], "LH-301", "lecture"),
+            ("02:00 PM", "04:00 PM", f"Special Guest Lecture ({branch})", "Visiting Industry Specialist", "Seminar Hall", "guest_lecture"),
         ],
         "Saturday": [
-            ("09:30 AM", "11:00 AM", "Competitive Programming & Problem Solving", "Prof. Amit Verma", "Lab-1", "practical"),
-            ("11:15 AM", "01:00 PM", "Open Source Project Mentorship", "Faculty Coordinators", "Innovation Hub", "practical"),
+            ("09:30 AM", "11:00 AM", f"{branch} Capstone & Project Mentorship", teacher_names[0 % len(teacher_names)], "Innovation Hub", "practical"),
+            ("11:15 AM", "01:00 PM", "Student Open Forum & Seminar", "Department Faculty Panel", "Main Hall", "practical"),
         ]
     }
 

@@ -60,12 +60,7 @@ interface Subject {
 }
 
 export default function TeacherAttendancePage() {
-  const [branches, setBranches] = useState<string[]>([
-    'Computer Science & Engineering', 
-    'Information Technology', 
-    'Electronics & Communication', 
-    'Mechanical Engineering'
-  ]);
+  const [branches, setBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
@@ -167,8 +162,8 @@ export default function TeacherAttendancePage() {
   };
 
   // Form selections
-  const [selectedBranch, setSelectedBranch] = useState<string>('Computer Science & Engineering');
-  const [selectedSemester, setSelectedSemester] = useState<number>(6);
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('teacher_department')) || '');
+  const [selectedSemester, setSelectedSemester] = useState<number>(1);
   const [selectedSection, setSelectedSection] = useState<string>('A');
   const [sessionCategory, setSessionCategory] = useState<'regular' | 'guest' | 'proxy'>('regular');
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
@@ -238,6 +233,8 @@ export default function TeacherAttendancePage() {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('teacher_name') || localStorage.getItem('user_name');
       if (stored) setConductedByName(stored);
+      const storedDept = localStorage.getItem('teacher_department');
+      if (storedDept) setSelectedBranch(storedDept);
     }
     fetchMeta();
   }, []);
@@ -576,7 +573,7 @@ export default function TeacherAttendancePage() {
 
                 <div className="space-y-1.5 min-w-0">
                   <h3 className="text-lg font-extrabold text-stone-900 tracking-tight leading-tight">
-                    {currentSubjectObj?.name || 'Operating Systems (CS301)'}
+                    {currentSubjectObj?.name || 'Classroom Lecture Session'}
                   </h3>
                   <p className="text-xs text-stone-500 font-medium">
                     Conductor: <span className="text-stone-800 font-bold">{conductedByName || 'Faculty Conductor'}</span>

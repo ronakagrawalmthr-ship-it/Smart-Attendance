@@ -41,12 +41,12 @@ const getClientGreeting = () => {
 
 export default function HODDashboard() {
   const [loading, setLoading] = useState(false);
-  const [departmentName, setDepartmentName] = useState<string>("Computer Science & Engineering");
+  const [departmentName, setDepartmentName] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || "Department Administration");
   const initialGreeting = getClientGreeting();
   const [greeting, setGreeting] = useState<string>(initialGreeting.greeting);
   const [greetingIcon, setGreetingIcon] = useState<string>(initialGreeting.icon);
   const [activeSchedule, setActiveSchedule] = useState<string>('Academic Curriculum');
-  const [hodName, setHodName] = useState<string>('HOD Computer Science');
+  const [hodName, setHodName] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('hod_name')) || 'Head of Department');
 
   const [semesterStats, setSemesterStats] = useState<any[]>([]);
 
@@ -65,7 +65,7 @@ export default function HODDashboard() {
       const stored = localStorage.getItem('hod_department');
       if (stored && stored !== 'undefined' && stored !== 'null') return stored;
     }
-    return 'Computer Science';
+    return '';
   };
 
   const fetchDepartmentData = async () => {

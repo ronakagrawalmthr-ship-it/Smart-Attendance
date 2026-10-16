@@ -141,7 +141,7 @@ export default function ClassAttendancePage() {
   });
 
   // Selected Filters
-  const [selectedBranch, setSelectedBranch] = useState<string>('Computer Science & Engineering');
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '');
   const [selectedSemester, setSelectedSemester] = useState<string>('all');
   const [selectedSection, setSelectedSection] = useState<string>('all');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');

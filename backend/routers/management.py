@@ -894,7 +894,7 @@ def global_spotlight_search(
 
 @router.get("/department/overview")
 def get_department_overview(
-    branch: str = "Computer Science",
+    branch: Optional[str] = Query(None),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -902,6 +902,12 @@ def get_department_overview(
     scope = get_user_department_scope(current_user)
     if scope:
         branch = scope
+    elif not branch:
+        first_branch = db.query(models.StudentProfile.branch).filter(
+            models.StudentProfile.branch.isnot(None),
+            models.StudentProfile.branch != ""
+        ).first()
+        branch = first_branch[0] if first_branch else ""
         
     students = db.query(models.StudentProfile).filter(
         models.StudentProfile.branch.ilike(f"%{branch}%")
@@ -1064,7 +1070,7 @@ def get_department_overview(
 
 @router.get("/department/faculty-lectures")
 def get_department_faculty_lectures(
-    branch: str = "Computer Science",
+    branch: Optional[str] = Query(None),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -1073,9 +1079,10 @@ def get_department_faculty_lectures(
     if scope:
         branch = scope
         
-    sessions = db.query(models.AcademicSession).filter(
-        models.AcademicSession.branch.ilike(f"%{branch}%")
-    ).order_by(models.AcademicSession.start_time.desc()).limit(12).all()
+    query = db.query(models.AcademicSession)
+    if branch:
+        query = query.filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
+    sessions = query.order_by(models.AcademicSession.start_time.desc()).limit(12).all()
     
     result = []
     for s in sessions:
@@ -1102,7 +1109,7 @@ def get_department_faculty_lectures(
 
 @router.get("/attendance/class-records")
 def get_class_attendance_records(
-    branch: str = "Computer Science",
+    branch: Optional[str] = Query(None),
     semester: int = None,
     section: str = None,
     subject_code: str = None,
@@ -1263,7 +1270,7 @@ def get_class_attendance_records(
 
 @router.get("/attendance/comprehensive-analytics")
 def get_comprehensive_attendance_analytics(
-    branch: str = "Computer Science",
+    branch: Optional[str] = Query(None),
     semester: int = None,
     section: str = None,
     subject_code: str = None,
@@ -1284,6 +1291,12 @@ def get_comprehensive_attendance_analytics(
     scope = get_user_department_scope(current_user)
     if scope:
         branch = scope
+    elif not branch:
+        first_branch = db.query(models.StudentProfile.branch).filter(
+            models.StudentProfile.branch.isnot(None),
+            models.StudentProfile.branch != ""
+        ).first()
+        branch = first_branch[0] if first_branch else ""
 
     # 1. Fetch all academic sessions matching department/filters
     sess_query = db.query(models.AcademicSession).filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
@@ -1982,7 +1995,7 @@ def list_hods(
             "id": u.id,
             "email": u.email,
             "full_name": tp.full_name if tp else ("HOD " + u.email.split("@")[0].replace("hod.", "").upper()),
-            "department": tp.department if tp else "Computer Science",
+            "department": (tp.department if tp and tp.department else None) or "Academic Department",
             "is_active": u.is_active,
             "role": "hod"
         })
@@ -2060,7 +2073,7 @@ def update_hod(
             tp = models.TeacherProfile(
                 user_id=user.id,
                 full_name=data.full_name or "HOD",
-                department=data.department or "Computer Science"
+                department=data.department or "Academic Department"
             )
             db.add(tp)
             
@@ -2935,7 +2948,7 @@ def get_hod_profile(
         "id": current_user.id,
         "email": current_user.email,
         "full_name": tp.full_name if tp else ("HOD " + current_user.email.split("@")[0].replace("hod.", "").upper()),
-        "department": tp.department if tp else "Computer Science & Engineering",
+        "department": tp.department if tp else "Academic Department",
         "office_room": custom["office_room"],
         "phone": custom["phone"],
         "defaulter_threshold": custom["defaulter_threshold"],
@@ -2954,7 +2967,7 @@ def update_hod_profile(
         
     tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == current_user.id).first()
     if not tp and data.full_name:
-        tp = models.TeacherProfile(user_id=current_user.id, full_name=data.full_name, department="Computer Science & Engineering")
+        tp = models.TeacherProfile(user_id=current_user.id, full_name=data.full_name, department=getattr(current_user, 'department', None) or "Academic Department")
         db.add(tp)
     elif tp and data.full_name:
         tp.full_name = data.full_name
@@ -3150,10 +3163,10 @@ def get_teacher_profile(
         "id": current_user.id,
         "employee_id": f"FAC-{current_user.id:04d}",
         "full_name": tp.full_name if tp else "Faculty Member",
-        "department": tp.department if tp else "Computer Science & Engineering",
+        "department": tp.department if tp else "Academic Faculty",
         "email": current_user.email,
         "phone": custom["phone"],
-        "assigned_subjects": assigned if assigned else ["Machine Learning", "Database Management Systems"],
+        "assigned_subjects": assigned,
         "is_active": current_user.is_active
     }
 
@@ -3317,8 +3330,8 @@ def grant_duty_leave(
                 subject_id=first_subject.id if first_subject else None,
                 teacher_id=caller_teacher.id if caller_teacher else None,
                 conducted_by_name=f"HOD Approval ({current_user.email})",
-                branch=st.branch or "Computer Science & Engineering",
-                semester=st.semester or 6,
+                branch=st.branch or "Academic Department",
+                semester=st.semester or 1,
                 start_time=start_dt,
                 custom_subject_name=f"OD: {data.event_name}",
                 session_type=models.SessionType.lecture

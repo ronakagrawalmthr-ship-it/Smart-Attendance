@@ -23,12 +23,7 @@ export default function RegisterStudent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
-  const [availableBranches, setAvailableBranches] = useState<string[]>([
-    'Computer Science & Engineering',
-    'Information Technology',
-    'Electronics & Communication',
-    'Mechanical Engineering'
-  ]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
 
   React.useEffect(() => {

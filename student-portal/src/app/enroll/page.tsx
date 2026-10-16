@@ -15,8 +15,8 @@ export default function StudentEnrollment() {
     email: '',
     password: '',
     confirmPassword: '',
-    branch: 'Computer Science',
-    semester: '6',
+    branch: '',
+    semester: '1',
     section: 'A',
   });
   
@@ -26,13 +26,7 @@ export default function StudentEnrollment() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
 
-  const [availableBranches, setAvailableBranches] = useState<string[]>([
-    'Computer Science & Engineering',
-    'Information Technology',
-    'Electronics & Communication',
-    'Mechanical Engineering',
-    'Civil Engineering'
-  ]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C', 'D']);
 

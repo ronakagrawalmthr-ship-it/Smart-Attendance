@@ -146,13 +146,14 @@ export default function AcademicOperationsPage() {
       return;
     }
     try {
+      const hodDept = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Academic Department';
       const res = await authFetch(`${API_BASE_URL}/management/holidays`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: holidayTitle,
           date: holidayDate,
-          department: 'Computer Science',
+          department: hodDept,
           description: holidayDesc
         })
       });
@@ -164,7 +165,7 @@ export default function AcademicOperationsPage() {
             detail: {
               type: 'holiday_alert',
               title: 'Holiday Declared',
-              detail: `${holidayTitle} scheduled on ${holidayDate} for Computer Science department`,
+              detail: `${holidayTitle} scheduled on ${holidayDate} for ${hodDept} department`,
               time: holidayDate,
               badge: 'Class Suspended'
             }

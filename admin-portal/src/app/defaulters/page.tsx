@@ -45,7 +45,7 @@ export default function DefaultersPage() {
             return {
               roll_number: d.roll_number,
               name: d.name,
-              branch: d.branch || 'Computer Science',
+              branch: d.branch || 'Academic Department',
               section: d.section || 'A',
               attendance_pct: pct,
               status: pct < 65 ? 'Severe (<65%)' : 'At Risk (65-75%)'

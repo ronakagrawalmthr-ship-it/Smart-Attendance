@@ -22,8 +22,11 @@ export default function FacultyLecturesPage() {
   const fetchLectures = async () => {
     try {
       setLoading(true);
-      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Computer Science';
-      const res = await authFetch(`${API_BASE_URL}/management/department/faculty-lectures?branch=${encodeURIComponent(branch)}`);
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '';
+      const url = branch 
+        ? `${API_BASE_URL}/management/department/faculty-lectures?branch=${encodeURIComponent(branch)}`
+        : `${API_BASE_URL}/management/department/faculty-lectures`;
+      const res = await authFetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.sessions && Array.isArray(data.sessions)) {

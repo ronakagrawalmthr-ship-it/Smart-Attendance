@@ -11,13 +11,8 @@ export default function HODLogin() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [departments, setDepartments] = useState<string[]>([
-    'Computer Science & Engineering',
-    'Information Technology',
-    'Electronics & Communication',
-    'Mechanical Engineering'
-  ]);
-  const [department, setDepartment] = useState('Computer Science & Engineering');
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [department, setDepartment] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -27,7 +22,7 @@ export default function HODLogin() {
       .then((data) => {
         if (data && Array.isArray(data.branches) && data.branches.length > 0) {
           setDepartments(data.branches);
-          setDepartment((prev) => (data.branches.includes(prev) ? prev : data.branches[0]));
+          setDepartment((prev) => (prev && data.branches.includes(prev) ? prev : data.branches[0]));
         }
       })
       .catch(() => {});

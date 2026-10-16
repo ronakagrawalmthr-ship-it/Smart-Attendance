@@ -43,7 +43,7 @@ export default function GlobalSettingsPage() {
     { name: 'Web Master Console', port: 3000, desc: 'Central University Entrance & Teacher Deck', status: 'Online', url: getPortalUrl(3000) },
     { name: 'Administrator Portal', port: 3001, desc: 'Whole College Governance & Directory CRUD', status: 'Online', url: getPortalUrl(3001) },
     { name: 'Student Academic Portal', port: 3002, desc: 'Student Attendance Gauges & Grievances', status: 'Online', url: getPortalUrl(3002) },
-    { name: 'Department HOD Deck', port: 3003, desc: 'CSE Department Live Class Matrices', status: 'Online', url: getPortalUrl(3003) },
+    { name: 'Department HOD Deck', port: 3003, desc: 'Departmental Live Class & Faculty Attendance Deck', status: 'Online', url: getPortalUrl(3003) },
     { name: 'Python FastAPI Engine', port: 8000, desc: 'OpenCV Anti-Spoofing & 128-D Biometrics', status: 'Online', url: getPortalUrl(8000, '/docs') },
     { name: 'Metro / Expo Bundler', port: 8081, desc: 'React Native Android / iOS Kiosk App', status: 'Online', url: getPortalUrl(8081) },
   ];

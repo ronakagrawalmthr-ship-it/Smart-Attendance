@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import json
@@ -184,8 +184,8 @@ async def verify_single_student_walkup(
     if not session:
         # If session does not exist, check if session_id is a subject ID or temporary ID
         sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
-        branch = sub.branch if sub else (current_user.teacher_profile.department if current_user.teacher_profile else "Computer Science")
-        semester = sub.semester if sub else 6
+        branch = (sub.branch if sub else None) or (current_user.teacher_profile.department if current_user.teacher_profile else None) or "Academic Department"
+        semester = (sub.semester if sub else None) or 1
         conductor = current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title()
         now = datetime.utcnow()
         session = models.AcademicSession(
@@ -372,7 +372,7 @@ def get_departments_meta(db: Session = Depends(database.get_db)):
 
 @router.get("/class-students")
 def get_class_students(
-    branch: str = "Computer Science",
+    branch: Optional[str] = Query(None),
     semester: int = None,
     section: str = None,
     request: Request = None,
@@ -438,8 +438,9 @@ def create_session_and_submit_attendance(
     if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Faculty authorization required to submit attendance records.")
 
-    branch = payload.get("branch", "Computer Science")
-    semester = payload.get("semester", 6)
+    teacher_dept = current_user.teacher_profile.department if current_user.teacher_profile else None
+    branch = payload.get("branch") or teacher_dept or "Academic Department"
+    semester = payload.get("semester") or 1
     section = payload.get("section", "A")
     session_type_str = payload.get("session_type", "lecture")
     subject_id = payload.get("subject_id")
@@ -616,8 +617,9 @@ def submit_final_attendance(
                 pass
     else:
         sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
-        branch = payload.get("branch") or (sub.branch if sub else (current_user.teacher_profile.department if current_user.teacher_profile else "Computer Science"))
-        semester = int(payload.get("semester") or (sub.semester if sub else 6))
+        teacher_dept = current_user.teacher_profile.department if current_user.teacher_profile else None
+        branch = payload.get("branch") or (sub.branch if sub else None) or teacher_dept or "Academic Department"
+        semester = int(payload.get("semester") or (sub.semester if sub else 1))
         section = payload.get("section") or "A"
         conductor = (payload.get("conducted_by_name") or (current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title())).strip()
         custom_sub = payload.get("custom_subject_name") or (sub.name if sub else None)
