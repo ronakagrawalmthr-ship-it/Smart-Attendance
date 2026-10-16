@@ -127,11 +127,16 @@ def get_student_metrics(
             subjects_db = sem_subs
 
     subject_wise = []
+    accounted_session_ids = set()
+
     for subj in subjects_db:
         subj_logs = [l for l, sess in logs_query if sess.subject_id == subj.id]
         s_total = len(subj_logs)
         s_present = sum(1 for l in subj_logs if l.is_present)
         s_pct = round(s_present / s_total * 100, 1) if s_total > 0 else 0.0
+
+        for l, sess in subj_logs:
+            accounted_session_ids.add(sess.id)
 
         conductors = list({
             sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator")
@@ -142,6 +147,33 @@ def get_student_metrics(
             "code": subj.code,
             "name": subj.name,
             "semester": subj.semester,
+            "total": s_total,
+            "attended": s_present,
+            "absent": s_total - s_present,
+            "pct": s_pct,
+            "is_safe": s_pct >= 75.0,
+            "teachers": conductors
+        })
+
+    # Include any custom/unregistered sessions attended by student
+    custom_sessions_map = {}
+    for l, sess in logs_query:
+        if sess.id not in accounted_session_ids:
+            s_name = sess.custom_subject_name or "Classroom Session"
+            if s_name not in custom_sessions_map:
+                custom_sessions_map[s_name] = []
+            custom_sessions_map[s_name].append((l, sess))
+
+    for idx, (s_name, s_pairs) in enumerate(custom_sessions_map.items()):
+        s_total = len(s_pairs)
+        s_present = sum(1 for l, sess in s_pairs if l.is_present)
+        s_pct = round(s_present / s_total * 100, 1) if s_total > 0 else 0.0
+        conductors = list({sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator") for l, sess in s_pairs})
+        code_prefix = "".join(w[0] for w in s_name.split() if w).upper()[:4] or "CORE"
+        subject_wise.append({
+            "code": f"{code_prefix}-{idx+1:02d}",
+            "name": s_name,
+            "semester": student.semester or 1,
             "total": s_total,
             "attended": s_present,
             "absent": s_total - s_present,

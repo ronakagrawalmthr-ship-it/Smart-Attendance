@@ -29,7 +29,7 @@ export default function StudentPortal() {
   }>({
     name: '',
     roll: '',
-    semester: 6,
+    semester: 1,
     overallAttendance: null,
     eligibility: null,
     totalClasses: null,
@@ -53,12 +53,13 @@ export default function StudentPortal() {
         if (typeof window !== 'undefined' && data.profile) {
           if (data.profile.name) localStorage.setItem('student_name', data.profile.name);
           if (data.profile.roll_number) localStorage.setItem('student_roll', data.profile.roll_number);
+          if (data.profile.semester) localStorage.setItem('student_semester', String(data.profile.semester));
         }
 
         setStudentData({
           name: sName,
           roll: sRoll,
-          semester: data.profile?.semester || 6,
+          semester: data.profile?.semester ?? 1,
           overallAttendance: overall,
           eligibility: data.metrics?.eligibility_status || (overall ? 'Eligible' : null),
           totalClasses: data.metrics?.total_classes ?? null,
@@ -88,7 +89,7 @@ export default function StudentPortal() {
     setIsSubmittingGrievance(true);
     setGrievanceFeedback(null);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('student_token') || localStorage.getItem('token')) : null;
       const sessId = selectedSessionId || (studentData.recentLogs[0]?.session_id || studentData.recentLogs[0]?.id || 1);
       const res = await fetch(`${API_BASE_URL}/portal/grievance?session_id=${sessId}&reason=${encodeURIComponent(grievanceReason)}`, {
         method: 'POST',
@@ -150,8 +151,8 @@ export default function StudentPortal() {
               {studentData.name ? studentData.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'ST'}
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-stone-900">{studentData.name}</h1>
-              <p className="text-xs text-stone-500 mt-0.5">Roll: <span className="font-mono font-bold text-stone-800">{studentData.roll}</span> • Semester {studentData.semester}</p>
+              <h1 className="text-2xl font-extrabold text-stone-900">{studentData.name || 'Enrolled Student'}</h1>
+              <p className="text-xs text-stone-500 mt-0.5">Roll: <span className="font-mono font-bold text-stone-800">{studentData.roll || 'Unassigned'}</span> • Semester {studentData.semester}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2.5 self-end sm:self-auto">
@@ -219,24 +220,30 @@ export default function StudentPortal() {
             </button>
           </div>
           <div className="divide-y divide-stone-100">
-            {(showAllLogs ? studentData.recentLogs : studentData.recentLogs.slice(0, 3)).map((log) => (
-              <div key={log.id} className="p-4 sm:px-6 flex items-center justify-between hover:bg-stone-50/50 transition-colors">
-                <div className="flex items-center space-x-3">
-                  <div className={`h-2.5 w-2.5 rounded-full ${log.status === 'Present' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                  <div>
-                    <p className="font-semibold text-xs text-stone-900">{log.subject}</p>
-                    <p className="text-[11px] text-stone-500">{log.date}</p>
+            {studentData.recentLogs.length === 0 ? (
+              <div className="p-8 text-center text-xs font-semibold text-stone-400">
+                No attendance sessions recorded yet for this semester.
+              </div>
+            ) : (
+              (showAllLogs ? studentData.recentLogs : studentData.recentLogs.slice(0, 3)).map((log) => (
+                <div key={log.id} className="p-4 sm:px-6 flex items-center justify-between hover:bg-stone-50/50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className={`h-2.5 w-2.5 rounded-full ${log.status === 'Present' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    <div>
+                      <p className="font-semibold text-xs text-stone-900">{log.subject}</p>
+                      <p className="text-[11px] text-stone-500">{log.date}</p>
+                    </div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    log.status === 'Present' 
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}>
+                    {log.status}
                   </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  log.status === 'Present' 
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}>
-                  {log.status}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

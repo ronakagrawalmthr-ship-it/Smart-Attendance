@@ -722,8 +722,11 @@ class QRSessionInitRequest(BaseModel):
     notes: Optional[str] = None
 
 class QRVerifyStudentRequest(BaseModel):
-    token: str
+    token: Optional[str] = None
+    qr_token: Optional[str] = None
     student_roll: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 def generate_dynamic_qr_jwt(session: models.AcademicSession) -> str:
     now_ts = int(time.time())
@@ -890,8 +893,15 @@ def verify_and_mark_qr_attendance(
         raise HTTPException(status_code=403, detail="Only verified students can mark attendance via QR scan.")
 
     # 1. Decode & Verify Token Expiry (Strict 15s window prevents screenshots)
+    raw_token = (payload.token or payload.qr_token or "").strip()
+    if not raw_token:
+        raise HTTPException(
+            status_code=400,
+            detail="QR code attendance token is required."
+        )
+
     try:
-        decoded = jwt.decode(payload.token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+        decoded = jwt.decode(raw_token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
     except JWTError:
         raise HTTPException(
             status_code=400, 

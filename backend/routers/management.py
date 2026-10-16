@@ -1807,7 +1807,7 @@ def get_all_grievances(
     for g in records:
         s_name = g.student.full_name if g.student else "Student"
         s_roll = g.student.roll_number if g.student else "—"
-        s_sem = f"Semester {g.student.semester or 6}" if g.student else "Semester 6"
+        s_sem = f"Semester {g.student.semester}" if (g.student and g.student.semester) else "Semester 1"
         out.append({
             "id": g.ticket_id,
             "ticket_id": g.ticket_id,

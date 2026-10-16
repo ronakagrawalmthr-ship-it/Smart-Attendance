@@ -139,15 +139,15 @@ export default function StudentDashboard() {
             stage: data.profile?.stage || prev.stage || 'Academic Batch',
             branch: data.profile?.branch || prev.branch || 'Engineering',
             photoThumbnail: data.profile?.photo_thumbnail || prev.photoThumbnail,
-            overallAttendance: Number(data.metrics.overall_percentage) || prev.overallAttendance,
-            totalClasses: Number(data.metrics.total_classes) || prev.totalClasses,
-            attendedClasses: Number(data.metrics.attended_classes) || prev.attendedClasses,
-            absentClasses: Number(data.metrics.absent_classes ?? (data.metrics.total_classes - data.metrics.attended_classes)) || prev.absentClasses,
+            overallAttendance: Number(data.metrics.overall_percentage) || 0,
+            totalClasses: Number(data.metrics.total_classes) || 0,
+            attendedClasses: Number(data.metrics.attended_classes) || 0,
+            absentClasses: Number(data.metrics.absent_classes ?? (data.metrics.total_classes - data.metrics.attended_classes)) || 0,
             eligibility: Number(data.metrics.total_classes) === 0 ? 'Classes Not Yet Started' : (data.metrics.overall_percentage >= 75 ? 'Eligible for University Exams' : 'Defaulter Risk Warning (<75%)'),
-            subjects: data.subjects && data.subjects.length > 0 ? data.subjects : prev.subjects,
-            guestLectures: data.guest_lectures || prev.guestLectures,
-            dayWise: data.day_wise || prev.dayWise,
-            recentLogs: data.recent_logs && data.recent_logs.length > 0 ? data.recent_logs : prev.recentLogs
+            subjects: data.subjects || [],
+            guestLectures: data.guest_lectures || { total: 0, attended: 0, pct: 0, topics: [] },
+            dayWise: data.day_wise || [],
+            recentLogs: data.recent_logs || []
           }));
         }
       }
