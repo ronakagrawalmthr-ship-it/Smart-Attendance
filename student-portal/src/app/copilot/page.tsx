@@ -161,7 +161,7 @@ export default function CampusCopilotPage() {
     "Kya mai aaj ki last class bunk kar sakta hoon?",
     "Show my today's timetable schedule",
     "How to reach 85% attendance?",
-    "Who teaches Operating Systems?"
+    "Which subjects have lowest attendance?"
   ];
 
   return (

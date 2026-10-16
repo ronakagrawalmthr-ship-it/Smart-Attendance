@@ -45,10 +45,11 @@ export default function HODDefaultersPage() {
             return {
               roll_number: d.roll_number,
               name: d.name,
-              semester: d.semester || 'Current Term',
+              semester: d.semester || 1,
               section: d.section || 'A',
               attendance_pct: pct,
-              parent_email: d.parent_email || d.email || 'guardian@university.edu',
+              phone: d.phone || '',
+              parent_email: d.parent_email || d.email || '',
               status: pct < 65 ? 'Debarment Risk (<65%)' : 'Warning Zone (65-75%)'
             };
           });
@@ -187,8 +188,13 @@ export default function HODDefaultersPage() {
     }
   };
 
-  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "9876543210") => {
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "") => {
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setNotificationSent(`No valid guardian phone number on record for ${name} (${roll}). Please update profile.`);
+      setTimeout(() => setNotificationSent(null), 4000);
+      return;
+    }
     const finalPhone = cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone;
     const currentDept = typeof window !== 'undefined' ? localStorage.getItem('hod_department') || 'Department' : 'Department';
     const msg = `🚨 *${(institutionName || 'UNIVERSITY').toUpperCase()} ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* for lectures today.\n\n⚠️ *Overall Attendance:* ${pct.toFixed(1)}%\n⚠️ *Status:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends upcoming classes to maintain semester exam eligibility.\n\n— *${currentDept} Office*`;
@@ -334,7 +340,7 @@ export default function HODDefaultersPage() {
                     </span>
                   </td>
                   <td className="py-4 px-4 text-stone-500 font-mono text-[11px]">
-                    +91 98765 43210
+                    {d.phone ? `+91 ${d.phone.replace(/[^0-9]/g, '').slice(-10)}` : 'Unlisted'}
                   </td>
                   <td className="py-4 px-4">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -348,7 +354,7 @@ export default function HODDefaultersPage() {
                   <td className="py-4 px-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
                       <button
-                        onClick={() => handleWhatsAppParent(d.name, d.roll_number, Number(d.attendance_pct) || 68.4)}
+                        onClick={() => handleWhatsAppParent(d.name, d.roll_number, Number(d.attendance_pct) || 0, d.phone)}
                         className="px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition inline-flex items-center space-x-1.5 font-bold shadow-sm"
                         title="Open real WhatsApp chat with pre-filled attendance notice"
                       >

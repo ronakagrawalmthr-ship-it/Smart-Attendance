@@ -48,8 +48,8 @@ export default function HODDashboard() {
   const [semestersList, setSemestersList] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [sectionsList, setSectionsList] = useState<string[]>(['A', 'B', 'C', 'D']);
   const [ttBranch, setTtBranch] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || '');
-  const [ttSemester, setTtSemester] = useState(4);
-  const [ttSection, setTtSection] = useState('B');
+  const [ttSemester, setTtSemester] = useState(1);
+  const [ttSection, setTtSection] = useState('A');
   const [ttSchedule, setTtSchedule] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
@@ -63,9 +63,11 @@ export default function HODDashboard() {
           }
           if (Array.isArray(data.semesters) && data.semesters.length > 0) {
             setSemestersList(data.semesters);
+            setTtSemester(prev => data.semesters.includes(prev) ? prev : data.semesters[0]);
           }
           if (Array.isArray(data.sections) && data.sections.length > 0) {
             setSectionsList(data.sections);
+            setTtSection(prev => data.sections.includes(prev) ? prev : data.sections[0]);
           }
         }
       })
@@ -82,7 +84,7 @@ export default function HODDashboard() {
   const [slotEndTime, setSlotEndTime] = useState('10:00 AM');
   const [slotSubject, setSlotSubject] = useState('');
   const [slotTeacher, setSlotTeacher] = useState('');
-  const [slotRoom, setSlotRoom] = useState('LH-301');
+  const [slotRoom, setSlotRoom] = useState('LH-101');
   const [slotType, setSlotType] = useState('lecture');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [uploadingCsv, setUploadingCsv] = useState(false);

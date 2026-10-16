@@ -305,17 +305,30 @@ def delete_slot(
 # ==============================================================================
 
 @router.get("/template-csv")
-def download_timetable_template():
+def download_timetable_template(
+    db: Session = Depends(database.get_db)
+):
     """
     Downloads standardized CSV template for HODs to easily bulk upload departmental timetables.
+    Dynamically pulls registered subjects and teachers where available.
     """
     headers = ["day_of_week", "slot_index", "start_time", "end_time", "subject_name", "teacher_name", "room_number", "session_type"]
+    
+    db_subjects = [s.name for s in db.query(models.Subject).limit(4).all()]
+    db_teachers = [t.full_name for t in db.query(models.TeacherProfile).limit(3).all()]
+    
+    sub1 = db_subjects[0] if len(db_subjects) > 0 else "Academic Course 1"
+    sub2 = db_subjects[1] if len(db_subjects) > 1 else "Academic Course 2"
+    sub3 = db_subjects[2] if len(db_subjects) > 2 else "Academic Course 3"
+    t1 = db_teachers[0] if len(db_teachers) > 0 else "Faculty Member 1"
+    t2 = db_teachers[1] if len(db_teachers) > 1 else "Faculty Member 2"
+
     sample_rows = [
-        ["Monday", "1", "09:00 AM", "10:00 AM", "Operating Systems", "Dr. Durga Pooja", "LH-301", "lecture"],
-        ["Monday", "2", "10:15 AM", "11:15 AM", "Database Management Systems", "Prof. Rajesh Sharma", "LH-301", "lecture"],
-        ["Monday", "3", "11:30 AM", "12:30 PM", "Computer Networks", "Dr. Ananya Roy", "LH-301", "lecture"],
-        ["Monday", "4", "01:30 PM", "03:30 PM", "Operating Systems Lab", "Dr. Durga Pooja", "Lab-2", "practical"],
-        ["Tuesday", "1", "09:00 AM", "10:00 AM", "Cloud Computing & DevOps", "Prof. Rajesh Sharma", "LH-301", "lecture"],
+        ["Monday", "1", "09:00 AM", "10:00 AM", sub1, t1, "LH-101", "lecture"],
+        ["Monday", "2", "10:15 AM", "11:15 AM", sub2, t2, "LH-101", "lecture"],
+        ["Monday", "3", "11:30 AM", "12:30 PM", sub3, t1, "LH-101", "lecture"],
+        ["Monday", "4", "01:30 PM", "03:30 PM", f"{sub1} Practical", t2, "Lab-1", "practical"],
+        ["Tuesday", "1", "09:00 AM", "10:00 AM", sub2, t1, "LH-101", "lecture"],
     ]
 
     out = io.StringIO()
@@ -660,7 +673,7 @@ def campus_copilot_chat(
         "Can I safely bunk today's last lecture?",
         "Show my schedule for today",
         f"How many classes do I need for 85% attendance?",
-        "Who is teaching Operating Systems?"
+        "Which subjects have lowest attendance?"
     ]
 
     return {

@@ -35,8 +35,8 @@ export default function HODSettingsPage() {
   const [fullName, setFullName] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_name')) || 'Head of Department');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Academic Department');
-  const [officeRoom, setOfficeRoom] = useState('Department Office, Block B-302');
-  const [phone, setPhone] = useState('+91 98765 22441');
+  const [officeRoom, setOfficeRoom] = useState('Department Office');
+  const [phone, setPhone] = useState('');
   const [defaulterThreshold, setDefaulterThreshold] = useState<number>(75.0);
   const [emailAlertsEnabled, setEmailAlertsEnabled] = useState<boolean>(true);
 
@@ -75,8 +75,8 @@ export default function HODSettingsPage() {
         }
         setEmail(data.email || '');
         setDepartment(data.department || (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Academic Department');
-        setOfficeRoom(data.office_room || 'Department Office, Block B-302');
-        setPhone(data.phone || '+91 98765 22441');
+        setOfficeRoom(data.office_room || 'Department Office');
+        setPhone(data.phone || '');
         setDefaulterThreshold(data.defaulter_threshold !== undefined ? data.defaulter_threshold : 75.0);
         setEmailAlertsEnabled(data.email_alerts_enabled !== undefined ? data.email_alerts_enabled : true);
       }
@@ -300,7 +300,7 @@ export default function HODSettingsPage() {
                     value={officeRoom}
                     onChange={(e) => setOfficeRoom(e.target.value)}
                     className="w-full rounded-2xl border border-stone-200 bg-stone-50/80 py-2.5 pl-10 pr-4 text-sm text-stone-900 placeholder-stone-400 focus:bg-white focus:border-emerald-500 focus:outline-none transition"
-                    placeholder="Department Office, Block B-302"
+                    placeholder="Department Office"
                   />
                 </div>
               </div>

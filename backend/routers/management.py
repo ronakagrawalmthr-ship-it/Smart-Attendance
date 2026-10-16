@@ -1565,6 +1565,10 @@ def get_defaulters(
                     "roll_number": student.roll_number,
                     "name": student.full_name,
                     "branch": student.branch,
+                    "semester": student.semester or 1,
+                    "section": student.section or "A",
+                    "phone": student.phone or student.emergency_contact or "",
+                    "parent_email": student.parent_email or "",
                     "percentage": round(percentage, 2),
                     "attendance_pct": round(percentage, 2)
                 })
@@ -2521,19 +2525,32 @@ def batch_promote_students(
 
 @router.get("/templates/students-csv")
 def download_student_csv_template(
+    db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     """
     Returns a standardized CSV template for bulk student onboarding.
     Accessible by College Administrators and Department HODs.
+    Dynamically adapts sample branch to caller's departmental context.
     """
     verify_hod_or_admin(current_user)
-    
+    scope = get_user_department_scope(current_user)
+    target_branch = scope
+    if not target_branch:
+        first_b = db.query(models.StudentProfile.branch).filter(
+            models.StudentProfile.branch.isnot(None),
+            models.StudentProfile.branch != ""
+        ).first()
+        target_branch = first_b[0] if first_b else "Engineering Department"
+
+    code_words = [w for w in target_branch.replace("&", "").split() if w]
+    dept_code = "".join([w[0] for w in code_words]).upper()[:4] if code_words else "STD"
+    yr = datetime.now().year
+
     csv_content = (
         "roll_number,full_name,branch,semester,section,email,password\n"
-        "2024CS001,Aarav Sharma,Computer Science,6,A,aarav.sharma@univ.edu,StudentPass123\n"
-        "2024CS002,Priya Patel,Computer Science,6,A,priya.patel@univ.edu,StudentPass123\n"
-        "2024IT015,Rohan Verma,Information Technology,4,B,rohan.verma@univ.edu,StudentPass123\n"
+        f"{yr}{dept_code}001,Student Name One,{target_branch},1,A,student1@univ.edu,StudentPass123\n"
+        f"{yr}{dept_code}002,Student Name Two,{target_branch},1,A,student2@univ.edu,StudentPass123\n"
     )
     return Response(
         content=csv_content,
@@ -2938,8 +2955,8 @@ def get_hod_profile(
         
     tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == current_user.id).first()
     custom = get_db_setting(db, f"hod_settings_{current_user.id}", {
-        "office_room": "Department Office, Block B-302",
-        "phone": "+91 98765 22441",
+        "office_room": "Department Office",
+        "phone": (getattr(tp, 'phone_number', None) or getattr(current_user, 'phone', None) or ""),
         "defaulter_threshold": 75.0,
         "email_alerts_enabled": True
     })
@@ -2992,8 +3009,8 @@ def update_hod_profile(
         
     # Custom department settings persisted in DB
     custom = get_db_setting(db, f"hod_settings_{current_user.id}", {
-        "office_room": "Department Office, Block B-302",
-        "phone": (getattr(tp, 'phone_number', None) or ""),
+        "office_room": "Department Office",
+        "phone": (getattr(tp, 'phone_number', None) or getattr(current_user, 'phone', None) or ""),
         "defaulter_threshold": 75.0,
         "email_alerts_enabled": True
     })

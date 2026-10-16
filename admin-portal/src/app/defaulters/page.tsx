@@ -47,6 +47,7 @@ export default function DefaultersPage() {
               name: d.name,
               branch: d.branch || 'Academic Department',
               section: d.section || 'A',
+              phone: d.phone || '',
               attendance_pct: pct,
               status: pct < 65 ? 'Severe (<65%)' : 'At Risk (65-75%)'
             };
@@ -155,8 +156,13 @@ export default function DefaultersPage() {
     }
   };
 
-  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "9876543210") => {
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "") => {
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setNotificationSent(`No valid guardian phone number on record for ${name} (${roll}).`);
+      setTimeout(() => setNotificationSent(null), 4000);
+      return;
+    }
     const finalPhone = cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone;
     const msg = `🚨 *${institutionName.toUpperCase()} ATTENDANCE ALERT*\n\nDear Parent/Guardian,\nYour ward *${name}* (Roll: *${roll}*) was marked *ABSENT* today.\n\n⚠️ *Overall Turnout:* ${pct.toFixed(1)}%\n⚠️ *Action:* Defaulter Warning (<75% Cutoff)\n\nPlease ensure your ward attends regular classes to avoid exam debarment.\n\n— *Office of the Academic Registrar*`;
     const encoded = encodeURIComponent(msg);
@@ -303,7 +309,7 @@ export default function DefaultersPage() {
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
                       <button
-                        onClick={() => handleWhatsAppParent(d.name, d.roll_number, Number(d.attendance_pct) || 68.4)}
+                        onClick={() => handleWhatsAppParent(d.name, d.roll_number, Number(d.attendance_pct) || 0, d.phone)}
                         className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 transition inline-flex items-center space-x-1.5 font-medium shadow-xs"
                         title="Open WhatsApp chat with parent"
                       >

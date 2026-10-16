@@ -64,7 +64,7 @@ export default function GrievanceDesk() {
           const firstMissed = data.recent_logs.find((l: any) => !l.is_present);
           if (firstMissed) {
             setSessionId(String(firstMissed.session_id || 1));
-            setSubjectName(firstMissed.subject_name || firstMissed.subject || subNames[0] || 'Computer Networks');
+            setSubjectName(firstMissed.subject_name || firstMissed.subject || subNames[0] || 'Core Subject');
             setDate(firstMissed.date || new Date().toISOString().slice(0, 10));
           }
         }
