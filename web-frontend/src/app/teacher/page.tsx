@@ -756,7 +756,7 @@ export default function TeacherAttendancePage() {
               options={branches.map(b => ({
                 value: b,
                 label: b,
-                badge: b.includes('Computer') ? 'CS' : (b.includes('Mechanical') ? 'ME' : 'ENG')
+                badge: b.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()
               }))}
             />
 

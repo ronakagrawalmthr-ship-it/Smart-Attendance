@@ -486,7 +486,7 @@ export default function SetupWizardPage() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Dean Academic Affairs / Dr. Agrawal"
+                        placeholder="e.g. Dean Academic Affairs / Registrar"
                         value={adminName}
                         onChange={(e) => setAdminName(e.target.value)}
                         className="w-full bg-stone-50 border border-stone-200/90 rounded-2xl pl-10 pr-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition"

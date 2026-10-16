@@ -19,8 +19,8 @@ import { API_BASE_URL, authFetch } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function GovernancePage() {
-  const [holidayDate, setHolidayDate] = useState('2026-09-15');
-  const [holidayReason, setHolidayReason] = useState('Institutional Symposium & Technical Conference');
+  const [holidayDate, setHolidayDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [holidayReason, setHolidayReason] = useState('');
   const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
   const [holidayNotice, setHolidayNotice] = useState<string | null>(null);
 
@@ -61,7 +61,7 @@ export default function GovernancePage() {
       });
 
       const data = await res.json();
-      setArchiveNotice(data.message || 'Semester lifecycle archived. Records locked in PostgreSQL.');
+      setArchiveNotice(data.message || 'Semester lifecycle archived. Records locked in institutional database.');
     } catch {
       setArchiveNotice('Semester records successfully frozen and archived.');
     } finally {
