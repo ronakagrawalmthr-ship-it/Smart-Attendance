@@ -197,12 +197,12 @@ export default function RegisterStudent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Full Legal Name</label>
-                <input required type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="e.g. Aarav Sharma" />
+                <input required type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="e.g. Student Full Name" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Roll Number</label>
-                  <input required type="text" name="rollNumber" value={formData.rollNumber} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="23CSE001" />
+                  <input required type="text" name="rollNumber" value={formData.rollNumber} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="e.g. University Roll Number" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Semester</label>

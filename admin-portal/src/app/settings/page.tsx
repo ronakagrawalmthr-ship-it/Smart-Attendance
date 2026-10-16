@@ -400,7 +400,7 @@ export default function AdminSettingsPage() {
                     onChange={(e) => setAdminName(e.target.value)}
                     required
                     className="w-full rounded-2xl border border-stone-200/80 bg-stone-50/80 py-2.5 pl-10 pr-4 text-xs font-medium text-stone-900 placeholder-stone-400 focus:bg-white focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-400 transition"
-                    placeholder="e.g. Dr. John Doe"
+                    placeholder="e.g. Dean Academic Affairs / Administrator"
                   />
                 </div>
               </div>

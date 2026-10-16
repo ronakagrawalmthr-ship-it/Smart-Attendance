@@ -330,7 +330,7 @@ export default function StudentEnrollment() {
                   id="rollNumber"
                   autoComplete="username"
                   required
-                  placeholder="e.g. 2024CS101"
+                  placeholder="e.g. University Roll Number"
                   value={formData.rollNumber}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition font-mono uppercase"

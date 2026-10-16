@@ -1024,7 +1024,7 @@ export default function DirectoryManagementPage() {
                         value={formData.full_name || ''}
                         onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                        placeholder="Prof. Priya Nair"
+                        placeholder="e.g. Faculty Full Name"
                       />
                     </div>
                     <div className="space-y-1">

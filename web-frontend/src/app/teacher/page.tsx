@@ -808,7 +808,7 @@ export default function TeacherAttendancePage() {
                   type="text"
                   value={conductedByName}
                   onChange={(e) => setConductedByName(e.target.value)}
-                  placeholder="e.g. Dr. Durga Pooja / Guest Speaker"
+                  placeholder="e.g. Faculty Name / Guest Speaker"
                   className="w-full h-full pl-10 pr-4 rounded-2xl bg-stone-50/90 border border-stone-200/90 text-stone-900 text-sm font-semibold placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 transition-all duration-200"
                 />
               </div>

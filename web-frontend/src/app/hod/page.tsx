@@ -842,7 +842,7 @@ export default function HODDashboard() {
                     type="text"
                     value={slotTeacher}
                     onChange={(e) => setSlotTeacher(e.target.value)}
-                    placeholder="e.g. Dr. K. Sharma"
+                    placeholder="e.g. Faculty Full Name"
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3 py-2 text-xs font-semibold text-stone-800"
                   />
                 </div>

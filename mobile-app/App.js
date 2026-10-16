@@ -1641,7 +1641,7 @@ export default function App() {
                       style={styles.textInput}
                       value={profilePhone}
                       onChangeText={setProfilePhone}
-                      placeholder="+91 98765 43210"
+                      placeholder="e.g. +91 Mobile Number"
                       placeholderTextColor="#64748b"
                       keyboardType="phone-pad"
                     />
