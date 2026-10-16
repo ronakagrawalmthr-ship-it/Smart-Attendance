@@ -156,7 +156,7 @@ export default function StudentProfilePage() {
           ...prev,
           fullName: data.full_name || prev.fullName,
           rollNumber: data.roll_number || prev.rollNumber,
-          branch: data.branch || prev.branch || 'Computer Science & Engineering',
+          branch: data.branch || prev.branch || 'Academic Department',
           semester: data.semester ?? prev.semester,
           academicYear: data.academic_year ?? prev.academicYear,
           academicYearLabel: data.academic_year_label || prev.academicYearLabel || `Year ${data.academic_year || 1}`,

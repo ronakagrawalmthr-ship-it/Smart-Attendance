@@ -215,7 +215,10 @@ export default function TeacherAttendancePage() {
       const res = await fetch(`${API_BASE_URL}/attendance/departments-meta`);
       if (res.ok) {
         const data = await res.json();
-        if (data.branches && data.branches.length > 0) setBranches(data.branches);
+        if (data.branches && data.branches.length > 0) {
+          setBranches(data.branches);
+          setSelectedBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
+        }
         if (data.subjects) setAvailableSubjects(data.subjects);
         if (data.teachers && data.teachers.length > 0) {
           setConductedByName(prev => prev || data.teachers[0].name);

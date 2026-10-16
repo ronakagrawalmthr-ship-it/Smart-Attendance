@@ -61,7 +61,7 @@ export default function AdminDashboard() {
       setLoading(true);
       if (typeof window !== 'undefined') {
         const cached = localStorage.getItem('admin_name');
-        if (cached && cached !== 'Ronak Agrawal') setAdminName(cached);
+        if (cached) setAdminName(cached);
       }
 
       const [resLive, resKpi, resMe, resTelemetry] = await Promise.all([

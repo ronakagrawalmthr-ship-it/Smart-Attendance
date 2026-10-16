@@ -170,7 +170,7 @@ export default function HODDashboard() {
             const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
               roll_number: sc.roll_number,
               name: sc.student_name,
-              section: sc.room || 'CSE Section A',
+              section: sc.room || `${departmentName || 'Academic'} Section A`,
               avatar: sc.avatar,
               status: 'Present',
               time: sc.timestamp
@@ -184,7 +184,7 @@ export default function HODDashboard() {
     }, 2500);
 
     return () => clearInterval(liveInterval);
-  }, []);
+  }, [departmentName]);
 
   const turnoutFloat = parseFloat(stats.turnout.replace('%', '')) || 0.0;
 
@@ -195,14 +195,14 @@ export default function HODDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `CSE_Department_Attendance_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `${(departmentName || 'Department').replace(/\s+/g, '_')}_Attendance_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <AppleDeluxeShell userRole="Head of Department, CSE" userName={hodName}>
+    <AppleDeluxeShell userRole={`Head of Department, ${departmentName || 'Academic'}`} userName={hodName}>
       
       {/* ☀️ Top Contextual Smart Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
@@ -296,7 +296,7 @@ export default function HODDashboard() {
           </div>
 
           <div className="w-full text-center text-[10px] text-stone-400 font-medium">
-            CSE Statutory Cutoff: 75.0%
+            {departmentName || 'Academic'} Statutory Cutoff: 75.0%
           </div>
         </div>
 
@@ -310,7 +310,7 @@ export default function HODDashboard() {
               {stats.enrolled.toLocaleString()}
             </div>
             <div className="text-xs font-semibold text-stone-600 mt-0.5">
-              CSE Enrolled
+              {departmentName || 'Dept'} Enrolled
             </div>
           </div>
         </div>
@@ -325,7 +325,7 @@ export default function HODDashboard() {
               {stats.faculty}
             </div>
             <div className="text-xs font-semibold text-stone-600 mt-0.5">
-              CSE Faculty
+              {departmentName || 'Dept'} Faculty
             </div>
           </div>
         </div>
@@ -367,10 +367,10 @@ export default function HODDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-stone-900">Student live-feed</h2>
-            <p className="text-[11px] text-stone-400">Live biometric recognition telemetry for Computer Science batches</p>
+            <p className="text-[11px] text-stone-400">Live biometric recognition telemetry for {departmentName || 'academic'} batches</p>
           </div>
           <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200/60">
-            CSE Stream Active
+            {departmentName || 'Dept'} Stream Active
           </span>
         </div>
 
@@ -384,48 +384,56 @@ export default function HODDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100/70 font-medium">
-              {studentFeed.map((item) => {
-                let badgeClass = 'bg-[#DCFCE7] text-[#166534]';
-                if (item.status === 'Late') badgeClass = 'bg-[#FEE2E2] text-[#991B1B]';
-                if (item.status === 'Excused') badgeClass = 'bg-[#FEF3C7] text-[#92400E]';
+              {studentFeed.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="py-8 text-center text-stone-400 text-xs">
+                    No active student scans recorded today.
+                  </td>
+                </tr>
+              ) : (
+                studentFeed.map((item) => {
+                  let badgeClass = 'bg-[#DCFCE7] text-[#166534]';
+                  if (item.status === 'Late') badgeClass = 'bg-[#FEE2E2] text-[#991B1B]';
+                  if (item.status === 'Excused') badgeClass = 'bg-[#FEF3C7] text-[#92400E]';
 
-                return (
-                  <tr key={item.roll_number} className="hover:bg-stone-50/70 transition-colors">
-                    {/* Roll & Avatar */}
-                    <td className="py-3 pl-2 flex items-center space-x-3">
-                      <img 
-                        src={item.avatar} 
-                        alt={item.name} 
-                        className="h-8 w-8 rounded-full object-cover border border-stone-200 shrink-0"
-                      />
-                      <span className="font-mono font-bold text-stone-900">{item.roll_number}</span>
-                    </td>
+                  return (
+                    <tr key={item.roll_number} className="hover:bg-stone-50/70 transition-colors">
+                      {/* Roll & Avatar */}
+                      <td className="py-3 pl-2 flex items-center space-x-3">
+                        <img 
+                          src={item.avatar} 
+                          alt={item.name} 
+                          className="h-8 w-8 rounded-full object-cover border border-stone-200 shrink-0"
+                        />
+                        <span className="font-mono font-bold text-stone-900">{item.roll_number}</span>
+                      </td>
 
-                    {/* Name & Section */}
-                    <td className="py-3">
-                      <div className="text-stone-900 font-semibold">{item.name}</div>
-                      <div className="text-[10px] text-stone-400">{item.section}</div>
-                    </td>
+                      {/* Name & Section */}
+                      <td className="py-3">
+                        <div className="text-stone-900 font-semibold">{item.name}</div>
+                        <div className="text-[10px] text-stone-400">{item.section}</div>
+                      </td>
 
-                    {/* Pill Status */}
-                    <td className="py-3 text-right pr-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center ${badgeClass}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+                      {/* Pill Status */}
+                      <td className="py-3 text-right pr-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center ${badgeClass}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* 📊 CSE Semester Breakdown & Weekly Trends Chart */}
+      {/* 📊 Semester Breakdown & Weekly Trends Chart */}
       <div className="rounded-3xl bg-white border border-stone-200/80 p-6 shadow-xs space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-stone-900">CSE Semester Turnout Breakdown</h2>
+            <h2 className="text-sm font-bold text-stone-900">{departmentName || 'Department'} Semester Turnout Breakdown</h2>
             <p className="text-xs text-stone-400 mt-0.5">Classroom & Lab performance by batch coordinator</p>
           </div>
           <Link
@@ -437,33 +445,39 @@ export default function HODDashboard() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {semesterStats.map((sem: any, idx: number) => {
-            const pct = sem.turnout ?? 83.6;
-            return (
-              <div key={idx} className="p-4 rounded-2xl bg-stone-50 border border-stone-200/70 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">{sem.semester}</span>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    pct >= 75 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                  }`}>
-                    {pct}%
-                  </span>
+        {semesterStats.length === 0 ? (
+          <div className="p-8 text-center bg-stone-50 rounded-2xl border border-stone-200/70 text-stone-400 text-xs">
+            No semester cohorts currently active. Classes will display here once academic terms commence.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {semesterStats.map((sem: any, idx: number) => {
+              const pct = sem.turnout ?? 0.0;
+              return (
+                <div key={idx} className="p-4 rounded-2xl bg-stone-50 border border-stone-200/70 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-stone-800">{sem.semester}</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      pct >= 75 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {pct}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-stone-200 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full ${pct >= 75 ? 'bg-teal-600' : 'bg-rose-500'}`}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-stone-400">
+                    <span>{sem.section}</span>
+                    <span>Coord: {sem.coordinator}</span>
+                  </div>
                 </div>
-                <div className="w-full bg-stone-200 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${pct >= 75 ? 'bg-teal-600' : 'bg-rose-500'}`}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] text-stone-400">
-                  <span>{sem.section}</span>
-                  <span>Coord: {sem.coordinator}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Trends Chart */}
         <div className="pt-4 border-t border-stone-100">

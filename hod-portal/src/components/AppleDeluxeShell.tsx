@@ -272,7 +272,7 @@ export default function AppleDeluxeShell({
                   <span className="w-3.5 h-3.5 rounded-full bg-emerald-400/30 animate-ping absolute"></span>
                 </div>
                 <span className="text-[11px] font-semibold text-stone-200 tracking-wider uppercase">
-                  CSE Live
+                  Campus Live
                 </span>
                 <Radio className="h-3 w-3 text-teal-400/80 animate-pulse" />
               </motion.div>
@@ -475,7 +475,7 @@ export default function AppleDeluxeShell({
 
       {/* Footer Info */}
       <footer className="mt-4 md:mt-8 pb-16 md:pb-0 text-center text-xs text-stone-400 font-medium transition-all">
-        CSE Department Command Hub • Deluxe Apple Experience Edition
+        Department Command Hub • Executive Academic Edition
       </footer>
 
     </div>

@@ -10,6 +10,7 @@ export default function StudentPortal() {
   const [showGrievanceForm, setShowGrievanceForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [grievanceReason, setGrievanceReason] = useState('');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [isSubmittingGrievance, setIsSubmittingGrievance] = useState(false);
   const [grievanceFeedback, setGrievanceFeedback] = useState<string | null>(null);
   const [standaloneUrl, setStandaloneUrl] = useState('http://localhost:3002');
@@ -88,7 +89,8 @@ export default function StudentPortal() {
     setGrievanceFeedback(null);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const res = await fetch(`${API_BASE_URL}/portal/grievance?session_id=1&reason=${encodeURIComponent(grievanceReason)}`, {
+      const sessId = selectedSessionId || (studentData.recentLogs[0]?.session_id || studentData.recentLogs[0]?.id || 1);
+      const res = await fetch(`${API_BASE_URL}/portal/grievance?session_id=${sessId}&reason=${encodeURIComponent(grievanceReason)}`, {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -145,7 +147,7 @@ export default function StudentPortal() {
         <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/90 border border-stone-200/80 p-6 rounded-3xl shadow-sm backdrop-blur-xl">
           <div className="flex items-center space-x-4">
             <div className="h-16 w-16 bg-stone-900 text-white rounded-2xl flex items-center justify-center text-xl font-extrabold shadow-sm">
-              {studentData.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+              {studentData.name ? studentData.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'ST'}
             </div>
             <div>
               <h1 className="text-2xl font-extrabold text-stone-900">{studentData.name}</h1>
@@ -261,8 +263,21 @@ export default function StudentPortal() {
                   )}
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Session Date & Subject</label>
-                    <select required className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white">
-                      <option value="1">2026-09-01 - Machine Learning</option>
+                    <select 
+                      required 
+                      value={selectedSessionId}
+                      onChange={(e) => setSelectedSessionId(e.target.value)}
+                      className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white"
+                    >
+                      {studentData.recentLogs.length === 0 ? (
+                        <option value="">No past sessions found to dispute</option>
+                      ) : (
+                        studentData.recentLogs.map((l: any) => (
+                          <option key={l.session_id || l.id} value={l.session_id || l.id}>
+                            {l.date} - {l.subject} ({l.status})
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>

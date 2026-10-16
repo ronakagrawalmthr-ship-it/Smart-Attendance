@@ -89,6 +89,6 @@ def send_system_email(
 
     # If Resend failed and no SMTP was configured
     if resend_key:
-        return False, "Resend sandbox delivery restricted to account owner (ronakagrawalmthr@gmail.com)."
+        return False, "Resend sandbox delivery restricted to verified account owner email."
     
     return False, "No email provider configured (set RESEND_API_KEY or SMTP_USER/SMTP_PASSWORD in .env)."

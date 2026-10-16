@@ -36,6 +36,7 @@ export default function HODStudentRosterPage() {
   const [selectedBiometric, setSelectedBiometric] = useState<string>('all');
   
   const [departmentName, setDepartmentName] = useState('Computer Science');
+  const [hodName, setHodName] = useState('Head of Department');
 
   const fetchStudents = async () => {
     try {
@@ -56,6 +57,12 @@ export default function HODStudentRosterPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('hod_name');
+      if (stored) setHodName(stored);
+      const storedDept = localStorage.getItem('hod_department');
+      if (storedDept) setDepartmentName(storedDept);
+    }
     fetchStudents();
   }, []);
 
@@ -109,7 +116,7 @@ export default function HODStudentRosterPage() {
   }, [filteredStudents]);
 
   return (
-    <AppleDeluxeShell userRole="Department Head Command" userName="HOD CSE">
+    <AppleDeluxeShell userRole={`Head of Department, ${departmentName || 'Academic'}`} userName={hodName}>
       <div className="space-y-6">
         
         {/* Header Container */}

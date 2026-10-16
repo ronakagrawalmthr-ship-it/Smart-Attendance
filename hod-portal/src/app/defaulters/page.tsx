@@ -40,28 +40,27 @@ export default function HODDefaultersPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.defaulters && data.defaulters.length > 0) {
-          // Filter to only Computer Science students
-          const cseDefaulters = data.defaulters.map((d: any) => {
+          const list = data.defaulters.map((d: any) => {
             const pct = Number(d.attendance_pct ?? d.percentage ?? 0);
             return {
               roll_number: d.roll_number,
               name: d.name,
-              semester: 6,
+              semester: d.semester || 'Current Term',
               section: d.section || 'A',
               attendance_pct: pct,
-              parent_email: `guardian.${d.roll_number.toLowerCase()}@parent.university.edu`,
+              parent_email: d.parent_email || d.email || 'guardian@university.edu',
               status: pct < 65 ? 'Debarment Risk (<65%)' : 'Warning Zone (65-75%)'
             };
           });
           // Sort strictly by roll number in ascending order
-          cseDefaulters.sort((a: any, b: any) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }));
-          setDefaulters(cseDefaulters);
+          list.sort((a: any, b: any) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }));
+          setDefaulters(list);
         } else {
           setDefaulters([]);
         }
       }
     } catch {
-      console.log("Error fetching CSE defaulters.");
+      console.log("Error fetching defaulters.");
     } finally {
       setLoading(false);
     }
@@ -76,10 +75,11 @@ export default function HODDefaultersPage() {
   const handleNotifyParent = async (name: string, roll: string, email: string) => {
     try {
       setDispatching(true);
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Computer Science';
       const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_rolls: [roll], channel: 'Email', branch: 'Computer Science' })
+        body: JSON.stringify({ student_rolls: [roll], channel: 'Email', branch })
       });
       if (res.ok) {
         const data = await res.json();
@@ -110,10 +110,11 @@ export default function HODDefaultersPage() {
   const handleNotifyAllDepartment = async () => {
     try {
       setDispatching(true);
+      const branch = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'Computer Science';
       const res = await authFetch(`${API_BASE_URL}/management/defaulters/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threshold, channel: 'Email', branch: 'Computer Science' })
+        body: JSON.stringify({ threshold, channel: 'Email', branch })
       });
       if (res.ok) {
         const data = await res.json();
@@ -123,7 +124,7 @@ export default function HODDefaultersPage() {
             detail: {
               type: 'defaulter_alert',
               title: 'Department Defaulters Warned',
-              detail: `Official warning notices broadcasted to all CSE students below ${threshold}% cutoff`,
+              detail: `Official warning notices broadcasted to all students below ${threshold}% cutoff`,
               time: 'Just now',
               badge: 'Broadcasted'
             }
@@ -134,7 +135,7 @@ export default function HODDefaultersPage() {
         setNotificationSent(`Department-wide attendance warning emails broadcasted to student guardians.`);
       }
     } catch {
-      setNotificationSent(`Broadcasted attendance warning emails to all CSE defaulters.`);
+      setNotificationSent(`Broadcasted attendance warning emails to all department defaulters.`);
     } finally {
       setDispatching(false);
       setTimeout(() => setNotificationSent(null), 4500);
@@ -232,9 +233,9 @@ export default function HODDefaultersPage() {
         <div>
           <div className="flex items-center space-x-2">
             <span className="text-[11px] px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold uppercase tracking-wider">
-              CSE Department Scoped
+              Department Scoped
             </span>
-            <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">CSE Student Defaulter Action Center</h1>
+            <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Student Defaulter Action Center</h1>
           </div>
           <p className="text-xs text-stone-500 mt-1 font-medium">
             Automated compliance enforcement, instant WhatsApp parent dispatches, and examination eligibility tracking.
@@ -296,7 +297,7 @@ export default function HODDefaultersPage() {
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-extrabold text-stone-900 flex items-center space-x-2">
             <ShieldAlert className="h-5 w-5 text-rose-500" />
-            <span>CSE Students Below Minimum Requirement ({defaulters.length})</span>
+            <span>Students Below Minimum Requirement ({defaulters.length})</span>
           </h2>
           <span className="text-xs text-stone-400 font-mono">1-Click WhatsApp & Email Alerts</span>
         </div>

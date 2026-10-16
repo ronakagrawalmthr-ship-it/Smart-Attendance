@@ -577,10 +577,10 @@ export default function SetupWizardPage() {
                     <div className="flex items-start space-x-2">
                       <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold text-amber-900 text-xs">Resend Free Sandbox Mode Active</p>
+                        <p className="font-bold text-amber-900 text-xs">Resend Sandbox Mode Active</p>
                         <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
-                          Resend free tier only delivers real emails to the verified account owner (<b>ronakagrawalmthr@gmail.com</b>).
-                          To test real email delivery, use <code className="bg-amber-100 px-1 py-0.2 rounded font-mono text-amber-900">ronakagrawalmthr@gmail.com</code> on step 1, or auto-fill the instant developer code below.
+                          Resend free tier only delivers external emails to the verified owner of your Resend API key.
+                          For instant activation in development mode, use the auto-fill developer code below.
                         </p>
                       </div>
                     </div>

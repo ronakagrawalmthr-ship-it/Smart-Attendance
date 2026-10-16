@@ -30,11 +30,28 @@ Designed for colleges, universities, and institutions adhering to AICTE, UGC, an
 
 ---
 
-## 🚀 1-Click Quick Launch (Windows)
+## 🚀 Quick Launch (Windows)
 
-The platform includes automated master batch scripts for zero-configuration startup and graceful shutdown:
+The platform includes automated master batch scripts and individual launchers for zero-configuration startup:
 
-### Start All Services (7-in-1 Launcher)
+### Interactive Control Center (Recommended)
+Double-click `launch_menu.bat` or run:
+```cmd
+launch_menu.bat
+```
+Choose to start any individual portal, mobile app, backend, or all services simultaneously from a clean CLI menu!
+
+### Standalone Individual Launchers
+To avoid opening all terminal windows at once and prevent confusion, you can launch each service individually:
+- `start_backend.bat` — Central FastAPI Backend & AI Biometrics (Port 8000)
+- `start_web_frontend.bat` — Web Showcase & Teacher Console (Port 3000)
+- `start_admin_portal.bat` — Institutional Admin Portal (Port 3001)
+- `start_student_portal.bat` — Student Academic Portal (Port 3002)
+- `start_hod_portal.bat` — HOD Departmental Command Deck (Port 3003)
+- `start_mobile_app.bat` — Teacher Mobile App Expo Metro Bundler
+- `start_ngrok.bat` — Ngrok Cloud Tunnel (Port 8000)
+
+### Start All Services (7-in-1 Master Launcher)
 Double-click `start_all.bat` or run:
 ```cmd
 start_all.bat

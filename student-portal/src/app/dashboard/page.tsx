@@ -542,7 +542,7 @@ export default function StudentDashboard() {
               </div>
               <div className="pt-2 border-t border-blue-200/50 flex items-center justify-between text-[11px]">
                 <span className="text-blue-700 font-semibold">Semester Schedule</span>
-                <span className="font-mono text-blue-900 font-bold">CSE Dept</span>
+                <span className="font-mono text-blue-900 font-bold truncate max-w-[120px]">{studentData.branch || 'Academic Dept'}</span>
               </div>
             </div>
 
@@ -980,6 +980,13 @@ export default function StudentDashboard() {
             </span>
           </div>
 
+          {studentData.subjects.length === 0 ? (
+            <div className="py-10 text-center rounded-2xl bg-stone-50/60 border border-dashed border-stone-200 p-6 space-y-2">
+              <BookOpen className="h-8 w-8 text-stone-300 mx-auto" />
+              <p className="text-xs font-semibold text-stone-600">No subject courses enrolled yet for Semester {studentData.semester}</p>
+              <p className="text-[11px] text-stone-400">Once your faculty or HOD assigns subjects to your batch, live course turnouts will appear here.</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {studentData.subjects.map((sub) => {
               const subSafe = sub.pct >= 75;
@@ -1031,6 +1038,7 @@ export default function StudentDashboard() {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* 📋 Student Live Verification Feed Table (Exact Match to Image Format) */}
@@ -1067,7 +1075,15 @@ export default function StudentDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-stone-800 font-medium">
-                {studentData.recentLogs.map((log) => {
+                {studentData.recentLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center text-stone-400 text-xs">
+                      <Clock className="h-6 w-6 text-stone-300 mx-auto mb-2" />
+                      <span>No biometric attendance records logged yet. Verified scans will appear here live once attendance is taken in class.</span>
+                    </td>
+                  </tr>
+                ) : (
+                studentData.recentLogs.map((log) => {
                   const isPresent = log.status === 'Present';
                   return (
                     <tr key={log.id} className="hover:bg-stone-50/80 transition duration-150">
@@ -1123,7 +1139,8 @@ export default function StudentDashboard() {
                       </td>
                     </tr>
                   );
-                })}
+                })
+                )}
               </tbody>
             </table>
           </div>

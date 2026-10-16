@@ -273,44 +273,7 @@ export default function App() {
   const REAL_CSE_STUDENTS = [];
 
   // Dynamic Teacher's Schedule (loaded dynamically from database metadata)
-  const [lectures, setLectures] = useState([
-    {
-      id: 1,
-      code: 'CS305',
-      name: 'Design & Analysis of Algorithms',
-      semester: 'Semester 6',
-      section: 'Section A',
-      room: 'Room A - Lab 2',
-      time: '10:00 AM - 11:00 AM',
-      status: 'Live Now',
-      enrolled: 0,
-      roster: REAL_CSE_STUDENTS
-    },
-    {
-      id: 2,
-      code: 'CS303',
-      name: 'Computer Networks & Security',
-      semester: 'Semester 6',
-      section: 'Section A',
-      room: 'Room A - Lab 1',
-      time: '11:30 AM - 12:30 PM',
-      status: 'Upcoming',
-      enrolled: 0,
-      roster: REAL_CSE_STUDENTS
-    },
-    {
-      id: 3,
-      code: 'CS302',
-      name: 'Database Management Systems',
-      semester: 'Semester 6',
-      section: 'Section A',
-      room: 'Room A - Lab 4',
-      time: '02:00 PM - 03:00 PM',
-      status: 'Scheduled',
-      enrolled: 0,
-      roster: REAL_CSE_STUDENTS
-    }
-  ]);
+  const [lectures, setLectures] = useState([]);
 
   const fetchLiveRoster = async () => {
     try {
@@ -348,8 +311,7 @@ export default function App() {
 
       // 3. Populate dynamic lecture schedule from database subjects
       if (subjectsList.length > 0) {
-        const cseSubjects = subjectsList.filter(s => s.semester === 6 && (s.branch.includes('Computer') || !s.branch));
-        const activeSubjects = cseSubjects.length > 0 ? cseSubjects.slice(0, 4) : subjectsList.slice(0, 3);
+        const activeSubjects = subjectsList.slice(0, 5);
         const timeSlots = ['10:00 AM - 11:00 AM', '11:30 AM - 12:30 PM', '02:00 PM - 03:00 PM', '03:30 PM - 04:30 PM'];
         const rooms = ['Room A - Lab 2', 'Room A - Lab 1', 'Room A - Lab 4', 'Room B - Seminar Hall'];
         
@@ -368,11 +330,7 @@ export default function App() {
         setLectures(dynamicLectures);
         console.log(`[Roster Sync] Configured ${dynamicLectures.length} dynamic courses with ${liveRoster.length} enrolled students.`);
       } else {
-        setLectures(prev => prev.map(lec => ({
-          ...lec,
-          enrolled: liveRoster.length,
-          roster: liveRoster
-        })));
+        setLectures([]);
         console.log(`[Roster Sync] Loaded ${liveRoster.length} students from database!`);
       }
     } catch (e) {
@@ -1477,43 +1435,55 @@ export default function App() {
           <Text style={styles.sectionHeaderTitle}>Today's Lecture Schedule</Text>
           <Text style={styles.sectionHeaderSubtitle}>Select a session to activate the hardware facial scanner:</Text>
 
-          {lectures.map((lec) => {
-            const isLive = lec.status === 'Live Now';
-            return (
-              <TouchableOpacity 
-                key={lec.id} 
-                style={[styles.lectureCard, isLive && styles.lectureCardLive]}
-                onPress={() => launchSession(lec)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.lectureCardHeader}>
-                  <View style={styles.codeBadge}>
-                    <Text style={styles.codeBadgeText}>{lec.code}</Text>
+          {lectures.length === 0 ? (
+            <View style={[styles.lectureCard, { alignItems: 'center', paddingVertical: 32 }]}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>📚</Text>
+              <Text style={{ color: '#F1F5F9', fontSize: 16, fontWeight: '700', marginBottom: 4 }}>
+                No Active Lectures Found
+              </Text>
+              <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 }}>
+                There are no classes scheduled for your profile today. Add subjects in the Portal or check back later.
+              </Text>
+            </View>
+          ) : (
+            lectures.map((lec) => {
+              const isLive = lec.status === 'Live Now';
+              return (
+                <TouchableOpacity 
+                  key={lec.id} 
+                  style={[styles.lectureCard, isLive && styles.lectureCardLive]}
+                  onPress={() => launchSession(lec)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.lectureCardHeader}>
+                    <View style={styles.codeBadge}>
+                      <Text style={styles.codeBadgeText}>{lec.code}</Text>
+                    </View>
+                    <View style={[styles.statusTag, isLive ? styles.tagLive : styles.tagUpcoming]}>
+                      <Text style={[styles.statusTagText, isLive ? styles.textLive : styles.textUpcoming]}>
+                        {lec.status}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.statusTag, isLive ? styles.tagLive : styles.tagUpcoming]}>
-                    <Text style={[styles.statusTagText, isLive ? styles.textLive : styles.textUpcoming]}>
-                      {lec.status}
+
+                  <Text style={styles.lectureName}>{lec.name}</Text>
+                  
+                  <View style={styles.lectureMetaGrid}>
+                    <Text style={styles.metaItem}>🏛️ {lec.room}</Text>
+                    <Text style={styles.metaItem}>👥 {lec.semester} • {lec.section}</Text>
+                    <Text style={styles.metaItem}>⏰ {lec.time}</Text>
+                    <Text style={styles.metaItem}>📋 {lec.enrolled} Registered</Text>
+                  </View>
+
+                  <View style={[styles.actionBanner, isLive ? styles.actionBannerLive : styles.actionBannerDefault]}>
+                    <Text style={[styles.actionBannerText, isLive ? styles.actionTextLive : styles.actionTextDefault]}>
+                      {isLive ? '🚀 Launch Walk-Up Scanner' : 'Start Attendance Session'}
                     </Text>
                   </View>
-                </View>
-
-                <Text style={styles.lectureName}>{lec.name}</Text>
-                
-                <View style={styles.lectureMetaGrid}>
-                  <Text style={styles.metaItem}>🏛️ {lec.room}</Text>
-                  <Text style={styles.metaItem}>👥 {lec.semester} • {lec.section}</Text>
-                  <Text style={styles.metaItem}>⏰ {lec.time}</Text>
-                  <Text style={styles.metaItem}>📋 {lec.enrolled} Registered</Text>
-                </View>
-
-                <View style={[styles.actionBanner, isLive ? styles.actionBannerLive : styles.actionBannerDefault]}>
-                  <Text style={[styles.actionBannerText, isLive ? styles.actionTextLive : styles.actionTextDefault]}>
-                    {isLive ? '🚀 Launch Walk-Up Scanner' : 'Start Attendance Session'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                </TouchableOpacity>
+              );
+            })
+          )}
 
           {/* Subtle Creator Credit Footer */}
           <View style={{ alignItems: 'center', paddingVertical: 20, marginTop: 8 }}>

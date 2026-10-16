@@ -29,11 +29,11 @@ interface SearchItem {
 }
 
 const DEFAULT_COMMANDS: SearchItem[] = [
-  { type: 'page', title: 'Department Dashboard', subtitle: 'CSE Attendance, sections and live labs', url: '/dashboard', category: 'Quick Navigation' },
+  { type: 'page', title: 'Department Dashboard', subtitle: 'Department attendance, sections and live labs', url: '/dashboard', category: 'Quick Navigation' },
   { type: 'page', title: 'Classes & Lab Sessions', subtitle: 'Lecture telemetry, active time-slots and labs', url: '/classes', category: 'Quick Navigation' },
-  { type: 'page', title: 'CSE Faculty Directory', subtitle: 'Faculty members, subjects and lecture logs', url: '/faculty', category: 'Quick Navigation' },
+  { type: 'page', title: 'Faculty Directory', subtitle: 'Faculty members, subjects and lecture logs', url: '/faculty', category: 'Quick Navigation' },
   { type: 'page', title: 'Student Grievance Desk', subtitle: 'Review absence disputes and grant attendance', url: '/grievances', category: 'Quick Navigation' },
-  { type: 'page', title: 'Defaulters Action Roster', subtitle: 'Students below statutory 75% cutoff with WhatsApp alert', url: '/defaulters', category: 'Quick Navigation' },
+  { type: 'page', title: 'Defaulters Action Roster', subtitle: 'Students below statutory 75% cutoff with alerts', url: '/defaulters', category: 'Quick Navigation' },
   { type: 'page', title: 'Academic Operations', subtitle: 'Duty Leave (OD), Holidays and Proxy allocations', url: '/operations', category: 'Quick Navigation' },
   { type: 'page', title: 'Department Settings', subtitle: 'Cutoff thresholds and HOD credentials', url: '/settings', category: 'Quick Navigation' },
 ];
@@ -102,7 +102,7 @@ export default function SpotlightSearch() {
             title: r.title,
             subtitle: r.subtitle,
             url: r.url || '/classes',
-            category: r.type === 'student' ? 'CSE Students' : 'CSE Faculty',
+            category: r.type === 'student' ? 'Students' : 'Faculty',
             meta: r
           }));
           setResults(mapped.length > 0 ? mapped : DEFAULT_COMMANDS.filter(c => c.title.toLowerCase().includes(query.toLowerCase())));
@@ -139,7 +139,7 @@ export default function SpotlightSearch() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search CSE students, faculty, or jump to page..."
+            placeholder="Search students, faculty, or jump to page..."
             className="w-full bg-transparent text-sm font-medium text-stone-900 placeholder:text-stone-400 focus:outline-none"
           />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-teal-600" />}
