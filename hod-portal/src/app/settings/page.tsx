@@ -316,7 +316,7 @@ export default function HODSettingsPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full rounded-2xl border border-stone-200 bg-stone-50/80 py-2.5 pl-10 pr-4 text-sm text-stone-900 placeholder-stone-400 focus:bg-white focus:border-emerald-500 focus:outline-none transition"
-                    placeholder="+91 98765 22441"
+                    placeholder="+91 9XXXXXXXXX"
                   />
                 </div>
               </div>

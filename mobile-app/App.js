@@ -283,22 +283,25 @@ export default function App() {
         metaRes = await fetch(`${CLOUD_API_URL}/attendance/departments-meta`).catch(() => null);
       }
       let subjectsList = [];
-      let targetBranch = teacher?.department || '';
-      let targetSem = 1;
-      let targetSec = 'A';
+      let targetBranch = teacher?.department || 'Computer Science';
+      let targetSem = 3;
+      let targetSec = 'C';
       if (metaRes && metaRes.ok) {
         const metaData = await metaRes.json();
         if (metaData.subjects && metaData.subjects.length > 0) {
           subjectsList = metaData.subjects;
         }
-        if (metaData.branches && metaData.branches.length > 0 && !targetBranch) {
-          targetBranch = metaData.branches[0];
+        if (metaData.branches && metaData.branches.length > 0) {
+          const matchedBranch = metaData.branches.find(b => 
+            targetBranch && b.toLowerCase().includes(targetBranch.toLowerCase())
+          );
+          targetBranch = matchedBranch || metaData.branches[0];
         }
         if (metaData.semesters && metaData.semesters.length > 0) {
-          targetSem = metaData.semesters[0];
+          targetSem = metaData.semesters.includes(3) ? 3 : metaData.semesters[0];
         }
         if (metaData.sections && metaData.sections.length > 0) {
-          targetSec = metaData.sections[0];
+          targetSec = metaData.sections.includes('C') ? 'C' : metaData.sections[0];
         }
       }
 
@@ -322,8 +325,42 @@ export default function App() {
         }
       }
 
-      // 3. Populate dynamic lecture schedule from database subjects
-      if (subjectsList.length > 0) {
+      // 3. First Priority: Pull live daily schedule from registered college Timetable
+      const ttQuery = `/timetable/today?branch=${encodeURIComponent(targetBranch)}&semester=${targetSem}&section=${targetSec}`;
+      let ttRes = await fetch(`${API_BASE_URL}${ttQuery}`).catch(() => null);
+      if (!ttRes || !ttRes.ok) {
+        ttRes = await fetch(`${CLOUD_API_URL}${ttQuery}`).catch(() => null);
+      }
+
+      let timetableSlots = [];
+      if (ttRes && ttRes.ok) {
+        const ttData = await ttRes.json();
+        if (ttData.slots && Array.isArray(ttData.slots) && ttData.slots.length > 0) {
+          timetableSlots = ttData.slots;
+        }
+      }
+
+      if (timetableSlots.length > 0) {
+        const dynamicLectures = timetableSlots.map((slot) => {
+          const isOngoing = Boolean(slot.is_ongoing);
+          const isPast = Boolean(slot.is_past);
+          return {
+            id: slot.id,
+            code: slot.subject_code || `CS${targetSem}01`,
+            name: slot.subject_name || 'Classroom Lecture',
+            semester: `Semester ${targetSem}`,
+            section: `Section ${targetSec}`,
+            room: slot.room_number || 'LH-301',
+            time: `${slot.start_time} - ${slot.end_time}`,
+            status: isOngoing ? 'Live Now' : (isPast ? 'Concluded' : 'Upcoming'),
+            enrolled: liveRoster.length,
+            roster: liveRoster,
+            teacher_name: slot.teacher_name || teacher?.name || 'Faculty Member'
+          };
+        });
+        setLectures(dynamicLectures);
+        console.log(`[Roster Sync] Configured ${dynamicLectures.length} timetable sessions with ${liveRoster.length} students.`);
+      } else if (subjectsList.length > 0) {
         const activeSubjects = subjectsList.slice(0, 5);
         const timeSlots = ['10:00 AM - 11:00 AM', '11:30 AM - 12:30 PM', '02:00 PM - 03:00 PM', '03:30 PM - 04:30 PM'];
         const rooms = ['Room A - Lab 2', 'Room A - Lab 1', 'Room A - Lab 4', 'Room B - Seminar Hall'];
@@ -332,13 +369,14 @@ export default function App() {
           id: sub.id,
           code: sub.code,
           name: sub.name,
-          semester: `Semester ${sub.semester || 6}`,
-          section: 'Section A',
+          semester: `Semester ${sub.semester || targetSem}`,
+          section: `Section ${targetSec}`,
           room: rooms[idx % rooms.length],
           time: timeSlots[idx % timeSlots.length],
           status: idx === 0 ? 'Live Now' : idx === 1 ? 'Upcoming' : 'Scheduled',
           enrolled: liveRoster.length,
-          roster: liveRoster
+          roster: liveRoster,
+          teacher_name: teacher?.name || 'Faculty Member'
         }));
         setLectures(dynamicLectures);
         console.log(`[Roster Sync] Configured ${dynamicLectures.length} dynamic courses with ${liveRoster.length} enrolled students.`);
@@ -381,7 +419,42 @@ export default function App() {
       }
       const saved = await AsyncStorage.getItem('@teacher_user');
       if (saved) {
-        setTeacher(JSON.parse(saved));
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.token) {
+            // Verify token with backend to prevent ghost/stale profiles
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch(`${API_BASE_URL}/management/teacher/profile`, {
+              headers: { 'Authorization': `Bearer ${parsed.token}` },
+              signal: controller.signal
+            }).catch(() => null);
+            clearTimeout(timeoutId);
+
+            if (res && (res.status === 401 || res.status === 403)) {
+              console.log("Cached teacher credentials expired or invalid. Purging stale profile.");
+              await AsyncStorage.removeItem('@teacher_user');
+              setTeacher(null);
+            } else if (res && res.ok) {
+              const liveProfile = await res.json();
+              const refreshed = {
+                ...parsed,
+                name: liveProfile.full_name || parsed.name || 'Faculty Member',
+                department: liveProfile.department || parsed.department || 'Computer Science & Engineering'
+              };
+              setTeacher(refreshed);
+              await AsyncStorage.setItem('@teacher_user', JSON.stringify(refreshed));
+            } else {
+              setTeacher(parsed);
+            }
+          } else {
+            await AsyncStorage.removeItem('@teacher_user');
+            setTeacher(null);
+          }
+        } catch {
+          await AsyncStorage.removeItem('@teacher_user');
+          setTeacher(null);
+        }
       }
       const savedKioskPin = await AsyncStorage.getItem('@kiosk_exit_pin');
       if (savedKioskPin) {
@@ -389,6 +462,27 @@ export default function App() {
       }
     } catch (e) {
       console.log('Error reading auth cache:', e);
+    }
+  };
+
+  const handleHardResetCache = async () => {
+    try {
+      await AsyncStorage.multiRemove([
+        '@teacher_user', 
+        '@kiosk_exit_pin', 
+        '@offline_attendance_queue',
+        '@custom_server_host'
+      ]);
+      setTeacher(null);
+      setOfflineQueueCount(0);
+      setLectures([]);
+      Alert.alert(
+        "Session Purged",
+        "Local session cache, stored teacher profiles, and offline data have been cleared. You can now log in fresh."
+      );
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert("Reset Error", "Could not clear all cache items.");
     }
   };
 
@@ -1269,8 +1363,35 @@ export default function App() {
               )}
             </TouchableOpacity>
 
+            {/* Quick Demo Login Pill */}
+            <View style={styles.demoPillContainer}>
+              <View>
+                <Text style={styles.demoPillLabel}>Verified Faculty Login</Text>
+                <Text style={styles.demoPillValue}>faculty@college.edu</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.demoFillBtn} 
+                onPress={() => {
+                  setAuthEmail('faculty@college.edu');
+                  setAuthPassword('faculty123');
+                }}
+              >
+                <Text style={styles.demoFillBtnText}>Auto-fill</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Purge Local Cache Button */}
+            <TouchableOpacity 
+              style={{ marginTop: 14, paddingVertical: 8, alignItems: 'center' }} 
+              onPress={handleHardResetCache}
+            >
+              <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700' }}>
+                🔄 Purge Stale Session & Reset Cache
+              </Text>
+            </TouchableOpacity>
+
             {/* Subtle Creator Credit Badge */}
-            <View style={{ alignItems: 'center', marginTop: 22, marginBottom: 4 }}>
+            <View style={{ alignItems: 'center', marginTop: 18, marginBottom: 4 }}>
               <Text style={{ color: '#78716C', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
               <View style={{ backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 4 }}>
                 <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
@@ -2595,7 +2716,7 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
     textAlign: 'center',
     marginBottom: 12,
   },
@@ -2645,16 +2766,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cardContainer: {
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
     borderColor: '#E8E3DA',
+    shadowColor: '#000000',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
   },
   cardTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#1C1917',
   },
   cardSubtitle: {
     fontSize: 13,
@@ -2680,7 +2805,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 13,
-    color: '#ffffff',
+    color: '#1C1917',
     fontSize: 14,
   },
   primaryButton: {
@@ -2698,7 +2823,7 @@ const styles = StyleSheet.create({
   demoPillContainer: {
     marginTop: 18,
     padding: 12,
-    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(37, 99, 235, 0.25)',
@@ -2709,11 +2834,12 @@ const styles = StyleSheet.create({
   demoPillLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#93c5fd',
+    color: '#2563eb',
   },
   demoPillValue: {
     fontSize: 11,
-    color: '#57534E',
+    color: '#1C1917',
+    fontWeight: '600',
     marginTop: 2,
   },
   demoFillBtn: {
@@ -2818,16 +2944,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   lectureCard: {
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     padding: 18,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E8E3DA',
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   lectureCardLive: {
     borderColor: '#0284c7',
-    backgroundColor: '#0c1a30',
+    backgroundColor: '#F0F9FF',
   },
   lectureCardHeader: {
     flexDirection: 'row',
@@ -2836,13 +2966,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   codeBadge: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   codeBadgeText: {
-    color: '#38bdf8',
+    color: '#0284c7',
     fontWeight: '800',
     fontSize: 12,
   },
@@ -2854,12 +2984,12 @@ const styles = StyleSheet.create({
   tagLive: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
   tagUpcoming: { backgroundColor: 'rgba(148, 163, 184, 0.15)' },
   statusTagText: { fontSize: 11, fontWeight: '700' },
-  textLive: { color: '#34d399' },
+  textLive: { color: '#059669' },
   textUpcoming: { color: '#78716C' },
   lectureName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#1C1917',
     marginBottom: 12,
   },
   lectureMetaGrid: {
@@ -2870,8 +3000,8 @@ const styles = StyleSheet.create({
   },
   metaItem: {
     fontSize: 12,
-    color: '#78716C',
-    backgroundColor: '#FAF7F2',
+    color: '#475569',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -2883,9 +3013,9 @@ const styles = StyleSheet.create({
   },
   actionBannerLive: { backgroundColor: '#0284c7' },
   actionBannerDefault: {
-    backgroundColor: '#F0ECE4',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E8E3DA',
+    borderColor: '#E2E8F0',
   },
   actionBannerText: { fontWeight: '700', fontSize: 13 },
   actionTextLive: { color: '#ffffff' },
@@ -2925,12 +3055,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scannerSessionCode: {
-    color: '#1C1917',
+    color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
   },
   scannerSessionSub: {
-    color: '#78716C',
+    color: '#CBD5E1',
     fontSize: 11,
   },
   livenessAlertBar: {
@@ -3059,11 +3189,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     marginLeft: 8,
+    borderWidth: 1,
+    borderColor: '#E8E3DA',
   },
   counterNum: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   counterLabel: {
     fontSize: 11,
@@ -3101,12 +3233,12 @@ const styles = StyleSheet.create({
   },
   reviewSubtitle: {
     fontSize: 12,
-    color: '#38bdf8',
+    color: '#0284c7',
     marginTop: 2,
     fontWeight: '600',
   },
   turnoutGaugeBox: {
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
@@ -3131,13 +3263,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF7F2',
   },
   searchInput: {
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E8E3DA',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#ffffff',
+    color: '#1C1917',
     fontSize: 13,
   },
   filterTabRow: {
@@ -3283,13 +3415,14 @@ const styles = StyleSheet.create({
     padding: 22,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
+    elevation: 5,
   },
   forgotModalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   forgotModalDesc: {
     fontSize: 12,
@@ -3304,6 +3437,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8E3DA',
   },
   closeBtnText: {
     color: '#78716C',
@@ -3316,12 +3451,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    backgroundColor: 'rgba(2, 132, 199, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderColor: 'rgba(2, 132, 199, 0.25)',
   },
   profilePillText: {
-    color: '#38bdf8',
+    color: '#0284c7',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -3333,8 +3468,9 @@ const styles = StyleSheet.create({
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
+    elevation: 5,
   },
   profileModalHeader: {
     flexDirection: 'row',
@@ -3366,20 +3502,20 @@ const styles = StyleSheet.create({
   profileSectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#38bdf8',
+    color: '#0284c7',
   },
   empIdBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    backgroundColor: 'rgba(2, 132, 199, 0.1)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
+    borderColor: 'rgba(2, 132, 199, 0.3)',
   },
   empIdBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#38bdf8',
+    color: '#0284c7',
   },
   profileMetaRow: {
     flexDirection: 'row',
@@ -3394,21 +3530,21 @@ const styles = StyleSheet.create({
   },
   profileMetaValue: {
     fontSize: 12,
-    color: '#f8fafc',
+    color: '#1C1917',
     fontWeight: '700',
     flex: 1,
   },
   assignedSubjectPill: {
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E8E3DA',
+    borderColor: '#E2E8F0',
   },
   assignedSubjectText: {
     fontSize: 10,
-    color: '#57534E',
+    color: '#334155',
     fontWeight: '600',
   },
   prefLabel: {
@@ -3425,14 +3561,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#FAF7F2',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E8E3DA',
     alignItems: 'center',
   },
   prefToggleBtnActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.2)',
-    borderColor: '#38bdf8',
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284c7',
   },
   prefToggleBtnText: {
     fontSize: 11,
@@ -3440,7 +3576,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   prefToggleBtnTextActive: {
-    color: '#38bdf8',
+    color: '#0284c7',
   },
   prefSwitchRow: {
     flexDirection: 'row',
@@ -3449,11 +3585,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: '#E8E3DA',
   },
   prefSwitchTitle: {
     fontSize: 12,
-    color: '#f8fafc',
+    color: '#1C1917',
     fontWeight: '700',
   },
   prefSwitchDesc: {
@@ -3470,7 +3606,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#10b981',
   },
   switchPillOff: {
-    backgroundColor: '#475569',
+    backgroundColor: '#94A3B8',
   },
   switchPillText: {
     fontSize: 10,
@@ -3478,28 +3614,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   profileSuccessBanner: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
     borderRadius: 10,
     padding: 10,
     marginBottom: 10,
   },
   profileSuccessText: {
-    color: '#34d399',
+    color: '#059669',
     fontSize: 12,
     fontWeight: '700',
   },
   profileErrorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     borderRadius: 10,
     padding: 10,
     marginBottom: 10,
   },
   profileErrorText: {
-    color: '#f87171',
+    color: '#DC2626',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -3530,13 +3666,13 @@ const styles = StyleSheet.create({
   },
   recentScansLabel: {
     fontSize: 9,
-    color: '#78716C',
+    color: '#94A3B8',
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   recentScansName: {
     fontSize: 13,
-    color: '#f8fafc',
+    color: '#ffffff',
     fontWeight: '700',
   },
   undoRecentBtn: {
@@ -3579,6 +3715,11 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     borderWidth: 1,
     borderColor: '#E8E3DA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 5,
   },
   manualModalHeader: {
     flexDirection: 'row',
@@ -3589,7 +3730,7 @@ const styles = StyleSheet.create({
   manualModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#1C1917',
   },
   manualModalSubtitle: {
     fontSize: 11,
@@ -3611,37 +3752,37 @@ const styles = StyleSheet.create({
   manualStudentName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#1C1917',
   },
   manualStudentRoll: {
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: '#38bdf8',
+    color: '#0284c7',
     marginTop: 2,
   },
   manualRemoveBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   manualRemoveBtnText: {
-    color: '#f87171',
+    color: '#DC2626',
     fontSize: 11,
     fontWeight: '800',
   },
   manualAddBtn: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   manualAddBtnText: {
-    color: '#34d399',
+    color: '#059669',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -3654,9 +3795,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   reviewManualBtn: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    backgroundColor: 'rgba(2, 132, 199, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
+    borderColor: 'rgba(2, 132, 199, 0.3)',
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 12,
@@ -3664,14 +3805,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reviewManualBtnText: {
-    color: '#38bdf8',
+    color: '#0284c7',
     fontSize: 12,
     fontWeight: '800',
   },
   manualTag: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#f59e0b',
+    color: '#D97706',
     backgroundColor: 'rgba(245, 158, 11, 0.15)',
     paddingHorizontal: 5,
     paddingVertical: 1,
@@ -3680,28 +3821,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245, 158, 11, 0.3)',
   },
   rosterRemoveBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 8,
   },
   rosterRemoveBtnText: {
-    color: '#f87171',
+    color: '#DC2626',
     fontSize: 11,
     fontWeight: '800',
   },
   rosterAddBtn: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 8,
   },
   rosterAddBtnText: {
-    color: '#34d399',
+    color: '#059669',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -3715,22 +3856,27 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     borderWidth: 1,
     borderColor: '#E8E3DA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 5,
   },
   summaryModalHeader: {
     alignItems: 'center',
     marginBottom: 16,
   },
   summaryBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    backgroundColor: 'rgba(2, 132, 199, 0.1)',
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderColor: 'rgba(2, 132, 199, 0.25)',
     marginBottom: 8,
   },
   summaryBadgeText: {
-    color: '#38bdf8',
+    color: '#0284c7',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -3764,13 +3910,13 @@ const styles = StyleSheet.create({
   summaryKpiNumGreen: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#34d399',
+    color: '#059669',
   },
   summaryKpiBoxSlate: {
     flex: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    backgroundColor: 'rgba(100, 116, 139, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.3)',
+    borderColor: 'rgba(100, 116, 139, 0.25)',
     borderRadius: 12,
     padding: 10,
     alignItems: 'center',
@@ -3778,7 +3924,7 @@ const styles = StyleSheet.create({
   summaryKpiNumSlate: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#f8fafc',
+    color: '#334155',
   },
   summaryKpiBoxAmber: {
     flex: 1,
@@ -3792,7 +3938,7 @@ const styles = StyleSheet.create({
   summaryKpiNumAmber: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#fbbf24',
+    color: '#D97706',
   },
   summaryKpiLabel: {
     fontSize: 10,
@@ -3802,7 +3948,7 @@ const styles = StyleSheet.create({
   },
   summaryProgressContainer: {
     height: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#E2E8F0',
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 16,
@@ -3839,7 +3985,7 @@ const styles = StyleSheet.create({
   summaryAbsentName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#f87171',
+    color: '#DC2626',
   },
   summaryAbsentRoll: {
     fontSize: 11,
@@ -3848,7 +3994,7 @@ const styles = StyleSheet.create({
   },
   allPresentText: {
     fontSize: 12,
-    color: '#34d399',
+    color: '#059669',
     textAlign: 'center',
     paddingVertical: 10,
     fontWeight: '700',
@@ -3859,13 +4005,13 @@ const styles = StyleSheet.create({
   },
   summaryCancelBtn: {
     flex: 1,
-    backgroundColor: '#334155',
+    backgroundColor: '#E2E8F0',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
   summaryCancelBtnText: {
-    color: '#ffffff',
+    color: '#334155',
     fontSize: 13,
     fontWeight: '700',
   },

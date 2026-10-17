@@ -1201,7 +1201,7 @@ def get_class_attendance_records(
 
         is_guest = session.session_type == models.SessionType.guest_lecture
         subj_name = session.custom_subject_name or (subject.name if subject else ("Special Guest Lecture" if is_guest else "Core Lecture"))
-        subj_code = subject.code if subject else ("GUEST-LEC" if is_guest else "CS-301")
+        subj_code = subject.code if subject else ("GUEST-LEC" if is_guest else "GEN-101")
         conducted_by = (teacher.full_name if teacher else None) or session.conducted_by_name or "Faculty Coordinator"
 
         records.append({
@@ -1210,7 +1210,7 @@ def get_class_attendance_records(
             "roll_number": student.roll_number,
             "student_name": student.full_name,
             "branch": student.branch or session.branch,
-            "semester": student.semester or session.semester or (subject.semester if subject else 6),
+            "semester": student.semester or session.semester or (subject.semester if subject else 1),
             "section": student.section or session.section or "A",
             "subject_code": subj_code,
             "subject_name": subj_name,
@@ -3623,8 +3623,8 @@ def get_class_test_records(
                 
         results.append({
             "session_id": s.id,
-            "subject_name": sb.name if sb else "Core Engineering Test",
-            "subject_code": sb.code if sb else "CS-TEST",
+            "subject_name": sb.name if sb else "Class Assessment",
+            "subject_code": sb.code if sb else "TEST-101",
             "branch": s.branch,
             "date": s.start_time.strftime("%Y-%m-%d %H:%M") if s.start_time else "N/A",
             "invigilator": tp.full_name if tp else "Faculty Invigilator",

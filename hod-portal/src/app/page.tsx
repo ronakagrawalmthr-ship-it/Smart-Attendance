@@ -17,6 +17,12 @@ export default function HODLogin() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   React.useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('hod_token')) {
+      router.push('/dashboard');
+    }
+  }, [router]);
+
+  React.useEffect(() => {
     fetch(`${API_BASE_URL}/attendance/departments-meta`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -33,18 +39,24 @@ export default function HODLogin() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      // In production or synthetic suite, verify credentials
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password })
       });
 
       if (!res.ok) {
-        throw new Error('Invalid HOD credentials for this department.');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Invalid HOD credentials for this department.');
       }
 
       const data = await res.json();
+      if (data.user?.role !== 'hod' && data.user?.role !== 'admin') {
+        throw new Error(
+          `Access denied: Account registered with role '${data.user?.role?.toUpperCase()}'. Only Department Heads (HODs) and Administrators are authorized.`
+        );
+      }
+
       if (typeof window !== 'undefined') {
         localStorage.setItem('hod_token', data.access_token);
         localStorage.setItem('hod_department', data.user?.department || department);

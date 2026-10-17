@@ -476,7 +476,7 @@ def create_session_and_submit_attendance(
         start_time=now,
         end_time=now + timedelta(hours=1),
         branch=branch,
-        semester=int(semester) if semester else 6,
+        semester=int(semester) if semester else 1,
         section=section,
         conducted_by_name=conductor_final,
         custom_subject_name=custom_subject_name,

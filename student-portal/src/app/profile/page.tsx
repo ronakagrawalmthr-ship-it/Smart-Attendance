@@ -693,7 +693,7 @@ export default function StudentProfilePage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
+                  placeholder="+91 9XXXXXXXXX"
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
                 />
               </div>
@@ -706,7 +706,7 @@ export default function StudentProfilePage() {
                   type="tel"
                   value={emergencyContact}
                   onChange={(e) => setEmergencyContact(e.target.value)}
-                  placeholder="+91 91234 56789"
+                  placeholder="+91 9XXXXXXXXX"
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
                 />
               </div>

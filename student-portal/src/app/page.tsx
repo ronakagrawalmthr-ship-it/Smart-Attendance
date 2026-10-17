@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, ArrowRight, Lock, User, AlertCircle, ShieldCheck } from 'lucide-react';
@@ -13,6 +13,12 @@ export default function StudentHome() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('student_token')) {
+      router.push('/dashboard');
+    }
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

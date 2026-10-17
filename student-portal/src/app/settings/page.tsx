@@ -304,7 +304,7 @@ export default function StudentSettingsPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                    placeholder="+91 98765 43210"
+                    placeholder="+91 9XXXXXXXXX"
                   />
                 </div>
               </div>
@@ -319,7 +319,7 @@ export default function StudentSettingsPage() {
                     value={emergencyContact}
                     onChange={(e) => setEmergencyContact(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                    placeholder="+91 98765 00000"
+                    placeholder="+91 9XXXXXXXXX"
                   />
                 </div>
                 <p className="text-[11px] text-stone-400 mt-1">Official attendance warnings will be dispatched to this number if cutoff drops.</p>

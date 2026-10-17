@@ -133,14 +133,14 @@ export default function Home() {
       id: 'admin-portal',
       title: 'College Administrator Portal',
       category: 'Whole Institution Governance',
-      desc: 'Master institutional intelligence across all 6 departments, full faculty directory CRUD, statutory defaulters, and emergency broadcasts.',
+      desc: 'Master institutional intelligence across all academic departments, full faculty directory CRUD, statutory defaulters, and emergency broadcasts.',
       href: adminUrl,
       isExternal: true,
       icon: Building2,
       iconBg: 'bg-rose-50 text-rose-600 border border-rose-200/60',
       tag: 'Port 3001 Live',
       buttonText: 'Launch Admin Console (:3001)',
-      features: ['All 6 Academic Departments', 'Faculty & Student Directory CRUD', 'Statutory Accreditation Snapshots']
+      features: ['All Academic Departments', 'Faculty & Student Directory CRUD', 'Statutory Accreditation Snapshots']
     },
     {
       id: 'teacher-kiosk',

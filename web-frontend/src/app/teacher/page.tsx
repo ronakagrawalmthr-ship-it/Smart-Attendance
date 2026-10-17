@@ -242,7 +242,7 @@ export default function TeacherAttendancePage() {
   // Filter subjects for the selected branch and semester
   const filteredSubjects = useMemo(() => {
     return availableSubjects.filter(s => 
-      s.branch.toLowerCase().includes(selectedBranch.toLowerCase()) && 
+      (s.branch.toLowerCase().includes(selectedBranch.toLowerCase()) || selectedBranch.toLowerCase().includes(s.branch.toLowerCase())) && 
       (selectedSemester ? s.semester === selectedSemester : true)
     );
   }, [availableSubjects, selectedBranch, selectedSemester]);

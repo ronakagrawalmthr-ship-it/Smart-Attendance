@@ -30,6 +30,9 @@ export default function AdminLogin() {
             router.push('/setup');
           } else {
             setIsInitialized(true);
+            if (typeof window !== 'undefined' && localStorage.getItem('admin_token')) {
+              router.push('/dashboard');
+            }
           }
         }
       } catch (err) {
