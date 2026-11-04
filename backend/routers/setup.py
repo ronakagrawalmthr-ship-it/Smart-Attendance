@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 import time
@@ -10,12 +10,20 @@ from jose import jwt, JWTError
 
 try:
     from .. import models, database, security
+    from ..time_utils import now_ist_naive
 except (ImportError, ValueError):
     import models, database, security
+    try:
+        from time_utils import now_ist_naive
+    except (ImportError, ValueError):
+        from datetime import timezone
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
 
 try:
     import resend
-    resend.api_key = os.environ.get("RESEND_API_KEY", "re_mock_key_for_dev")
+    resend_key = os.environ.get("RESEND_API_KEY", "").strip()
+    resend.api_key = resend_key if resend_key else None
 except Exception:
     resend = None
 
@@ -24,8 +32,18 @@ router = APIRouter(
     tags=["First-Time Setup & Onboarding"]
 )
 
-# In-memory store for pending OTPs (Key: email.lower())
-PENDING_OTP = {}
+# Persistent Database-Backed Setup OTP Engine (Models.EmailVerificationOTP)
+def cleanup_expired_setup_otps(db: Session = None):
+    if db:
+        try:
+            now_dt = now_ist_naive()
+            db.query(models.EmailVerificationOTP).filter(
+                models.EmailVerificationOTP.expires_at < now_dt,
+                models.EmailVerificationOTP.purpose == "setup"
+            ).delete()
+            db.commit()
+        except Exception:
+            db.rollback()
 
 class SendOtpRequest(BaseModel):
     institution_name: str
@@ -44,11 +62,12 @@ class CompleteSetupRequest(BaseModel):
     password: str
 
 def is_system_already_initialized(db: Session) -> bool:
+    admin_count = db.query(models.User).filter(models.User.role == models.RoleEnum.admin).count()
+    if admin_count > 0:
+        return True
     setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "is_setup_completed").first()
     if setting and setting.value and setting.value.lower() == "true":
-        admin_count = db.query(models.User).filter(models.User.role == models.RoleEnum.admin).count()
-        if admin_count > 0:
-            return True
+        return True
     return False
 
 @router.get("/status")
@@ -76,6 +95,7 @@ def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_d
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System is already initialized and permanently locked. Contact your university master administrator."
         )
+    cleanup_expired_setup_otps()
     email_clean = payload.admin_email.strip().lower()
     inst_name = payload.institution_name.strip()
     admin_name = payload.admin_name.strip()
@@ -89,19 +109,33 @@ def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_d
     otp_code = str(secrets.randbelow(900000) + 100000)
     expires_at = time.time() + 600  # 10 minutes
 
-    PENDING_OTP[email_clean] = {
-        "otp": otp_code,
-        "expires_at": expires_at,
-        "institution_name": inst_name,
-        "admin_name": admin_name,
-        "attempts": 0
-    }
+    now_dt = now_ist_naive()
+    expires_at_dt = now_dt + timedelta(minutes=10)
+    
+    # Invalidate previous unverified setup OTPs
+    db.query(models.EmailVerificationOTP).filter(
+        models.EmailVerificationOTP.email == email_clean,
+        models.EmailVerificationOTP.purpose == "setup",
+        models.EmailVerificationOTP.is_verified == False
+    ).delete()
 
-    # Console display for developers & local inspection
-    print("\n" + "=" * 55)
-    print(f"[SECURITY OTP] Verification Code for {email_clean}: {otp_code}")
-    print(f"Institution: {inst_name} | Valid for 10 minutes")
-    print("=" * 55 + "\n")
+    otp_record = models.EmailVerificationOTP(
+        email=email_clean,
+        otp_code=otp_code,
+        purpose="setup",
+        expires_at=expires_at_dt,
+        is_verified=False,
+        created_at=now_dt
+    )
+    db.add(otp_record)
+    db.commit()
+
+    # Console display for developers & local inspection (gated behind DEBUG)
+    if os.getenv("DEBUG", "false").lower() in ("true", "1", "yes"):
+        print("\n" + "=" * 55)
+        print(f"[SECURITY OTP] Verification Code for {email_clean}: {otp_code}")
+        print(f"Institution: {inst_name} | Valid for 10 minutes")
+        print("=" * 55 + "\n")
 
     # Send via Resend Email service if configured
     email_dispatched = False
@@ -150,46 +184,47 @@ def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_d
     }
 
 @router.post("/verify-otp")
-def verify_setup_otp(payload: VerifyOtpRequest):
+def verify_setup_otp(payload: VerifyOtpRequest, db: Session = Depends(database.get_db)):
+    if is_system_already_initialized(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System is already initialized and permanently locked."
+        )
+    cleanup_expired_setup_otps()
     email_clean = payload.admin_email.strip().lower()
-    record = PENDING_OTP.get(email_clean)
+    now_dt = now_ist_naive()
 
-    if not record:
+    otp_record = db.query(models.EmailVerificationOTP).filter(
+        models.EmailVerificationOTP.email == email_clean,
+        models.EmailVerificationOTP.purpose == "setup",
+        models.EmailVerificationOTP.is_verified == False,
+        models.EmailVerificationOTP.expires_at >= now_dt
+    ).order_by(models.EmailVerificationOTP.id.desc()).first()
+
+    if not otp_record:
         raise HTTPException(
             status_code=400,
-            detail="No pending verification found for this email. Please request a new code."
+            detail="No pending or unexpired verification code found for this email. Please request a new code."
         )
 
-    if time.time() > record["expires_at"]:
-        PENDING_OTP.pop(email_clean, None)
+    if payload.otp.strip() != otp_record.otp_code.strip():
         raise HTTPException(
             status_code=400,
-            detail="Verification code has expired. Please request a fresh code."
+            detail="Invalid verification code. Please check your inbox and try again."
         )
 
-    record["attempts"] += 1
-    if record["attempts"] > 5:
-        PENDING_OTP.pop(email_clean, None)
-        raise HTTPException(
-            status_code=429,
-            detail="Too many incorrect verification attempts. Please request a new code."
-        )
-
-    if payload.otp.strip() != record["otp"]:
-        remaining = 5 - record["attempts"]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid verification code. {remaining} attempt(s) remaining."
-        )
+    # Mark OTP as verified
+    otp_record.is_verified = True
+    db.commit()
 
     # Issue single-use setup session token (valid 15 mins)
     setup_token = jwt.encode(
         {
             "sub": email_clean,
             "type": "setup_session",
-            "inst": record["institution_name"],
-            "name": record["admin_name"],
-            "exp": datetime.utcnow() + timedelta(minutes=15)
+            "inst": "Smart Campus Institute",
+            "name": "Administrator",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15)
         },
         security.SECRET_KEY,
         algorithm=security.ALGORITHM
@@ -253,13 +288,18 @@ def complete_institution_setup(payload: CompleteSetupRequest, db: Session = Depe
     set_system_key("admin_name", payload.admin_name.strip())
     set_system_key("is_setup_completed", "true")
     set_system_key("admin_email", email_clean)
-    set_system_key("setup_timestamp", datetime.utcnow().isoformat())
+    set_system_key("setup_timestamp", now_ist_naive().isoformat())
 
     db.commit()
     db.refresh(admin_user)
 
     # Invalidate OTP record
-    PENDING_OTP.pop(email_clean, None)
+    # Invalidate setup OTP records in DB
+    db.query(models.EmailVerificationOTP).filter(
+        models.EmailVerificationOTP.email == email_clean,
+        models.EmailVerificationOTP.purpose == "setup"
+    ).delete()
+    db.commit()
 
     # Generate persistent admin access token
     access_token = security.create_access_token(

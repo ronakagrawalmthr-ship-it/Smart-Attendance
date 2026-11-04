@@ -20,12 +20,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 
 export default function StudentQrScannerPage() {
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [lastSubmittedToken, setLastSubmittedToken] = useState<string>('');
   
   // Verification Result States
   const [verifyResult, setVerifyResult] = useState<{
@@ -50,17 +52,34 @@ export default function StudentQrScannerPage() {
     semester: number;
     section: string;
   }>({
-    name: typeof window !== 'undefined' ? (localStorage.getItem('student_name') || 'Student') : 'Student',
-    roll: typeof window !== 'undefined' ? (localStorage.getItem('student_roll') || '') : '',
-    branch: typeof window !== 'undefined' ? (localStorage.getItem('student_branch') || '') : '',
-    semester: typeof window !== 'undefined' ? (Number(localStorage.getItem('student_semester')) || 1) : 1,
-    section: typeof window !== 'undefined' ? (localStorage.getItem('student_section') || 'A') : 'A'
+    name: 'Student',
+    roll: '',
+    branch: '',
+    semester: 1,
+    section: 'A'
   });
 
   const html5QrCodeRef = useRef<any>(null);
   const isScanningRef = useRef(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedName = localStorage.getItem('student_name');
+      const storedRoll = localStorage.getItem('student_roll');
+      const storedBranch = localStorage.getItem('student_branch');
+      const storedSem = Number(localStorage.getItem('student_semester'));
+      const storedSec = localStorage.getItem('student_section');
+      if (storedName || storedRoll) {
+        setStudentInfo(prev => ({
+          ...prev,
+          name: storedName || prev.name,
+          roll: storedRoll || prev.roll,
+          branch: storedBranch || prev.branch,
+          semester: storedSem || prev.semester,
+          section: storedSec || prev.section
+        }));
+      }
+    }
     // 1. Fetch current student profile for verification display
     const fetchStudentMe = async () => {
       try {
@@ -87,7 +106,18 @@ export default function StudentQrScannerPage() {
     let isMounted = true;
 
     const startScanner = async () => {
+      setCameraError(null);
       try {
+        if (html5QrCodeRef.current) {
+          try {
+            await html5QrCodeRef.current.stop();
+            html5QrCodeRef.current.clear();
+          } catch {
+            // ignore cleanup error
+          }
+          html5QrCodeRef.current = null;
+        }
+
         // Dynamically import Html5Qrcode on client side
         const { Html5Qrcode } = await import('html5-qrcode');
         if (!isMounted) return;
@@ -168,11 +198,13 @@ export default function StudentQrScannerPage() {
         }
       }
     };
-  }, []);
+  }, [cameraAttempt]);
 
   // Process and Submit Scanned Token to Backend
   const handleProcessToken = async (tokenString: string) => {
     if (!tokenString || tokenString.trim().length === 0) return;
+    const cleanToken = tokenString.trim();
+    setLastSubmittedToken(cleanToken);
     
     // Pause scanning while verifying
     isScanningRef.current = false;
@@ -180,16 +212,20 @@ export default function StudentQrScannerPage() {
     setVerifyResult(null);
 
     try {
-      const res = await authFetch(`${API_BASE_URL}/attendance/qr/verify-and-mark`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+      const res = await authFetchWithRetry(
+        `${API_BASE_URL}/attendance/qr/verify-and-mark`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            token: cleanToken,
+            student_roll: studentInfo.roll || (typeof window !== 'undefined' ? (localStorage.getItem('student_roll') || undefined) : undefined)
+          })
         },
-        body: JSON.stringify({ 
-          token: tokenString.trim(),
-          student_roll: studentInfo.roll || (typeof window !== 'undefined' ? (localStorage.getItem('student_roll') || undefined) : undefined)
-        })
-      });
+        { retries: 2, backoffMs: 350 }
+      );
 
       if (res && res.ok) {
         const data = await res.json();
@@ -216,7 +252,7 @@ export default function StudentQrScannerPage() {
         const err = await res?.json().catch(() => ({}));
         setVerifyResult({
           success: false,
-          detail: err?.detail || 'Attendance verification failed. Token may be invalid.'
+          detail: err?.detail || 'Attendance verification failed. Token may be invalid or expired.'
         });
       }
     } catch {
@@ -327,10 +363,21 @@ export default function StudentQrScannerPage() {
               )}
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                {!verifyResult.success && lastSubmittedToken && (
+                  <button
+                    type="button"
+                    onClick={() => handleProcessToken(lastSubmittedToken)}
+                    disabled={isVerifying}
+                    className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isVerifying ? 'animate-spin' : ''}`} />
+                    <span>{isVerifying ? 'Retrying...' : 'Retry Verification'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleResetScan}
-                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2"
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   <RefreshCw className="h-4 w-4" />
                   <span>Scan Another Class</span>
@@ -412,13 +459,26 @@ export default function StudentQrScannerPage() {
                     <p className="text-xs text-stone-400 leading-relaxed max-w-xs">
                       {cameraError}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setShowManualInput(true)}
-                      className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
-                    >
-                      Use Manual Input
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCameraError(null);
+                          setCameraAttempt(c => c + 1);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs transition flex items-center space-x-1.5 shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        <span>Retry Camera Access</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowManualInput(true)}
+                        className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition cursor-pointer"
+                      >
+                        Use Manual Input
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

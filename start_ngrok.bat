@@ -4,7 +4,7 @@ color 0f
 cls
 echo ===============================================================================
 echo     SMART ATTENDANCE SYSTEM - NGROK CLOUD TUNNEL (PORT 8000)
-echo                       Engineered by Ronak Agrawal
+echo                        Created by Ronak Agrawal
 echo ===============================================================================
 echo.
 echo Forwarding local backend (http://localhost:8000) to a public HTTPS URL...

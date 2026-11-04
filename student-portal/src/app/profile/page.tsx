@@ -71,9 +71,13 @@ export default function StudentProfilePage() {
     academicYearLabel: '',
     stage: '',
     section: 'A',
+    subBatch: 'A1',
+    mentorName: 'Faculty Mentor',
     hasFaceEnrolled: false,
     photoThumbnail: ''
   });
+
+  const [parentEmail, setParentEmail] = useState('');
 
   // Live Attendance State
   const [attendance, setAttendance] = useState<{
@@ -162,13 +166,16 @@ export default function StudentProfilePage() {
           academicYearLabel: data.academic_year_label || prev.academicYearLabel || `Year ${data.academic_year || 1}`,
           stage: data.stage || prev.stage || 'Academic Batch',
           section: data.section || prev.section || 'A',
+          subBatch: data.sub_batch || prev.subBatch || 'A1',
+          mentorName: data.mentor_name || prev.mentorName || 'Faculty Mentor',
           hasFaceEnrolled: Boolean(data.has_face_enrolled),
           photoThumbnail: data.photo_thumbnail || prev.photoThumbnail
         }));
 
         if (data.email) setEmail(data.email);
-        if (data.phone) setPhone(data.phone);
-        if (data.emergency_contact) setEmergencyContact(data.emergency_contact);
+        if (data.phone && data.phone !== 'None') setPhone(data.phone);
+        if (data.emergency_contact && data.emergency_contact !== 'None') setEmergencyContact(data.emergency_contact);
+        if (data.parent_email && data.parent_email !== 'None') setParentEmail(data.parent_email);
 
         // Update live attendance metrics
         setAttendance({
@@ -228,7 +235,8 @@ export default function StudentProfilePage() {
         full_name: academicInfo.fullName.trim(),
         email: email.trim(),
         phone: phone.trim(),
-        emergency_contact: emergencyContact.trim()
+        emergency_contact: emergencyContact.trim(),
+        parent_email: parentEmail.trim()
       };
 
       if (newPassword) {
@@ -295,7 +303,7 @@ export default function StudentProfilePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live Database Pulse Badge */}
+            {/* System Database Pulse Badge */}
             <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/70 text-emerald-800 text-[11px] font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span>Live DB Connected</span>
@@ -365,7 +373,10 @@ export default function StudentProfilePage() {
                   <ShieldCheck className="h-3.5 w-3.5" /> Verified Student
                 </span>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-800 border border-stone-200">
-                  Sem {academicInfo.semester} • Sec {academicInfo.section}
+                  Sem {academicInfo.semester} • Sec {academicInfo.section} • Batch {academicInfo.subBatch || 'A1'}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  Mentor: {academicInfo.mentorName || 'Faculty Mentor'}
                 </span>
               </div>
 
@@ -423,7 +434,7 @@ export default function StudentProfilePage() {
           </div>
 
           {/* 4 Live Metrics Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Overall Turnout */}
             <div className="rounded-2xl bg-stone-50 border border-stone-200/80 p-4 space-y-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Overall Turnout</span>
@@ -639,6 +650,24 @@ export default function StudentProfilePage() {
                   Section {academicInfo.section}
                 </div>
               </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1 mb-1">
+                  Practical Sub-Batch
+                </label>
+                <div className="text-xs font-semibold text-stone-900">
+                  Batch {academicInfo.subBatch || 'A1'}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200/70">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1 mb-1">
+                  Faculty Mentor
+                </label>
+                <div className="text-xs font-semibold text-stone-900 truncate">
+                  {academicInfo.mentorName || 'Faculty Mentor'}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#FAF7F2] border border-stone-200/80 text-xs text-stone-600">
@@ -700,13 +729,26 @@ export default function StudentProfilePage() {
 
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-stone-600 flex items-center gap-1.5">
-                  <Phone className="h-3.5 w-3.5 text-stone-400" /> Parent / Guardian Emergency Contact
+                  <Phone className="h-3.5 w-3.5 text-stone-400" /> Parent / Guardian Contact (None if absent)
                 </label>
                 <input
                   type="tel"
                   value={emergencyContact}
                   onChange={(e) => setEmergencyContact(e.target.value)}
-                  placeholder="+91 9XXXXXXXXX"
+                  placeholder="None (Leave blank if not available)"
+                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                />
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <label className="text-xs font-semibold text-stone-600 flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-stone-400" /> Parent / Guardian Notification Email (None if absent)
+                </label>
+                <input
+                  type="email"
+                  value={parentEmail}
+                  onChange={(e) => setParentEmail(e.target.value)}
+                  placeholder="None (Leave blank if not available)"
                   className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-xs font-medium text-stone-900 placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
                 />
               </div>

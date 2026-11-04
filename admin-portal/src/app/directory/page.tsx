@@ -29,7 +29,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 import AppleSelect from '@/components/AppleSelect';
 
@@ -38,6 +38,8 @@ type TabType = 'hods' | 'teachers' | 'students' | 'subjects';
 export default function DirectoryManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>('hods');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Student Category Filters (Department, Semester, Section)
@@ -51,6 +53,26 @@ export default function DirectoryManagementPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
+
+  const getSemestersForBranch = (branchName?: string) => {
+    if (!branchName) return [1, 2, 3, 4, 5, 6, 7, 8];
+    const bp = branchPrograms[branchName];
+    if (bp && bp.semesters && Array.isArray(bp.semesters) && bp.semesters.length > 0) {
+      return bp.semesters;
+    }
+    const lower = branchName.toLowerCase();
+    if (lower.includes('mbbs') || lower.includes('b.arch') || lower.includes('ballb') || lower.includes('5 year')) {
+      return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    }
+    if (lower.includes('bba') || lower.includes('bca') || lower.includes('b.sc') || lower.includes('b.com') || lower.includes('diploma')) {
+      return [1, 2, 3, 4, 5, 6];
+    }
+    if (lower.includes('mba') || lower.includes('m.tech') || lower.includes('mca') || lower.includes('m.sc') || lower.includes('m.com')) {
+      return [1, 2, 3, 4];
+    }
+    return [1, 2, 3, 4, 5, 6, 7, 8];
+  };
   
   // Modal states
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -267,14 +289,17 @@ export default function DirectoryManagementPage() {
     }
   };
 
-  const fetchAllData = async () => {
+  const fetchAllData = async (isManualRetry = false) => {
     try {
+      if (isManualRetry) setRetrying(true);
       setLoading(true);
+      setFetchError(null);
+
       const [resHods, resTeachers, resStudents, resSubjects, resMeta] = await Promise.all([
-        authFetch(`${API_BASE_URL}/management/crud/hods`),
-        authFetch(`${API_BASE_URL}/management/crud/teachers`),
-        authFetch(`${API_BASE_URL}/management/crud/students`),
-        authFetch(`${API_BASE_URL}/management/crud/subjects`),
+        authFetchWithRetry(`${API_BASE_URL}/management/crud/hods`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/crud/teachers`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/crud/students`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/crud/subjects`, {}, { maxRetries: 2, delayMs: 600 }),
         fetch(`${API_BASE_URL}/attendance/departments-meta`).catch(() => null),
       ]);
 
@@ -291,11 +316,20 @@ export default function DirectoryManagementPage() {
         if (meta.branches && Array.isArray(meta.branches)) {
           setAvailableBranches(meta.branches);
         }
+        if (meta.branch_programs && typeof meta.branch_programs === 'object') {
+          setBranchPrograms(meta.branch_programs);
+        }
       }
-    } catch {
-      console.log("Error fetching directory records.");
+
+      if (!resHods.ok && !resTeachers.ok && !resStudents.ok) {
+        setFetchError("Directory service responded with an error. Please retry.");
+      }
+    } catch (err: any) {
+      console.log("Error fetching directory records:", err);
+      setFetchError("Unable to load directory records from institutional database. Please check connection and retry.");
     } finally {
       setLoading(false);
+      setRetrying(false);
     }
   };
 
@@ -426,14 +460,14 @@ export default function DirectoryManagementPage() {
       });
 
       return filtered.sort((a, b) => {
-        return a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' });
+        return (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' });
       });
     }
     if (activeTab === 'subjects') {
       return subjects.filter(sub => sub.code?.toLowerCase().includes(q) || sub.name?.toLowerCase().includes(q) || sub.branch?.toLowerCase().includes(q));
     }
     return [];
-  }, [activeTab, searchQuery, hods, teachers, students, subjects]);
+  }, [activeTab, searchQuery, hods, teachers, students, subjects, studentDeptFilter, studentSemFilter, studentSecFilter]);
 
   return (
     <AppleDeluxeShell userRole="Institutional Governance">
@@ -471,7 +505,7 @@ export default function DirectoryManagementPage() {
 
         <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button 
-            onClick={fetchAllData}
+            onClick={() => fetchAllData()}
             className="p-3 rounded-2xl bg-stone-100/80 hover:bg-stone-200/80 text-stone-600 transition"
             title="Refresh All Records"
           >
@@ -705,14 +739,47 @@ export default function DirectoryManagementPage() {
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-3">
-            <RefreshCw className="h-6 w-6 text-purple-400 animate-spin" />
-            <span>Loading database records...</span>
+          <div className="space-y-3 py-4">
+            <div className="flex items-center space-x-2 text-xs text-stone-400 font-medium pb-2">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
+              <span>Synchronizing records from SQLite database...</span>
+            </div>
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-12 w-full bg-stone-50 rounded-2xl animate-pulse flex items-center justify-between px-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="h-7 w-7 rounded-xl bg-stone-200/70"></div>
+                    <div className="h-3.5 w-32 bg-stone-200/70 rounded-md"></div>
+                  </div>
+                  <div className="h-3.5 w-24 bg-stone-200/70 rounded-md"></div>
+                  <div className="h-3.5 w-36 bg-stone-200/70 rounded-md hidden md:block"></div>
+                  <div className="h-5 w-16 bg-stone-200/70 rounded-full"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : fetchError ? (
+          <div className="py-12 px-6 text-center space-y-4 rounded-3xl bg-rose-50/70 border border-rose-200/80">
+            <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+            <div className="max-w-md mx-auto space-y-1">
+              <h3 className="text-sm font-bold text-rose-900">Institutional Directory Sync Failed</h3>
+              <p className="text-xs text-rose-700">{fetchError}</p>
+            </div>
+            <button
+              onClick={() => fetchAllData(true)}
+              disabled={retrying}
+              className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-2 shadow-xs disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`} />
+              <span>{retrying ? 'Re-syncing Directory...' : 'Retry Directory Sync'}</span>
+            </button>
           </div>
         ) : filteredList.length === 0 ? (
           <div className="py-16 text-center text-slate-500 text-sm space-y-2">
             <AlertCircle className="h-8 w-8 text-slate-600 mx-auto" />
-            <p className="text-slate-300 font-semibold">No records found for this query.</p>
+            <p className="text-slate-700 font-semibold">No records found for this query.</p>
             <p className="text-xs text-slate-500">Click the "+ Add New" button to create one.</p>
           </div>
         ) : (
@@ -1006,7 +1073,7 @@ export default function DirectoryManagementPage() {
                           placeholder="Create custom HOD password"
                         />
                         <span className="text-[10px] text-stone-500 block">
-                          Provide this password to the HOD to log in on port 3003.
+                          Provide this password to the HOD to access the Department HOD Portal.
                         </span>
                       </div>
                     )}
@@ -1071,7 +1138,7 @@ export default function DirectoryManagementPage() {
                           placeholder="Create custom faculty password"
                         />
                         <span className="text-[10px] text-stone-500 block">
-                          Provide this password to the teacher to log in on port 3000.
+                          Provide this password to the faculty member to access the Teacher Portal.
                         </span>
                       </div>
                     )}
@@ -1106,7 +1173,7 @@ export default function DirectoryManagementPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <label className="text-stone-700 font-semibold">Semester</label>
                         <select
@@ -1114,14 +1181,9 @@ export default function DirectoryManagementPage() {
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
-                          <option value="1">Sem 1</option>
-                          <option value="2">Sem 2</option>
-                          <option value="3">Sem 3</option>
-                          <option value="4">Sem 4</option>
-                          <option value="5">Sem 5</option>
-                          <option value="6">Sem 6</option>
-                          <option value="7">Sem 7</option>
-                          <option value="8">Sem 8</option>
+                          {getSemestersForBranch(formData.branch).map((s: number) => (
+                            <option key={s} value={s}>Sem {s}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -1221,14 +1283,9 @@ export default function DirectoryManagementPage() {
                           onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) })}
                           className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
                         >
-                          <option value="1">Semester 1</option>
-                          <option value="2">Semester 2</option>
-                          <option value="3">Semester 3</option>
-                          <option value="4">Semester 4</option>
-                          <option value="5">Semester 5</option>
-                          <option value="6">Semester 6</option>
-                          <option value="7">Semester 7</option>
-                          <option value="8">Semester 8</option>
+                          {getSemestersForBranch(formData.branch).map((s: number) => (
+                            <option key={s} value={s}>Semester {s}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -1299,10 +1356,12 @@ export default function DirectoryManagementPage() {
               <div className="space-y-3 text-xs text-stone-700 bg-amber-50/50 p-4 rounded-2xl border border-amber-200/60">
                 <p className="font-semibold text-amber-900">How Academic Progression Works:</p>
                 <ul className="space-y-1.5 list-disc list-inside text-stone-600">
-                  <li><strong className="text-stone-900">1st Year (Sem 1/2)</strong> &rarr; Promoted to 2nd Year (Sem 3/4)</li>
-                  <li><strong className="text-stone-900">2nd Year (Sem 3/4)</strong> &rarr; Promoted to 3rd Year (Sem 5/6)</li>
-                  <li><strong className="text-stone-900">3rd Year (Sem 5/6)</strong> &rarr; Promoted to 4th Year (Sem 7/8)</li>
-                  <li><strong className="text-stone-900">4th Year (Sem 7/8)</strong> &rarr; Archived as <span className="text-emerald-700 font-bold">Graduated Alumni</span> (Historical attendance logs & biometrics preserved permanently).</li>
+                  <li><strong className="text-stone-900">Course-Aware Progression:</strong> Respects each program's exact duration (2-Yr Master's, 3-Yr UG/Diploma, 4-Yr B.Tech, 5-Yr MBBS/Law).</li>
+                  <li><strong className="text-stone-900">2-Year Programs (MBA / M.Tech):</strong> Sem 1/2 &rarr; Sem 3/4; Final Year &rarr; Archived as Graduated Alumni</li>
+                  <li><strong className="text-stone-900">3-Year Programs (BBA / BCA / B.Sc):</strong> Sem 1/2 &rarr; 3/4 &rarr; 5/6; Final Year &rarr; Archived as Graduated Alumni</li>
+                  <li><strong className="text-stone-900">4-Year Programs (B.Tech / B.Pharm):</strong> Sem 1/2 &rarr; 3/4 &rarr; 5/6 &rarr; 7/8; Final Year &rarr; Archived as Graduated Alumni</li>
+                  <li><strong className="text-stone-900">5-Year Programs (MBBS / Architecture):</strong> Progresses through Sem 10; Final Year &rarr; Archived as Graduated Alumni</li>
+                  <li><strong className="text-stone-900">Permanent Record Integrity:</strong> Past attendance archives, biometrics, and audit history remain 100% intact.</li>
                 </ul>
               </div>
 

@@ -119,8 +119,8 @@ export default function StudentSettingsPage() {
         setErrorMessage('New password and confirmation do not match.');
         return;
       }
-      if (newPassword.length < 6) {
-        setErrorMessage('New password must be at least 6 characters in length.');
+      if (newPassword.length < 8) {
+        setErrorMessage('New password must be at least 8 characters in length.');
         return;
       }
     }
@@ -355,7 +355,7 @@ export default function StudentSettingsPage() {
                   className="w-full accent-stone-900 cursor-pointer h-2 bg-stone-200 rounded-lg"
                 />
                 <p className="text-[11px] text-stone-400 mt-1.5">
-                  Receive alerts when attendance falls below this mark. Statutory exam cutoff is 75%.
+                  Receive alerts when attendance falls below this mark. Minimum exam eligibility cutoff is 75%.
                 </p>
               </div>
 

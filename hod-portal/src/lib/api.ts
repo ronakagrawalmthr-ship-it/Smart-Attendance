@@ -1,9 +1,19 @@
 // API Client for HOD Portal
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname;
+    const protocol = window.location.protocol || 'http:';
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return `${protocol}//${host}:8000`;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+}
+
 export const API_BASE_URL = 
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' && window.location?.hostname
+  (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
     ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
-    : 'http://localhost:8000');
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
 
 export function getPortalUrl(port: number, path: string = ''): string {
   if (typeof window !== 'undefined' && window.location?.hostname) {
@@ -45,7 +55,14 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(url, { ...options, headers });
+  let finalUrl = url;
+  if (!finalUrl.startsWith('http')) {
+    finalUrl = `${getApiBaseUrl()}${finalUrl}`;
+  } else if (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`);
+  }
+
+  const response = await fetch(finalUrl, { ...options, headers });
 
   if (response.status === 401 && typeof window !== 'undefined') {
     localStorage.removeItem('hod_token');
@@ -61,7 +78,7 @@ export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${getApiBaseUrl()}${endpoint}`;
   const response = await authFetch(url, {
     ...options,
     headers: {
@@ -83,3 +100,52 @@ export async function apiClient<T>(
 
   return response.json();
 }
+
+export interface RetryOptions {
+  retries?: number;
+  maxRetries?: number;
+  backoffMs?: number;
+  delayMs?: number;
+  retryOnStatus?: number[];
+  onRetry?: (attempt: number, error: any) => void;
+}
+
+export async function authFetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  retryOptions: RetryOptions = {}
+): Promise<Response> {
+  const retries = retryOptions.maxRetries ?? retryOptions.retries ?? 3;
+  const backoffMs = retryOptions.delayMs ?? retryOptions.backoffMs ?? 400;
+  const retryOnStatus = retryOptions.retryOnStatus ?? [502, 503, 504];
+  const onRetry = retryOptions.onRetry;
+
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await authFetch(url, options);
+      if (retryOnStatus.includes(res.status) && attempt < retries) {
+        const delay = backoffMs * Math.pow(1.8, attempt);
+        if (onRetry) onRetry(attempt + 1, new Error(`Server returned HTTP ${res.status}`));
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < retries) {
+        const delay = backoffMs * Math.pow(1.8, attempt);
+        if (onRetry) onRetry(attempt + 1, err);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError || new Error(`Network request failed after ${retries} retries`);
+}
+
+export function isNetworkError(error: any): boolean {
+  if (!error) return false;
+  const msg = String(error.message || error).toLowerCase();
+  return msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('connection');
+}
+

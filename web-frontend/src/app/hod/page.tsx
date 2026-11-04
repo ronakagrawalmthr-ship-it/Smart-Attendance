@@ -357,7 +357,7 @@ export default function HODDashboard() {
             rel="noopener noreferrer"
             className="flex items-center text-xs bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-2xl transition-colors shadow-sm font-bold space-x-1.5"
           >
-            <span>Full HOD Portal (:3003)</span>
+            <span>Department HOD Portal</span>
             <ExternalLink size={13} className="text-stone-300" />
           </a>
         </div>
@@ -656,7 +656,7 @@ export default function HODDashboard() {
               <h2 className="text-lg font-bold flex items-center text-rose-600">
                 <AlertTriangle className="mr-2 h-5 w-5" /> Critical Defaulters (&lt; 75%)
               </h2>
-              <div className="bg-white/90 border border-stone-200/80 rounded-3xl overflow-hidden shadow-sm">
+              <div className="bg-white/90 border border-stone-200/80 rounded-3xl overflow-x-auto shadow-sm">
                 <table className="w-full text-left text-xs text-stone-600">
                   <thead className="bg-stone-50 text-[10px] uppercase font-bold tracking-wider text-stone-500 border-b border-stone-100">
                     <tr>

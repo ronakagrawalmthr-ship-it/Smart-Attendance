@@ -365,6 +365,7 @@ export default function AppleDeluxeShell({
               onClick={() => {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+                  window.dispatchEvent(new CustomEvent('open-spotlight'));
                 }
               }}
               className="p-1.5 rounded-xl bg-stone-200/60 active:bg-stone-300 text-stone-700 transition flex items-center space-x-1 text-xs px-2"
@@ -443,7 +444,7 @@ export default function AppleDeluxeShell({
 
       {/* 🍎 Floating Apple Mobile Bottom Dock (< md) with Spring Animation */}
       <nav 
-        className="fixed bottom-3.5 left-1/2 -translate-x-1/2 z-40 bg-[#0B0C0E]/90 backdrop-blur-2xl px-2 py-1.5 rounded-full border border-white/12 shadow-[0_16px_36px_rgba(0,0,0,0.35)] flex items-center space-x-1 sm:space-x-2 md:hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-[95vw]"
+        className="fixed bottom-3.5 left-1/2 -translate-x-1/2 z-40 bg-[#0B0C0E]/90 backdrop-blur-2xl px-2 py-1.5 rounded-full border border-white/12 shadow-[0_16px_36px_rgba(0,0,0,0.35)] flex items-center space-x-1 sm:space-x-2 md:hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-[96vw] overflow-x-auto scrollbar-none"
       >
         {[
           { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -459,7 +460,7 @@ export default function AppleDeluxeShell({
             <Link
               key={item.label}
               href={item.href}
-              className={`relative px-3 py-1.5 rounded-full flex flex-col items-center justify-center transition-all duration-200 ${
+              className={`relative px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-full flex flex-col items-center justify-center transition-all duration-200 shrink-0 ${
                 isActive ? 'text-white font-bold' : 'text-stone-400 hover:text-stone-200'
               }`}
             >
@@ -482,7 +483,7 @@ export default function AppleDeluxeShell({
 
       {/* Footer Info */}
       <footer className="mt-4 md:mt-8 pb-16 md:pb-0 text-center text-xs text-stone-400 font-medium transition-all">
-        Department Command Hub • Executive Academic Edition
+        Department Academic Operations • Smart Attendance Platform
       </footer>
 
     </div>

@@ -69,9 +69,6 @@ export default function FacultyLecturesPage() {
       <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-[11px] px-3 py-1 rounded-full bg-sky-100 text-sky-800 border border-sky-200 font-bold uppercase tracking-wider">
-              Faculty Telemetry
-            </span>
             <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Faculty & Lecture Tracker</h1>
           </div>
           <p className="text-xs text-stone-500 mt-1 font-medium">

@@ -30,10 +30,11 @@ class StudentProfileBase(BaseModel):
     emergency_contact: Optional[str] = None
     parent_email: Optional[str] = None
     photo_thumbnail: Optional[str] = None
+    biometric_consent: Optional[bool] = False
+    consent_timestamp: Optional[datetime] = None
 
 class StudentProfileCreate(StudentProfileBase):
     user_id: int
-    # In a real scenario, this would come from the selfie upload
     face_encoding: Optional[str] = None
 
 class StudentProfile(StudentProfileBase):

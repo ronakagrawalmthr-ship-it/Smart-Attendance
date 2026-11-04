@@ -1,17 +1,31 @@
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 
 try:
     import models
     import database
+    try:
+        from time_utils import now_ist_naive, today_ist_str
+    except (ImportError, ValueError):
+        from ..time_utils import now_ist_naive, today_ist_str
 except ImportError:
     try:
         from .. import models, database
+        from ..time_utils import now_ist_naive, today_ist_str
     except (ImportError, ValueError):
         from backend import models, database
+try:
+    from .email_service import send_system_email
+except (ImportError, ValueError):
+    try:
+        from services.email_service import send_system_email
+    except (ImportError, ValueError):
+        from backend.services.email_service import send_system_email
+        from backend.time_utils import now_ist_naive, today_ist_str
 
 # Resend email service (already configured via .env RESEND_API_KEY)
 try:
@@ -33,7 +47,7 @@ def build_parent_alert_email(
 ) -> str:
     """Builds a premium HTML email for parent/guardian attendance alerts."""
     status_color = "#DC2626" if attendance_pct < 75.0 else "#D97706"
-    status_label = "CRITICAL â€” Below 75%" if attendance_pct < 75.0 else "WARNING â€” Consecutive Absences"
+    status_label = "CRITICAL — Below 75%" if attendance_pct < 75.0 else "WARNING — Consecutive Absences"
     pct_display = f"{attendance_pct:.1f}%"
     consec_text = f"{consecutive} consecutive lecture{'s' if consecutive != 1 else ''}"
 
@@ -126,7 +140,7 @@ def build_parent_alert_email(
       </table>
     </td></tr>
   </table>
-</body>
+ </body>
 </html>"""
 
 
@@ -186,50 +200,96 @@ def send_parent_alert_email(
         return False
 
 
-def run_midnight_attendance_audit(db: Session) -> Dict[str, Any]:
+def run_midnight_attendance_audit(db: Session, force: bool = False) -> Dict[str, Any]:
     """
-    Automated Midnight Background Worker:
-    1. Scans unconducted timetable sessions and flags missed classes.
+    Automated Midnight Background Worker with Distributed Mutex Lock & Idempotency:
+    1. Enforces singleton execution across multi-worker environments (Gunicorn/FastAPI).
     2. Recalculates student cumulative attendance matrices.
     3. Detects students with >= 3 consecutive missed lectures or < 75% attendance.
-    4. Sends real Resend email alerts to parent_email (falls back to student email).
+    4. Enforces idempotency_key to guarantee zero duplicate parent alerts.
     5. Records delivery status in the Parent Notification Ledger.
     """
-    now = datetime.utcnow()
+    now = now_ist_naive()
+    today_str = today_ist_str()
+
+    # 1. Distributed Singleton Check: Prevent multiple workers from running audit on the same day
+    if not force:
+        lock_record = db.query(models.SystemSetting).filter(
+            models.SystemSetting.key == "last_midnight_audit_date"
+        ).first()
+        if lock_record and lock_record.value == today_str:
+            return {
+                "status": "skipped",
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "message": f"Nightly audit already executed for {today_str}. Skipping to prevent duplicate processing."
+            }
+
+        # Acquire lock for today
+        if not lock_record:
+            lock_record = models.SystemSetting(key="last_midnight_audit_date", value=today_str)
+            db.add(lock_record)
+        else:
+            lock_record.value = today_str
+        db.commit()
 
     inst_setting = db.query(models.SystemSetting).filter(
         models.SystemSetting.key == "institution_name"
     ).first()
     inst_name = inst_setting.value if inst_setting else "Campus"
 
-    # 1. Audit unconducted sessions
-    sessions = db.query(models.AcademicSession).all()
-    missed_sessions_count = sum(
-        1 for sess in sessions
-        if db.query(models.AttendanceLog).filter(models.AttendanceLog.session_id == sess.id).count() == 0
-    )
+    # Calendar Freeze: Check if today is a Holiday, Preparation Leave, or Exam Break
+    today_holiday = db.query(models.Holiday).filter(
+        or_(
+            models.Holiday.date == today_str,
+            and_(models.Holiday.end_date != None, models.Holiday.date <= today_str, models.Holiday.end_date >= today_str)
+        )
+    ).first()
+    if today_holiday and getattr(today_holiday, "event_type", "HOLIDAY") in ["PREPARATION_LEAVE", "EXAM_PERIOD", "SEMESTER_BREAK", "EMERGENCY_CLOSURE", "HOLIDAY"]:
+        return {
+            "status": "calendar_freeze_active",
+            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S IST"),
+            "event": today_holiday.title,
+            "event_type": getattr(today_holiday, "event_type", "HOLIDAY"),
+            "message": f"Academic calendar freeze active ({today_holiday.title}). Defaulter penalty alerts safely suspended for students."
+        }
 
-    # 2. Audit each student
-    students = db.query(models.StudentProfile).all()
+    # 2. Audit unconducted sessions (Single optimized outer-join query - Zero N+1 loop)
+    missed_sessions_count = db.query(models.AcademicSession).outerjoin(
+        models.AttendanceLog, models.AcademicSession.id == models.AttendanceLog.session_id
+    ).filter(
+        models.AttendanceLog.id.is_(None)
+    ).count()
+
+    # 3. Audit each student with Idempotency Key checks
+    # Eagerly filter only active enrolled students
+    students = db.query(models.StudentProfile).join(
+        models.User, models.StudentProfile.user_id == models.User.id
+    ).filter(models.User.is_active == True).all()
+    
     defaulters_flagged = []
     emails_sent = 0
     emails_failed = 0
+    skipped_duplicates = 0
 
     for st in students:
-        logs = db.query(models.AttendanceLog).filter(
-            models.AttendanceLog.student_id == st.id
-        ).order_by(models.AttendanceLog.timestamp.desc()).all()
+        # Audit attendance strictly scoped to student's current active semester
+        logs_query = db.query(models.AttendanceLog, models.AcademicSession).join(
+            models.AcademicSession, models.AttendanceLog.session_id == models.AcademicSession.id
+        ).filter(
+            models.AttendanceLog.student_id == st.id,
+            models.AcademicSession.semester == (st.semester or 1)
+        ).order_by(models.AcademicSession.start_time.desc()).all()
 
-        total_logs = len(logs)
+        total_logs = len(logs_query)
         if total_logs == 0:
-            continue  # No attendance yet â€” skip
+            continue  # No attendance recorded in current semester yet - skip
 
-        present_logs = sum(1 for l in logs if l.is_present)
+        present_logs = sum(1 for l, s in logs_query if l.is_present)
         turnout_pct = (present_logs / total_logs * 100.0)
 
-        # Check last 3 logs for consecutive absences
+        # Check last 3 chronological lectures in current semester for consecutive absences
         consecutive_missed = 0
-        for l in logs[:3]:
+        for l, s in logs_query[:3]:
             if not l.is_present:
                 consecutive_missed += 1
             else:
@@ -245,19 +305,43 @@ def run_midnight_attendance_audit(db: Session) -> Dict[str, Any]:
             else f"Defaulter Warning ({turnout_pct:.1f}%)"
         )
 
-        # Resolve destination email â€” priority: parent_email > emergency_contact > student login email
+        # Idempotency Key check: has this specific alert already been dispatched today?
+        idempotency_key = f"{st.id}:{today_str}:{trigger_reason[:20]}"
+        existing_alert = db.query(models.ParentNotificationLog).filter(
+            models.ParentNotificationLog.idempotency_key == idempotency_key
+        ).first()
+
+        if existing_alert:
+            skipped_duplicates += 1
+            continue
+
+        # Resolve parent destination contact: priority parent_email > emergency_contact
         dest_email = None
         if hasattr(st, 'parent_email') and st.parent_email and "@" in st.parent_email:
             dest_email = st.parent_email.strip().lower()
         elif st.emergency_contact and "@" in st.emergency_contact:
             dest_email = st.emergency_contact.strip().lower()
-        else:
-            user = db.query(models.User).filter(models.User.id == st.user_id).first()
-            if user and user.email and "@" in user.email:
-                dest_email = user.email.strip().lower()
+
+        contact_phone = (st.phone or st.emergency_contact or "").strip()
 
         if not dest_email:
-            print(f"[SKIP] No valid email for {st.roll_number} â€” skipping alert.")
+            # Graceful No Contact handling: User Rule "agar kisi ke parents ka contact na ho toh none kar dena"
+            notif = models.ParentNotificationLog(
+                idempotency_key=idempotency_key,
+                student_id=st.id,
+                student_roll=st.roll_number,
+                student_name=st.full_name,
+                parent_phone=contact_phone if contact_phone else "None",
+                parent_email="None",
+                recipient="None",
+                channel="Email",
+                trigger_reason=trigger_reason,
+                message_content=f"No parent contact registered (None) — {trigger_reason}",
+                status="None (Skipped - No Contact)",
+                timestamp=now,
+            )
+            db.add(notif)
+            defaulters_flagged.append(st.roll_number)
             continue
 
         success = send_parent_alert_email(
@@ -268,18 +352,21 @@ def run_midnight_attendance_audit(db: Session) -> Dict[str, Any]:
             consecutive=consecutive_missed,
             trigger=trigger_reason,
             inst_name=inst_name,
-            branch=st.branch or "Engineering",
+            branch=st.branch or "Academic Department",
             semester=st.semester or 1,
         )
 
         notif = models.ParentNotificationLog(
+            idempotency_key=idempotency_key,
             student_id=st.id,
             student_roll=st.roll_number,
             student_name=st.full_name,
-            parent_phone=dest_email,   # stores the email used for dispatch
+            parent_phone=contact_phone if contact_phone else "None",
+            parent_email=dest_email,
+            recipient=dest_email,
             channel="Email",
             trigger_reason=trigger_reason,
-            message_content=f"Email alert sent to {dest_email} â€” {trigger_reason}",
+            message_content=f"Email alert sent to {dest_email} — {trigger_reason}",
             status="Delivered" if success else "Failed",
             timestamp=now,
         )
@@ -300,14 +387,13 @@ def run_midnight_attendance_audit(db: Session) -> Dict[str, Any]:
         "defaulters_identified": len(defaulters_flagged),
         "emails_sent": emails_sent,
         "emails_failed": emails_failed,
-        "message": f"Nightly audit complete: {emails_sent} parent email alerts dispatched via Resend.",
+        "skipped_duplicates": skipped_duplicates,
+        "message": f"Nightly audit complete: {emails_sent} parent email alerts dispatched. {skipped_duplicates} duplicate triggers prevented.",
     }
 
 
-from datetime import datetime, timedelta
-
 def get_seconds_until_midnight() -> float:
-    now = datetime.now()
+    now = now_ist_naive()
     tomorrow = now.date() + timedelta(days=1)
     midnight = datetime.combine(tomorrow, datetime.min.time())
     diff = (midnight - now).total_seconds()
@@ -324,7 +410,8 @@ async def background_cron_loop():
             # Properly manage session lifecycle (prevents connection leaks)
             db = database.SessionLocal()
             try:
-                result = run_midnight_attendance_audit(db)
+                # Offload synchronous DB operations and SMTP alerts to thread pool (Zero Event-Loop Block)
+                result = await asyncio.to_thread(run_midnight_attendance_audit, db)
                 print(f"[CRON] {result['message']}")
             finally:
                 db.close()

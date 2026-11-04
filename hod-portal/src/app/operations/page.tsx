@@ -47,6 +47,8 @@ export default function AcademicOperationsPage() {
 
   const [holidayTitle, setHolidayTitle] = useState('');
   const [holidayDate, setHolidayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [holidayEndDate, setHolidayEndDate] = useState('');
+  const [holidayEventType, setHolidayEventType] = useState<'HOLIDAY' | 'PREPARATION_LEAVE' | 'EXAM_PERIOD' | 'SEMESTER_BREAK'>('HOLIDAY');
   const [holidayDesc, setHolidayDesc] = useState('');
 
   const [proxyOrigTeacher, setProxyOrigTeacher] = useState<number | null>(null);
@@ -79,7 +81,10 @@ export default function AcademicOperationsPage() {
       if (tRes.ok) setTeachers((await tRes.json()).teachers || []);
       if (sRes.ok) setSubjects((await sRes.json()).subjects || []);
       if (odRes.ok) setDutyLeaveRecords((await odRes.json()).records || []);
-      if (hRes.ok) setHolidays((await hRes.json()).holidays || []);
+      if (hRes.ok) {
+        const hJson = await hRes.json();
+        setHolidays(Array.isArray(hJson) ? hJson : (hJson.holidays || []));
+      }
       if (pRes.ok) setProxyList((await pRes.json()).proxy_assignments || []);
       if (testRes.ok) setTestRecords((await testRes.json()).test_records || []);
     } catch (e) {
@@ -139,6 +144,26 @@ export default function AcademicOperationsPage() {
   };
 
   // 2. Declare Holiday Handler
+const handleInstantEmergencyOff = async () => {
+    const reason = prompt("Enter emergency closure reason (e.g. Severe Weather / Local Strike / Facility Maintenance):", "Emergency Weather Closure");
+    if (!reason) return;
+    try {
+      const hodDept = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || 'all';
+      const res = await authFetch(`${API_BASE_URL}/management/emergency-closure?reason=${encodeURIComponent(reason)}&department=${encodeURIComponent(hodDept)}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || "Emergency closure activated. Today's classes suspended.");
+        fetchAllData();
+      } else {
+        showToast("Could not activate emergency closure.");
+      }
+    } catch {
+      showToast("Network error.");
+    }
+  };
+
   const handleCreateHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!holidayTitle.trim()) {
@@ -153,6 +178,8 @@ export default function AcademicOperationsPage() {
         body: JSON.stringify({
           title: holidayTitle,
           date: holidayDate,
+          end_date: holidayEndDate.trim() ? holidayEndDate : null,
+          event_type: holidayEventType,
           department: hodDept,
           description: holidayDesc
         })
@@ -506,28 +533,69 @@ export default function AcademicOperationsPage() {
               Suspends classroom sessions on fest, workshop, or holiday dates with zero attendance penalty.
             </p>
 
+            {/* Instant Emergency Closure Action */}
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-between">
+              <div>
+                <span className="font-bold text-rose-900 text-xs block">Emergency Closure</span>
+                <span className="text-[11px] text-rose-600">Immediate single-click suspension of today's classes</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstantEmergencyOff}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition shadow-sm"
+              >
+                Instant Off Today
+              </button>
+            </div>
+
             <form onSubmit={handleCreateHoliday} className="space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="text-stone-700 font-semibold">Holiday / Event Title</label>
+                <label className="text-stone-700 font-semibold">Academic Event Type</label>
+                <select
+                  value={holidayEventType}
+                  onChange={(e: any) => setHolidayEventType(e.target.value)}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white"
+                >
+                  <option value="HOLIDAY">General / Festival Holiday</option>
+                  <option value="PREPARATION_LEAVE">Preparation Leave (PL) — Freeze Attendance</option>
+                  <option value="EXAM_PERIOD">University / Semester Exam Period</option>
+                  <option value="SEMESTER_BREAK">Semester Break / Vacations</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-stone-700 font-semibold">Event / Holiday Title</label>
                 <input
                   type="text"
                   required
                   value={holidayTitle}
                   onChange={(e) => setHolidayTitle(e.target.value)}
-                  placeholder="e.g. Department Coding Fest 2026"
+                  placeholder="e.g. End-Sem Preparation Leave / Diwali / Hackathon"
                   className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-stone-700 font-semibold">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={holidayDate}
-                  onChange={(e) => setHolidayDate(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-stone-700 font-semibold">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={holidayDate}
+                    onChange={(e) => setHolidayDate(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-stone-700 font-semibold">End Date (Optional for Range)</label>
+                  <input
+                    type="date"
+                    value={holidayEndDate}
+                    onChange={(e) => setHolidayEndDate(e.target.value)}
+                    placeholder="Optional End Date"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3.5 py-2.5 text-stone-900 text-xs focus:outline-none focus:border-stone-400 focus:bg-white"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -562,11 +630,16 @@ export default function AcademicOperationsPage() {
               {holidays.map((h) => (
                 <div key={h.id} className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between shadow-sm">
                   <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-stone-900 text-xs">{h.title}</span>
                       <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
-                        {h.date}
+                        {h.end_date ? `${h.date} → ${h.end_date}` : h.date}
                       </span>
+                      {h.event_type && h.event_type !== 'HOLIDAY' && (
+                        <span className="px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-bold">
+                          {h.event_type.replace('_', ' ')}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-stone-600">{h.description || 'Classes suspended for department.'}</p>
                     <span className="text-[10px] text-stone-400">Declared by: {h.created_by}</span>

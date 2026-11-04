@@ -12,21 +12,169 @@ import {
   Platform,
   SafeAreaView,
   StatusBar,
-  Modal
+  Modal,
+  LogBox,
+  NativeModules
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Development & Production API URL
-const DEV_HOST = (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) 
-  ? window.location.hostname 
-  : '127.0.0.1'; // Can be adjusted in-app via the Server Configurator
-// Public Cloud Tunnel & Local Fallback
-const CLOUD_API_URL = 'http://127.0.0.1:8000';
+// Suppress known non-breaking React Native / Expo library warnings
+LogBox.ignoreLogs([
+  'SafeAreaView has been deprecated',
+  'CameraView: barcodeScannerSettings'
+]);
+
+// Multi-Platform API Host Detection
+// 1. Web browser: window.location.hostname
+// 2. Expo Development: inspects Expo Constants hostUri (dynamically extracts PC LAN IP across Wi-Fi / Hotspot)
+// 3. Native Metro Packager: inspects NativeModules.SourceCode.scriptURL
+// 4. Android Emulator: 10.0.2.2 (standard Android SDK virtual router loopback to host PC)
+// 5. iOS Simulator / Web: localhost
+const getInitialHost = () => {
+  // 1. Configured environment variables (Production / CI / Custom Expo Build)
+  try {
+    const envApiUrl = (typeof process !== 'undefined' && process.env) ? (process.env.EXPO_PUBLIC_API_URL || process.env.REACT_APP_API_URL) : null;
+    if (envApiUrl) {
+      const cleanHost = envApiUrl.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+      if (cleanHost) return cleanHost;
+    }
+  } catch (e) {}
+
+  // 2. Web browser live origin
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
+    return window.location.hostname;
+  }
+
+  // 3. Expo Constants hostUri (dynamically extracts PC LAN IP across Wi-Fi / Hotspot)
+  try {
+    const Constants = require('expo-constants')?.default || require('expo-constants');
+    const extraApiUrl = Constants?.expoConfig?.extra?.apiUrl || Constants?.manifest?.extra?.apiUrl;
+    if (extraApiUrl) {
+      const clean = extraApiUrl.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+      if (clean) return clean;
+    }
+    const hostUri = Constants?.expoConfig?.hostUri || Constants?.manifest2?.extra?.expoGo?.debuggerHost || Constants?.manifest?.debuggerHost;
+    if (hostUri) {
+      const host = hostUri.split(':')[0];
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        return host;
+      }
+    }
+  } catch (e) {}
+
+  // 4. Native Metro Packager scriptURL
+  try {
+    const scriptURL = NativeModules?.SourceCode?.scriptURL;
+    if (scriptURL) {
+      const match = scriptURL.match(/https?:\/\/([^:/]+)/);
+      if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
+        return match[1];
+      }
+    }
+  } catch (e) {}
+
+  // 5. Context-aware virtual router / development emulator fallbacks
+  //    Uses EXPO_PUBLIC_API_HOST env var to override emulator defaults for production builds
+  if (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_API_HOST) {
+    const cleanHost = process.env.EXPO_PUBLIC_API_HOST.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+    if (cleanHost) return cleanHost;
+  }
+  if (Platform.OS === 'android') {
+    return '10.0.2.2';
+  }
+  if (Platform.OS === 'ios') {
+    return 'localhost';
+  }
+  return 'localhost';
+};
+
+const getInitialScheme = (host) => {
+  if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+    return 'https';
+  }
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '10.0.2.2') {
+    return 'http';
+  }
+  // Public FQDN, ngrok, Render, or cloud tunnel
+  if (host.includes('.') && !host.startsWith('192.168.') && !host.startsWith('10.') && !host.startsWith('172.')) {
+    return 'https';
+  }
+  return 'http';
+};
+
+// Pure JavaScript RFC 6234 Compliant SHA-256 Digest Engine
+// Architecture Note: Self-contained zero-dependency implementation ensuring deterministic offline PIN hashing
+// across heterogeneous runtimes (Expo Go, React Native Web, physical devices) without native module linking issues.
+const sha256 = (ascii) => {
+  function rightRotate(val, amt) { return (val >>> amt) | (val << (32 - amt)); }
+  const words = [];
+  const asciiBitLength = ascii.length * 8;
+  let hash = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const k = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ];
+  let compLen = ((asciiBitLength + 64 >>> 9) << 4) + 15;
+  for (let i = 0; i <= compLen; i++) words[i] = 0;
+  for (let i = 0; i < ascii.length; i++) {
+    words[i >> 2] |= (ascii.charCodeAt(i) & 255) << (8 * (3 - (i % 4)));
+  }
+  words[ascii.length >> 2] |= 128 << (8 * (3 - (ascii.length % 4)));
+  words[compLen] = asciiBitLength;
+
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+          w[i - 16]
+          + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+          + w[i - 7]
+          + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+        ) | 0);
+      const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+
+      hash = [(temp1 + temp2) | 0, a, hash[1], hash[2], (hash[3] + temp1) | 0, hash[4], hash[5], hash[6]];
+    }
+    for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  let res = '';
+  for (let i = 0; i < 8; i++) {
+    for (let b = 3; b >= 0; b--) {
+      const byte = (hash[i] >> (8 * b)) & 255;
+      res += (byte < 16 ? '0' : '') + byte.toString(16);
+    }
+  }
+  return res;
+};
+
+const hashKioskPin = (pin) => {
+  if (!pin) return null;
+  return `sha256_${sha256(`kiosk_salt_2026_${pin}`)}`;
+};
+
+const DEV_HOST = getInitialHost();
+const DEFAULT_SCHEME = getInitialScheme(DEV_HOST);
+const CLOUD_API_URL = `${DEFAULT_SCHEME}://${DEV_HOST}:8000`;
 let currentServerHost = DEV_HOST;
-let LOCAL_API_URL = `http://${currentServerHost}:8000`;
+let LOCAL_API_URL = `${DEFAULT_SCHEME}://${currentServerHost}:8000`;
 let API_BASE_URL = LOCAL_API_URL;
 
 export default function App() {
@@ -185,10 +333,33 @@ export default function App() {
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
 
   // Authentication State
+  const [authTab, setAuthTab] = useState('faculty'); // 'faculty' | 'student' | 'signup'
   const [teacher, setTeacher] = useState(null);
+  const [studentUser, setStudentUser] = useState(null);
+  const [studentMetrics, setStudentMetrics] = useState(null);
+
+  // Faculty Login States
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Student Login States
+  const [studentIdentifier, setStudentIdentifier] = useState('');
+  const [studentPassword, setStudentPassword] = useState('');
+
+  // Student Signup States
+  const [regFullName, setRegFullName] = useState('');
+  const [regRollNumber, setRegRollNumber] = useState('');
+  const [regBranch, setRegBranch] = useState('Computer Science & Engineering');
+  const [regSemester, setRegSemester] = useState('1');
+  const [regSection, setRegSection] = useState('A');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  // Student QR Scanner State
+  const [isStudentScanning, setIsStudentScanning] = useState(false);
 
   // Forgot Password Modal States
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
@@ -269,8 +440,7 @@ export default function App() {
     );
   };
 
-  // Real Student Roster dynamically loaded from SQLite Database
-  const REAL_CSE_STUDENTS = [];
+  // Real Student Roster dynamically loaded from Database
 
   // Dynamic Teacher's Schedule (loaded dynamically from database metadata)
   const [lectures, setLectures] = useState([]);
@@ -293,7 +463,7 @@ export default function App() {
         }
         if (metaData.branches && metaData.branches.length > 0) {
           const matchedBranch = metaData.branches.find(b => 
-            targetBranch && b.toLowerCase().includes(targetBranch.toLowerCase())
+            targetBranch && b && b.toLowerCase().includes(targetBranch.toLowerCase())
           );
           targetBranch = matchedBranch || metaData.branches[0];
         }
@@ -320,7 +490,7 @@ export default function App() {
             id: s.id || (idx + 1),
             name: s.name || s.full_name,
             roll: s.roll_number,
-            email: `${s.roll_number.toLowerCase()}@student.college.edu`
+            email: s.email || `${(s.roll_number || '').toLowerCase()}@college.edu`
           }));
         }
       }
@@ -335,6 +505,16 @@ export default function App() {
       let timetableSlots = [];
       if (ttRes && ttRes.ok) {
         const ttData = await ttRes.json();
+        if (ttData.is_holiday && ttData.holiday) {
+          triggerDynamicIsland(
+            'holiday',
+            'Official Holiday Recess',
+            `${ttData.holiday.title} • Lectures Suspended`,
+            4000,
+            'HOLIDAY',
+            '🎉'
+          );
+        }
         if (ttData.slots && Array.isArray(ttData.slots) && ttData.slots.length > 0) {
           timetableSlots = ttData.slots;
         }
@@ -360,27 +540,8 @@ export default function App() {
         });
         setLectures(dynamicLectures);
         console.log(`[Roster Sync] Configured ${dynamicLectures.length} timetable sessions with ${liveRoster.length} students.`);
-      } else if (subjectsList.length > 0) {
-        const activeSubjects = subjectsList.slice(0, 5);
-        const timeSlots = ['10:00 AM - 11:00 AM', '11:30 AM - 12:30 PM', '02:00 PM - 03:00 PM', '03:30 PM - 04:30 PM'];
-        const rooms = ['Room A - Lab 2', 'Room A - Lab 1', 'Room A - Lab 4', 'Room B - Seminar Hall'];
-        
-        const dynamicLectures = activeSubjects.map((sub, idx) => ({
-          id: sub.id,
-          code: sub.code,
-          name: sub.name,
-          semester: `Semester ${sub.semester || targetSem}`,
-          section: `Section ${targetSec}`,
-          room: rooms[idx % rooms.length],
-          time: timeSlots[idx % timeSlots.length],
-          status: idx === 0 ? 'Live Now' : idx === 1 ? 'Upcoming' : 'Scheduled',
-          enrolled: liveRoster.length,
-          roster: liveRoster,
-          teacher_name: teacher?.name || 'Faculty Member'
-        }));
-        setLectures(dynamicLectures);
-        console.log(`[Roster Sync] Configured ${dynamicLectures.length} dynamic courses with ${liveRoster.length} enrolled students.`);
       } else {
+        // Production Mode: Do not fabricate fake time slots. Real schedule only.
         setLectures([]);
         console.log(`[Roster Sync] Loaded ${liveRoster.length} students from database!`);
       }
@@ -403,6 +564,13 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Re-fetch live classes and schedule when faculty profile is authenticated
+  useEffect(() => {
+    if (teacher) {
+      fetchLiveRoster();
+    }
+  }, [teacher]);
+
   const checkSavedAuth = async () => {
     try {
       const savedHost = await AsyncStorage.getItem('@custom_server_host');
@@ -421,41 +589,59 @@ export default function App() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed && parsed.token) {
-            // Verify token with backend to prevent ghost/stale profiles
+          // Purge invalid sessions without proper credentials
+          if (!parsed?.token || !parsed?.email) {
+            await AsyncStorage.removeItem('@teacher_user');
+            setTeacher(null);
+          } else {
+            // Verify token with backend
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
             const res = await fetch(`${API_BASE_URL}/management/teacher/profile`, {
               headers: { 'Authorization': `Bearer ${parsed.token}` },
               signal: controller.signal
             }).catch(() => null);
             clearTimeout(timeoutId);
 
-            if (res && (res.status === 401 || res.status === 403)) {
-              console.log("Cached teacher credentials expired or invalid. Purging stale profile.");
-              await AsyncStorage.removeItem('@teacher_user');
-              setTeacher(null);
-            } else if (res && res.ok) {
+            if (res && res.ok) {
               const liveProfile = await res.json();
               const refreshed = {
                 ...parsed,
                 name: liveProfile.full_name || parsed.name || 'Faculty Member',
-                department: liveProfile.department || parsed.department || 'Computer Science & Engineering'
+                department: liveProfile.department || parsed.department || 'Academic Department'
               };
               setTeacher(refreshed);
               await AsyncStorage.setItem('@teacher_user', JSON.stringify(refreshed));
+            } else if (res && (res.status === 401 || res.status === 403)) {
+              await AsyncStorage.removeItem('@teacher_user');
+              setTeacher(null);
             } else {
-              setTeacher(parsed);
+              // Server unreachable: preserve offline session if valid token exists
+              if (parsed.email && parsed.token) {
+                setTeacher(parsed);
+              } else {
+                await AsyncStorage.removeItem('@teacher_user');
+                setTeacher(null);
+              }
             }
-          } else {
-            await AsyncStorage.removeItem('@teacher_user');
-            setTeacher(null);
           }
         } catch {
           await AsyncStorage.removeItem('@teacher_user');
           setTeacher(null);
         }
       }
+
+      // Restore Student Session if present
+      const savedStudent = await AsyncStorage.getItem('@student_user');
+      if (savedStudent) {
+        try {
+          const parsedStudent = JSON.parse(savedStudent);
+          if (parsedStudent && parsedStudent.token) {
+            setStudentUser(parsedStudent);
+          }
+        } catch {}
+      }
+
       const savedKioskPin = await AsyncStorage.getItem('@kiosk_exit_pin');
       if (savedKioskPin) {
         setKioskExitPin(savedKioskPin);
@@ -470,6 +656,7 @@ export default function App() {
       await AsyncStorage.multiRemove([
         '@teacher_user', 
         '@kiosk_exit_pin', 
+        '@offline_queue',
         '@offline_attendance_queue',
         '@custom_server_host'
       ]);
@@ -496,7 +683,7 @@ export default function App() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 4500);
-      const res = await fetch(`${target}/health`, { signal: timer });
+      const res = await fetch(`${target}/health`, { signal: controller.signal });
       clearTimeout(timer);
       if (res.ok) {
         setPingStatus('success');
@@ -608,14 +795,21 @@ export default function App() {
     </Modal>
   );
 
+  const safeParseOfflineQueue = (raw) => {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
   const updateOfflineCount = async () => {
     try {
       const queue = await AsyncStorage.getItem('@offline_queue');
-      if (queue) {
-        setOfflineQueueCount(JSON.parse(queue).length);
-      } else {
-        setOfflineQueueCount(0);
-      }
+      const items = safeParseOfflineQueue(queue);
+      setOfflineQueueCount(items.length);
     } catch {
       setOfflineQueueCount(0);
     }
@@ -624,8 +818,10 @@ export default function App() {
   const syncOfflineQueue = async () => {
     try {
       const queue = await AsyncStorage.getItem('@offline_queue');
-      if (queue) {
-        const items = JSON.parse(queue);
+      const items = safeParseOfflineQueue(queue);
+      if (items.length > 0) {
+        const remainingItems = [];
+        let successCount = 0;
         for (const item of items) {
           let syncRes = await fetch(`${API_BASE_URL}/attendance/submit_final/${item.sessionId}`, {
             method: 'POST',
@@ -637,7 +833,7 @@ export default function App() {
           }).catch(() => null);
 
           if (!syncRes || !syncRes.ok) {
-            await fetch(`${CLOUD_API_URL}/attendance/submit_final/${item.sessionId}`, {
+            syncRes = await fetch(`${CLOUD_API_URL}/attendance/submit_final/${item.sessionId}`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
@@ -646,13 +842,52 @@ export default function App() {
               body: JSON.stringify(item)
             }).catch(() => null);
           }
+
+          if (syncRes && syncRes.ok) {
+            successCount++;
+          } else {
+            remainingItems.push(item);
+          }
         }
-        await AsyncStorage.removeItem('@offline_queue');
-        setOfflineQueueCount(0);
-        Alert.alert("Auto-Sync Complete", "Stored offline attendance records were committed to the cloud database.");
+
+        if (remainingItems.length === 0) {
+          await AsyncStorage.removeItem('@offline_queue');
+          setOfflineQueueCount(0);
+          Alert.alert("Auto-Sync Complete", "All stored offline attendance records were successfully committed to the database.");
+        } else {
+          await AsyncStorage.setItem('@offline_queue', JSON.stringify(remainingItems));
+          setOfflineQueueCount(remainingItems.length);
+          if (successCount > 0) {
+            Alert.alert("Partial Sync", `${successCount} records synced successfully. ${remainingItems.length} records remain offline and will retry.`);
+          }
+        }
       }
     } catch (e) {
       console.log("Offline sync will retry on next connection window.");
+    }
+  };
+
+  const registerPushToken = async (authToken) => {
+    try {
+      let pushToken = await AsyncStorage.getItem('@device_push_token');
+      if (!pushToken) {
+        pushToken = `ExponentPushToken[mobile_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}]`;
+        await AsyncStorage.setItem('@device_push_token', pushToken);
+      }
+      await fetch(`${API_BASE_URL}/notifications/push-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          token: pushToken,
+          platform: 'expo',
+          device_name: 'Faculty Mobile Kiosk'
+        })
+      }).catch(() => null);
+    } catch (e) {
+      // Non-critical push token registration failure
     }
   };
 
@@ -676,6 +911,7 @@ export default function App() {
         };
         setTeacher(teacherProfile);
         await AsyncStorage.setItem('@teacher_user', JSON.stringify(teacherProfile));
+        registerPushToken(data.access_token);
         setTimeout(() => fetchLiveRoster(), 100);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -696,6 +932,181 @@ export default function App() {
     setTeacher(null);
     setActiveSession(null);
     setCurrentView('hub');
+  };
+
+  // Student Login Handler
+  const handleStudentLogin = async () => {
+    const cleanId = studentIdentifier.trim();
+    const cleanPwd = studentPassword.trim();
+    if (!cleanId || !cleanPwd) {
+      Alert.alert("Missing Fields", "Please enter your roll number / email and password.");
+      return;
+    }
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          identifier: cleanId, 
+          email: cleanId,
+          password: cleanPwd 
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const token = data.access_token;
+        
+        let studentData = {
+          name: data.user?.full_name || cleanId.toUpperCase(),
+          roll_number: data.user?.roll_number || cleanId.toUpperCase(),
+          branch: data.user?.branch || 'Academic Department',
+          semester: data.user?.semester || 1,
+          section: data.user?.section || 'A',
+          token: token,
+          overall_percentage: '0.0%',
+          attended: 0,
+          total: 0
+        };
+
+        try {
+          const metricsRes = await fetch(`${API_BASE_URL}/portal/metrics`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (metricsRes.ok) {
+            const m = await metricsRes.json();
+            studentData.name = m.student_name || studentData.name;
+            studentData.roll_number = m.roll_number || studentData.roll_number;
+            studentData.branch = m.branch || studentData.branch;
+            studentData.semester = m.semester || studentData.semester;
+            studentData.section = m.section || studentData.section;
+            studentData.overall_percentage = `${m.overall_percentage || 0}%`;
+            studentData.attended = m.total_attended || 0;
+            studentData.total = m.total_classes || 0;
+            setStudentMetrics(m);
+          }
+        } catch {}
+
+        setStudentUser(studentData);
+        await AsyncStorage.setItem('@student_user', JSON.stringify(studentData));
+        setCurrentView('student_home');
+        triggerDynamicIsland('attendance', 'Student Authenticated', `Welcome, ${studentData.name}`, 2500, 'Student');
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        Alert.alert("Authentication Failed", errData.detail || "Invalid roll number or password.");
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (err) {
+      Alert.alert("Connection Error", `Could not connect to backend at ${API_BASE_URL}. Ensure your phone is connected to the same Wi-Fi.`);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Student Registration (Sign Up) Handler
+  const handleStudentRegister = async () => {
+    const cleanName = regFullName.trim();
+    const cleanRoll = regRollNumber.trim().toUpperCase();
+    const cleanBranch = regBranch.trim() || 'Computer Science & Engineering';
+    const cleanSem = regSemester.trim() || '1';
+    const cleanSec = (regSection.trim() || 'A').toUpperCase();
+    const cleanEmail = regEmail.trim().toLowerCase();
+    const cleanPwd = regPassword.trim();
+
+    if (!cleanName || !cleanRoll || !cleanPwd) {
+      Alert.alert("Required Fields Missing", "Please enter your Full Name, Roll Number, and Password.");
+      return;
+    }
+    if (cleanPwd !== regConfirmPassword.trim()) {
+      Alert.alert("Password Mismatch", "Passwords do not match. Please verify.");
+      return;
+    }
+
+    setIsRegistering(true);
+    try {
+      const formData = new FormData();
+      formData.append('full_name', cleanName);
+      formData.append('roll_number', cleanRoll);
+      formData.append('branch', cleanBranch);
+      formData.append('semester', cleanSem);
+      formData.append('section', cleanSec);
+      if (cleanEmail) formData.append('email', cleanEmail);
+      formData.append('password', cleanPwd);
+
+      const res = await fetch(`${API_BASE_URL}/students/register`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        Alert.alert(
+          "Registration Successful! 🎉",
+          `Account created for ${cleanName} (${cleanRoll}). You can now sign in with your roll number and password!`,
+          [
+            {
+              text: "Sign In Now",
+              onPress: () => {
+                setStudentIdentifier(cleanRoll);
+                setStudentPassword(cleanPwd);
+                setAuthTab('student');
+              }
+            }
+          ]
+        );
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert("Registration Failed", err.detail || "Could not register student account. Please verify roll number is unique.");
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (e) {
+      Alert.alert("Connection Error", `Could not connect to ${API_BASE_URL}. Ensure your phone is on the same Wi-Fi.`);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  const handleStudentLogout = async () => {
+    await AsyncStorage.removeItem('@student_user');
+    setStudentUser(null);
+    setStudentMetrics(null);
+    setCurrentView('hub');
+  };
+
+  const handleStudentQrScanned = async ({ data }) => {
+    if (isCapturing || !data) return;
+    setIsCapturing(true);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const res = await fetch(`${API_BASE_URL}/attendance/qr/verify-and-mark`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${studentUser?.token || ''}`
+        },
+        body: JSON.stringify({ token: data })
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        triggerDynamicIsland('attendance', 'Attendance Marked! ✓', result.message || 'Lecture verified.', 3000, 'Success');
+        Alert.alert("Attendance Confirmed! ✓", result.message || "Your attendance for this session has been recorded successfully.");
+        setIsStudentScanning(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Scan Rejected", err.detail || "Invalid or expired 10-second QR token.");
+      }
+    } catch (e) {
+      Alert.alert("Network Error", "Could not verify QR code with the central server.");
+    } finally {
+      setTimeout(() => setIsCapturing(false), 2000);
+    }
   };
 
   // Teacher Profile & Settings Handlers
@@ -799,7 +1210,7 @@ export default function App() {
         if (prefHaptics) await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         return;
       }
-      if (currentKioskPinInput !== kioskExitPin) {
+      if (hashKioskPin(currentKioskPinInput) !== kioskExitPin && currentKioskPinInput !== kioskExitPin) {
         setKioskPinErrorMsg("Incorrect Current PIN! Purani PIN sahi nahi hai.");
         if (prefHaptics) await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
@@ -824,9 +1235,10 @@ export default function App() {
     }
 
     try {
-      await AsyncStorage.setItem('@kiosk_exit_pin', newKioskPinInput);
+      const hashed = hashKioskPin(newKioskPinInput);
+      await AsyncStorage.setItem('@kiosk_exit_pin', hashed);
       const wasUpdate = !!kioskExitPin;
-      setKioskExitPin(newKioskPinInput);
+      setKioskExitPin(hashed);
       setCurrentKioskPinInput('');
       setNewKioskPinInput('');
       setConfirmKioskPinInput('');
@@ -851,7 +1263,7 @@ export default function App() {
       if (prefHaptics) await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return;
     }
-    if (currentKioskPinInput !== kioskExitPin) {
+    if (hashKioskPin(currentKioskPinInput) !== kioskExitPin && currentKioskPinInput !== kioskExitPin) {
       setKioskPinErrorMsg("Incorrect Current PIN. Cannot remove.");
       if (prefHaptics) await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
@@ -884,7 +1296,7 @@ export default function App() {
   };
 
   const handleVerifyExitPin = async () => {
-    if (enteredExitPin === kioskExitPin) {
+    if (hashKioskPin(enteredExitPin) === kioskExitPin || enteredExitPin === kioskExitPin) {
       setIsExitPinModalVisible(false);
       setEnteredExitPin('');
       setExitPinError(null);
@@ -912,10 +1324,7 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Could not send recovery code');
-      if (data.dev_otp) {
-        setForgotDevOtp(data.dev_otp);
-        setForgotOtp(data.dev_otp);
-      }
+      // Production Mode: OTP dispatched strictly to real email. Auto-fill disabled.
       setForgotStep('verify');
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
@@ -1020,9 +1429,14 @@ export default function App() {
       });
 
       // Try LOCAL_API_URL first, then fallback to CLOUD_API_URL
+      if (!activeSession?.id) {
+        Alert.alert("Session Required", "Please select an active lecture from your timetable schedule first.");
+        setIsCapturing(false);
+        return;
+      }
       let response = null;
       try {
-        response = await fetch(`${API_BASE_URL}/attendance/verify_single/${activeSession?.id || 1}`, {
+        response = await fetch(`${API_BASE_URL}/attendance/verify_single/${activeSession.id}`, {
           method: 'POST',
           body: formData,
           headers: {
@@ -1031,7 +1445,7 @@ export default function App() {
           },
         });
       } catch (err) {
-        response = await fetch(`${CLOUD_API_URL}/attendance/verify_single/${activeSession?.id || 1}`, {
+        response = await fetch(`${CLOUD_API_URL}/attendance/verify_single/${activeSession.id}`, {
           method: 'POST',
           body: formData,
           headers: {
@@ -1166,7 +1580,9 @@ export default function App() {
       sessionCode: activeSession?.code,
       conducted_by_name: teacher?.full_name || teacher?.name || profileDetails?.full_name || 'Faculty In-Charge',
       custom_subject_name: activeSession?.name || null,
-      session_type: activeSession?.isGuest ? 'guest_lecture' : 'lecture',
+      session_type: activeSession?.isGuest ? 'guest_lecture' : (activeSession?.session_type || 'lecture'),
+      duration_minutes: activeSession?.duration_minutes || (activeSession?.session_type === 'practical' ? 120 : 60),
+      credit_weight: activeSession?.credit_weight || (activeSession?.session_type === 'practical' ? 2 : 1),
       notes: activeSession?.notes || null,
       present: sortedPresent,
       absent: sortedAbsent,
@@ -1175,7 +1591,7 @@ export default function App() {
     
     if (isOffline) {
       const queue = await AsyncStorage.getItem('@offline_queue');
-      const newQueue = queue ? JSON.parse(queue) : [];
+      const newQueue = safeParseOfflineQueue(queue);
       newQueue.push(payload);
       await AsyncStorage.setItem('@offline_queue', JSON.stringify(newQueue));
       updateOfflineCount();
@@ -1188,7 +1604,7 @@ export default function App() {
       );
     } else {
       try {
-        let res = await fetch(`${API_BASE_URL}/attendance/submit_final/${activeSession?.id || 1}`, {
+        let res = await fetch(`${API_BASE_URL}/attendance/submit_final/${activeSession.id}`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -1198,7 +1614,7 @@ export default function App() {
         }).catch(() => null);
 
         if (!res || !res.ok) {
-          res = await fetch(`${CLOUD_API_URL}/attendance/submit_final/${activeSession?.id || 1}`, {
+          res = await fetch(`${CLOUD_API_URL}/attendance/submit_final/${activeSession.id}`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -1223,7 +1639,7 @@ export default function App() {
         );
       } catch {
         const queue = await AsyncStorage.getItem('@offline_queue');
-        const newQueue = queue ? JSON.parse(queue) : [];
+        const newQueue = safeParseOfflineQueue(queue);
         newQueue.push(payload);
         await AsyncStorage.setItem('@offline_queue', JSON.stringify(newQueue));
         updateOfflineCount();
@@ -1318,83 +1734,310 @@ export default function App() {
           </View>
 
           <View style={styles.cardContainer}>
-            <Text style={styles.cardTitle}>Teacher Sign In</Text>
-            <Text style={styles.cardSubtitle}>Authenticate to access today's classroom sessions.</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Institutional Faculty Email</Text>
-              <TextInput 
-                style={styles.textInput}
-                value={authEmail}
-                onChangeText={setAuthEmail}
-                placeholder="faculty@university.ac.in"
-                placeholderTextColor="#64748b"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <TouchableOpacity onPress={() => { setIsForgotModalVisible(true); setForgotStep('request'); }}>
-                  <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Forgot Password?</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput 
-                style={styles.textInput}
-                value={authPassword}
-                onChangeText={setAuthPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#64748b"
-                secureTextEntry
-              />
-            </View>
-
-            <TouchableOpacity 
-              style={styles.primaryButton} 
-              onPress={handleTeacherLogin}
-              disabled={isLoggingIn}
-            >
-              {isLoggingIn ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Sign In to Classroom Hub →</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* Quick Demo Login Pill */}
-            <View style={styles.demoPillContainer}>
-              <View>
-                <Text style={styles.demoPillLabel}>Verified Faculty Login</Text>
-                <Text style={styles.demoPillValue}>faculty@college.edu</Text>
-              </View>
+            {/* 3-Way Role / Action Tab Selector */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 3, marginBottom: 18 }}>
               <TouchableOpacity 
-                style={styles.demoFillBtn} 
-                onPress={() => {
-                  setAuthEmail('faculty@college.edu');
-                  setAuthPassword('faculty123');
+                style={{ 
+                  flex: 1, 
+                  paddingVertical: 9, 
+                  alignItems: 'center', 
+                  borderRadius: 10, 
+                  backgroundColor: authTab === 'faculty' ? '#FFFFFF' : 'transparent',
+                  shadowColor: authTab === 'faculty' ? '#000' : 'transparent',
+                  shadowOpacity: 0.06,
+                  shadowRadius: 2,
+                  elevation: authTab === 'faculty' ? 2 : 0
                 }}
+                onPress={() => setAuthTab('faculty')}
               >
-                <Text style={styles.demoFillBtnText}>Auto-fill</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: authTab === 'faculty' ? '#0F172A' : '#64748B' }}>
+                  👨‍🏫 Faculty
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ 
+                  flex: 1, 
+                  paddingVertical: 9, 
+                  alignItems: 'center', 
+                  borderRadius: 10, 
+                  backgroundColor: authTab === 'student' ? '#FFFFFF' : 'transparent',
+                  shadowColor: authTab === 'student' ? '#000' : 'transparent',
+                  shadowOpacity: 0.06,
+                  shadowRadius: 2,
+                  elevation: authTab === 'student' ? 2 : 0
+                }}
+                onPress={() => setAuthTab('student')}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: authTab === 'student' ? '#0F172A' : '#64748B' }}>
+                  🎓 Student
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ 
+                  flex: 1, 
+                  paddingVertical: 9, 
+                  alignItems: 'center', 
+                  borderRadius: 10, 
+                  backgroundColor: authTab === 'signup' ? '#FFFFFF' : 'transparent',
+                  shadowColor: authTab === 'signup' ? '#000' : 'transparent',
+                  shadowOpacity: 0.06,
+                  shadowRadius: 2,
+                  elevation: authTab === 'signup' ? 2 : 0
+                }}
+                onPress={() => setAuthTab('signup')}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: authTab === 'signup' ? '#0F172A' : '#64748B' }}>
+                  📝 Sign Up
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Purge Local Cache Button */}
-            <TouchableOpacity 
-              style={{ marginTop: 14, paddingVertical: 8, alignItems: 'center' }} 
-              onPress={handleHardResetCache}
-            >
-              <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700' }}>
-                🔄 Purge Stale Session & Reset Cache
-              </Text>
-            </TouchableOpacity>
+            {/* TAB 1: FACULTY SIGN IN */}
+            {authTab === 'faculty' && (
+              <View>
+                <Text style={styles.cardTitle}>Faculty Sign In</Text>
+                <Text style={styles.cardSubtitle}>Authenticate to access today's classroom sessions.</Text>
 
-            {/* Subtle Creator Credit Badge */}
-            <View style={{ alignItems: 'center', marginTop: 18, marginBottom: 4 }}>
-              <Text style={{ color: '#78716C', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
-              <View style={{ backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 4 }}>
-                <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Institutional Faculty Email</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={authEmail}
+                    onChangeText={setAuthEmail}
+                    placeholder="faculty@college.edu"
+                    placeholderTextColor="#64748b"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={styles.inputLabel}>Password</Text>
+                    <TouchableOpacity onPress={() => { setIsForgotModalVisible(true); setForgotStep('request'); }}>
+                      <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Forgot Password?</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={authPassword}
+                    onChangeText={setAuthPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#64748b"
+                    secureTextEntry
+                  />
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.primaryButton} 
+                  onPress={handleTeacherLogin}
+                  disabled={isLoggingIn}
+                >
+                  {isLoggingIn ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Sign In to Classroom Hub →</Text>
+                  )}
+                </TouchableOpacity>
+
+{/* Production Mode: Demo login pills removed */}
+
+                {/* Purge Local Cache Button */}
+                <TouchableOpacity 
+                  style={{ marginTop: 14, paddingVertical: 8, alignItems: 'center' }} 
+                  onPress={handleHardResetCache}
+                >
+                  <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '700' }}>
+                    🔄 Purge Stale Session & Reset Cache
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* TAB 2: STUDENT SIGN IN */}
+            {authTab === 'student' && (
+              <View>
+                <Text style={styles.cardTitle}>Student Sign In</Text>
+                <Text style={styles.cardSubtitle}>Inspect your attendance metrics and scan classroom QR codes.</Text>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Roll Number or Email</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={studentIdentifier}
+                    onChangeText={setStudentIdentifier}
+                    placeholder="e.g. CS2023001 or roll@student.edu"
+                    placeholderTextColor="#64748b"
+                    autoCapitalize="characters"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Password</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={studentPassword}
+                    onChangeText={setStudentPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#64748b"
+                    secureTextEntry
+                  />
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.primaryButton, { backgroundColor: '#2563EB' }]} 
+                  onPress={handleStudentLogin}
+                  disabled={isLoggingIn}
+                >
+                  {isLoggingIn ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Sign In as Student →</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={{ marginTop: 16, alignItems: 'center' }}
+                  onPress={() => setAuthTab('signup')}
+                >
+                  <Text style={{ color: '#64748B', fontSize: 12 }}>
+                    New to the institution? <Text style={{ color: '#2563EB', fontWeight: '700' }}>Create an Account</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* TAB 3: STUDENT SIGN UP (REGISTRATION) */}
+            {authTab === 'signup' && (
+              <View>
+                <Text style={styles.cardTitle}>Student Registration</Text>
+                <Text style={styles.cardSubtitle}>Create your verified academic account.</Text>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Full Name *</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regFullName}
+                    onChangeText={setRegFullName}
+                    placeholder="e.g. Rahul Sharma"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>University Roll Number *</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regRollNumber}
+                    onChangeText={setRegRollNumber}
+                    placeholder="e.g. CS2023055"
+                    placeholderTextColor="#64748b"
+                    autoCapitalize="characters"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Department / Branch</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regBranch}
+                    onChangeText={setRegBranch}
+                    placeholder="Computer Science & Engineering"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={[styles.inputGroup, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>Academic Semester</Text>
+                    <TextInput 
+                      style={styles.textInput}
+                      value={regSemester}
+                      onChangeText={setRegSemester}
+                      placeholder="1"
+                      placeholderTextColor="#64748b"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={[styles.inputGroup, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>Section (A/B/C)</Text>
+                    <TextInput 
+                      style={styles.textInput}
+                      value={regSection}
+                      onChangeText={setRegSection}
+                      placeholder="A"
+                      placeholderTextColor="#64748b"
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Email (Optional)</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regEmail}
+                    onChangeText={setRegEmail}
+                    placeholder="student@college.edu"
+                    placeholderTextColor="#64748b"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Set Password *</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regPassword}
+                    onChangeText={setRegPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#64748b"
+                    secureTextEntry
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Confirm Password *</Text>
+                  <TextInput 
+                    style={styles.textInput}
+                    value={regConfirmPassword}
+                    onChangeText={setRegConfirmPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#64748b"
+                    secureTextEntry
+                  />
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.primaryButton, { backgroundColor: '#059669', marginTop: 6 }]} 
+                  onPress={handleStudentRegister}
+                  disabled={isRegistering}
+                >
+                  {isRegistering ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Create Student Account ✓</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={{ marginTop: 14, alignItems: 'center' }}
+                  onPress={() => setAuthTab('student')}
+                >
+                  <Text style={{ color: '#64748B', fontSize: 12 }}>
+                    Already have an account? <Text style={{ color: '#059669', fontWeight: '700' }}>Sign In here</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Creator Credit Footer */}
+            <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 8 }}>
+              <View style={{ backgroundColor: 'rgba(2, 132, 199, 0.08)', borderColor: 'rgba(2, 132, 199, 0.25)', borderWidth: 1, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 }}>
+                <Text style={{ color: '#0284c7', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
               </View>
             </View>
           </View>
@@ -1447,12 +2090,7 @@ export default function App() {
                 </View>
               ) : (
                 <View>
-                  {forgotDevOtp && (
-                    <View style={[styles.demoPillContainer, { marginBottom: 14 }]}>
-                      <Text style={styles.demoPillLabel}>Auto-Generated Code:</Text>
-                      <Text style={[styles.demoPillValue, { color: '#38bdf8', fontWeight: 'bold' }]}>{forgotDevOtp}</Text>
-                    </View>
-                  )}
+{/* Production: User enters OTP from real email */}
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>6-Digit Verification Code</Text>
                     <TextInput 
@@ -1517,37 +2155,195 @@ export default function App() {
   }
 
   // --------------------------------------------------------------------------
+  // SCREEN 1.5: STUDENT ACADEMIC HUB & QR SCANNER (When student authenticated)
+  // --------------------------------------------------------------------------
+  if (studentUser) {
+    if (isStudentScanning) {
+      return (
+        <SafeAreaView style={[styles.container, { backgroundColor: '#000000' }]}>
+          <StatusBar barStyle="light-content" />
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>Classroom QR Scanner</Text>
+              <Text style={{ color: '#94A3B8', fontSize: 11 }}>Point at your professor's projector screen</Text>
+            </View>
+            <TouchableOpacity 
+              style={{ paddingHorizontal: 14, paddingVertical: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 }}
+              onPress={() => setIsStudentScanning(false)}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>✕ Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 16, borderRadius: 24, overflow: 'hidden', marginVertical: 8 }}>
+            <CameraView 
+              style={StyleSheet.absoluteFillObject}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+              onBarcodeScanned={isCapturing ? undefined : handleStudentQrScanned}
+            />
+            <View style={styles.reticleContainer} pointerEvents="none">
+              <View style={[styles.faceOvalTarget, { borderRadius: 24, width: 220, height: 220 }]}>
+                <View style={[styles.reticleCorner, styles.cornerTL]} />
+                <View style={[styles.reticleCorner, styles.cornerTR]} />
+                <View style={[styles.reticleCorner, styles.cornerBL]} />
+                <View style={[styles.reticleCorner, styles.cornerBR]} />
+              </View>
+              <Text style={styles.reticleSubtext}>Align the rotating QR code inside box</Text>
+            </View>
+          </View>
+
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
+              QR codes rotate cryptographically every 10 seconds to prevent proxy attendance.
+            </Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        {/* Student Top App Bar */}
+        <View style={styles.appBar}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={styles.facultyGreeting}>Student Academic Hub</Text>
+            <Text style={styles.facultyName} numberOfLines={1}>{studentUser.name}</Text>
+            <Text style={styles.facultyDept} numberOfLines={1}>
+              {studentUser.roll_number} • {studentUser.branch}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity 
+              style={[styles.profilePill, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', paddingHorizontal: 10 }]} 
+              onPress={() => { setIsServerModalVisible(true); setPingStatus('idle'); }}
+            >
+              <Text style={styles.profilePillText}>📡 Server</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.logoutPill, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} 
+              onPress={handleStudentLogout}
+            >
+              <Text style={[styles.logoutText, { color: '#DC2626', fontWeight: '700' }]}>Log Out</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView style={styles.hubContent}>
+          {/* Attendance KPI Card */}
+          <View style={[styles.lectureCard, { backgroundColor: '#0F172A', marginTop: 12, padding: 20 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Overall Attendance
+              </Text>
+              <View style={{ backgroundColor: parseFloat(studentUser.overall_percentage) >= 75 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                <Text style={{ color: parseFloat(studentUser.overall_percentage) >= 75 ? '#34D399' : '#F87171', fontSize: 11, fontWeight: '700' }}>
+                  {parseFloat(studentUser.overall_percentage) >= 75 ? '✓ Safe Standing' : '⚠ Debarment Risk'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 36, fontWeight: '900' }}>
+                {studentUser.overall_percentage}
+              </Text>
+              <Text style={{ color: '#64748B', fontSize: 13 }}>
+                ({studentUser.attended || 0} of {studentUser.total || 0} lectures)
+              </Text>
+            </View>
+            <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 4 }}>
+              Minimum 75.0% required under AICTE / UGC academic regulations.
+            </Text>
+          </View>
+
+          {/* Action: Scan Dynamic QR */}
+          <View style={{ marginVertical: 16 }}>
+            <TouchableOpacity 
+              style={[styles.primaryButton, { paddingVertical: 16, backgroundColor: '#2563EB', shadowColor: '#2563EB', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }]}
+              onPress={() => setIsStudentScanning(true)}
+            >
+              <Text style={[styles.primaryButtonText, { fontSize: 16, fontWeight: '800' }]}>
+                📷 Scan Attendance QR Code
+              </Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#64748B', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+              Point camera at your teacher's 10-second rotating projector code
+            </Text>
+          </View>
+
+          {/* Academic Info Card */}
+          <View style={[styles.lectureCard, { padding: 16, backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' }]}>
+            <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 10 }}>
+              Academic Enrollment Profile
+            </Text>
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#64748B', fontSize: 12 }}>Roll Number:</Text>
+                <Text style={{ color: '#0F172A', fontSize: 12, fontWeight: '700' }}>{studentUser.roll_number}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#64748B', fontSize: 12 }}>Department:</Text>
+                <Text style={{ color: '#0F172A', fontSize: 12, fontWeight: '600' }}>{studentUser.branch}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#64748B', fontSize: 12 }}>Semester & Section:</Text>
+                <Text style={{ color: '#0F172A', fontSize: 12, fontWeight: '600' }}>Semester {studentUser.semester} • Sec {studentUser.section}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Creator Credit Footer */}
+          <View style={{ alignItems: 'center', marginTop: 28, marginBottom: 24 }}>
+            <View style={{ backgroundColor: 'rgba(2, 132, 199, 0.08)', borderColor: 'rgba(2, 132, 199, 0.25)', borderWidth: 1, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 }}>
+              <Text style={{ color: '#0284c7', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
+            </View>
+          </View>
+        </ScrollView>
+
+        {renderServerConfigModal()}
+      </SafeAreaView>
+    );
+  }
+
+  // --------------------------------------------------------------------------
   // SCREEN 2: FACULTY CLASSROOM HUB (Lecture Schedule & Dashboard)
   // --------------------------------------------------------------------------
   if (currentView === 'hub') {
+    if (!teacher) {
+      return null;
+    }
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
         {/* Top App Bar */}
         <View style={styles.appBar}>
-          <View>
+          <View style={{ flex: 1, paddingRight: 8 }}>
             <Text style={styles.facultyGreeting}>Welcome back,</Text>
-            <Text style={styles.facultyName}>{teacher.name}</Text>
-            <Text style={styles.facultyDept}>{teacher.department}</Text>
+            <Text style={styles.facultyName} numberOfLines={1}>{teacher?.name || 'Faculty Member'}</Text>
+            <Text style={styles.facultyDept} numberOfLines={1}>{teacher?.department || 'Academic Department'}</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <TouchableOpacity 
-              style={[styles.profilePill, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' }]} 
+              style={[styles.profilePill, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', paddingHorizontal: 10 }]} 
               onPress={() => { setIsServerModalVisible(true); setPingStatus('idle'); }}
             >
-              <Text style={styles.profilePillText}>📡 {currentServerHost}</Text>
+              <Text style={styles.profilePillText}>📡 Server</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={styles.profilePill} 
+              style={[styles.profilePill, { paddingHorizontal: 10 }]} 
               onPress={() => {
                 setIsProfileModalVisible(true);
                 loadTeacherProfile();
               }}
             >
-              <Text style={styles.profilePillText}>⚙️ Settings</Text>
+              <Text style={styles.profilePillText}>⚙️</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutPill} onPress={handleTeacherLogout}>
-              <Text style={styles.logoutText}>Log Out</Text>
+            <TouchableOpacity 
+              style={[styles.logoutPill, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} 
+              onPress={handleTeacherLogout}
+            >
+              <Text style={[styles.logoutText, { color: '#DC2626', fontWeight: '700' }]}>Log Out</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1568,16 +2364,16 @@ export default function App() {
 
         <ScrollView style={styles.hubContent}>
           <Text style={styles.sectionHeaderTitle}>Today's Lecture Schedule</Text>
-          <Text style={styles.sectionHeaderSubtitle}>Select a session to activate the hardware facial scanner:</Text>
+          <Text style={styles.sectionHeaderSubtitle}>Select a session to start walk-up facial attendance:</Text>
 
           {lectures.length === 0 ? (
             <View style={[styles.lectureCard, { alignItems: 'center', paddingVertical: 32 }]}>
               <Text style={{ fontSize: 32, marginBottom: 8 }}>📚</Text>
-              <Text style={{ color: '#F1F5F9', fontSize: 16, fontWeight: '700', marginBottom: 4 }}>
-                No Active Lectures Found
+              <Text style={{ color: '#0F172A', fontSize: 16, fontWeight: '700', marginBottom: 4 }}>
+                No Lectures Scheduled Today
               </Text>
-              <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 }}>
-                There are no classes scheduled for your profile today. Add subjects in the Portal or check back later.
+              <Text style={{ color: '#64748B', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 }}>
+                There are no classes scheduled for your faculty profile today. Add subjects in the HOD Portal or check back later.
               </Text>
             </View>
           ) : (
@@ -1620,11 +2416,10 @@ export default function App() {
             })
           )}
 
-          {/* Subtle Creator Credit Footer */}
+          {/* Creator Credit Footer */}
           <View style={{ alignItems: 'center', paddingVertical: 20, marginTop: 8 }}>
-            <Text style={{ color: '#78716C', fontSize: 11, fontWeight: '500' }}>Platform Engineered by</Text>
-            <View style={{ backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 4 }}>
-              <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
+            <View style={{ backgroundColor: 'rgba(2, 132, 199, 0.08)', borderColor: 'rgba(2, 132, 199, 0.25)', borderWidth: 1, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 }}>
+              <Text style={{ color: '#0284c7', fontSize: 11, fontWeight: '700' }}>Created by Ronak Agrawal</Text>
             </View>
           </View>
         </ScrollView>
@@ -2147,8 +2942,8 @@ export default function App() {
               <ScrollView style={{ maxHeight: 380 }}>
                 {sortStudentsByRoll([...scannedStudents, ...pendingStudents])
                   .filter(s => 
-                    s.name.toLowerCase().includes(manualSearchQuery.toLowerCase()) || 
-                    s.roll.toLowerCase().includes(manualSearchQuery.toLowerCase())
+                    (s.name || '').toLowerCase().includes((manualSearchQuery || '').toLowerCase()) || 
+                    (s.roll || '').toLowerCase().includes((manualSearchQuery || '').toLowerCase())
                   )
                   .map(student => {
                     const isPresent = scannedStudents.some(p => p.roll === student.roll);
@@ -2280,8 +3075,9 @@ export default function App() {
   // --------------------------------------------------------------------------
   const allList = sortStudentsByRoll(sortStudentsByRoll([...scannedStudents, ...pendingStudents]));
   const filteredList = allList.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          s.roll.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = (searchQuery || '').toLowerCase();
+    const matchesSearch = (s.name || '').toLowerCase().includes(q) || 
+                          (s.roll || '').toLowerCase().includes(q);
     const isPresent = scannedStudents.some(p => p.roll === s.roll);
     if (!matchesSearch) return false;
     if (activeFilterTab === 'present') return isPresent;

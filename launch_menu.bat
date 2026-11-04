@@ -6,7 +6,7 @@ color 0b
 cls
 echo ===============================================================================
 echo            SMART ATTENDANCE SYSTEM - INTERACTIVE LAUNCH CONTROL
-echo                       Engineered by Ronak Agrawal
+echo                        Created by Ronak Agrawal
 echo ===============================================================================
 echo.
 echo  Choose which service you want to start, or launch everything:
@@ -16,7 +16,7 @@ echo   [2] Start Web Showcase & Teacher Console (Port 3000 - Next.js)
 echo   [3] Start Admin Governance Portal        (Port 3001 - Next.js)
 echo   [4] Start Student Academic Portal        (Port 3002 - Next.js)
 echo   [5] Start HOD Departmental Command Deck  (Port 3003 - Next.js)
-echo   [6] Start Teacher Mobile App             (Expo Metro Bundler)
+echo   [6] Start Smart Attendance Mobile App   (Expo Metro Bundler)
 echo   [7] Start Ngrok Cloud Tunnel             (Port 8000 - Public HTTPS)
 echo.
 echo   -----------------------------------------------------------------------------
@@ -45,32 +45,32 @@ goto MENU
 
 :BACKEND
 echo Starting Central Backend API (Port 8000)...
-start "Smart Attendance - Backend API (8000)" cmd /k "cd /d "%~dp0backend" && venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000"
+start "Smart Attendance - Backend API (8000)" "%~dp0start_backend.bat"
 goto MENU
 
 :WEB
 echo Starting Web Showcase & Teacher Console (Port 3000)...
-start "Smart Attendance - Web & Teacher (3000)" cmd /k "cd /d "%~dp0web-frontend" && npm run dev -- -p 3000"
+start "Smart Attendance - Web & Teacher (3000)" cmd /k "cd /d "%~dp0web-frontend" && npm run dev -- -H 0.0.0.0 -p 3000"
 goto MENU
 
 :ADMIN
 echo Starting Admin Governance Portal (Port 3001)...
-start "Smart Attendance - Admin Portal (3001)" cmd /k "cd /d "%~dp0admin-portal" && npm run dev -- -p 3001"
+start "Smart Attendance - Admin Portal (3001)" cmd /k "cd /d "%~dp0admin-portal" && npm run dev -- -H 0.0.0.0 -p 3001"
 goto MENU
 
 :STUDENT
 echo Starting Student Academic Portal (Port 3002)...
-start "Smart Attendance - Student Portal (3002)" cmd /k "cd /d "%~dp0student-portal" && npm run dev -- -p 3002"
+start "Smart Attendance - Student Portal (3002)" cmd /k "cd /d "%~dp0student-portal" && npm run dev -- -H 0.0.0.0 -p 3002"
 goto MENU
 
 :HOD
 echo Starting HOD Departmental Command Deck (Port 3003)...
-start "Smart Attendance - HOD Portal (3003)" cmd /k "cd /d "%~dp0hod-portal" && npm run dev -- -p 3003"
+start "Smart Attendance - HOD Portal (3003)" cmd /k "cd /d "%~dp0hod-portal" && npm run dev -- -H 0.0.0.0 -p 3003"
 goto MENU
 
 :MOBILE
-echo Starting Teacher Mobile App (Expo Metro)...
-start "Smart Attendance - Teacher Mobile App (Expo QR)" cmd /k "cd /d "%~dp0mobile-app" && title Smart Attendance - Teacher Mobile App (Expo QR) && npx expo start -c"
+echo Starting Smart Attendance Mobile App (Expo Metro)...
+start "Smart Attendance - Mobile App (Expo QR)" cmd /k "cd /d "%~dp0mobile-app" && title Smart Attendance - Mobile App (Expo QR) && npx expo start -c"
 goto MENU
 
 :NGROK

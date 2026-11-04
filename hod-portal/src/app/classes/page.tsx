@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -26,10 +26,13 @@ import {
   X,
   GraduationCap,
   ShieldCheck,
-  Tag
+  Tag,
+  AlertCircle,
+  Edit3,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 interface SessionLogItem {
@@ -112,6 +115,7 @@ interface AttendanceRecord {
   status: 'Present' | 'Absent';
   is_present: boolean;
   status_tag?: string;
+  student_id?: number;
   timestamp: string;
 }
 
@@ -122,6 +126,8 @@ export default function ClassAttendancePage() {
   const [viewMode, setViewMode] = useState<'sessions' | 'students' | 'records'>('sessions');
 
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [sessionsLog, setSessionsLog] = useState<SessionLogItem[]>([]);
   const [studentSummary, setStudentSummary] = useState<StudentSummaryItem[]>([]);
   const [rawRecords, setRawRecords] = useState<AttendanceRecord[]>([]);
@@ -129,6 +135,7 @@ export default function ClassAttendancePage() {
   // Filter Options & States
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [availableTeachers, setAvailableTeachers] = useState<string[]>([]);
@@ -171,19 +178,138 @@ export default function ClassAttendancePage() {
           if (Array.isArray(data.sections) && data.sections.length > 0) {
             setAvailableSections(data.sections);
           }
+          if (data.branch_programs && typeof data.branch_programs === 'object') {
+            setBranchPrograms(data.branch_programs);
+          }
         }
       })
       .catch(() => {});
   }, []);
 
+  // Update available semesters dynamically based on the selected course/branch
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const bp = branchPrograms[selectedBranch];
+    let sems: number[] = [];
+    if (bp && Array.isArray(bp.semesters) && bp.semesters.length > 0) {
+      sems = bp.semesters;
+    } else {
+      const lower = selectedBranch.toLowerCase();
+      if (lower.includes('mbbs') || lower.includes('b.arch') || lower.includes('ballb') || lower.includes('5 year')) {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      } else if (lower.includes('bba') || lower.includes('bca') || lower.includes('b.sc') || lower.includes('b.com') || lower.includes('diploma')) {
+        sems = [1, 2, 3, 4, 5, 6];
+      } else if (lower.includes('mba') || lower.includes('m.tech') || lower.includes('mca') || lower.includes('m.sc') || lower.includes('m.com')) {
+        sems = [1, 2, 3, 4];
+      } else {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8];
+      }
+    }
+    setAvailableSemesters(sems);
+    if (selectedSemester !== 'all' && !sems.includes(parseInt(selectedSemester))) {
+      setSelectedSemester('all');
+    }
+  }, [selectedBranch, branchPrograms]);
+
   // Roster Drilldown Modal
   const [selectedSessionModal, setSelectedSessionModal] = useState<SessionLogItem | null>(null);
   const [rosterSearch, setRosterSearch] = useState<string>('');
 
-  // Fetch Comprehensive Attendance Analytics & Records
-  const fetchAttendanceData = async () => {
+  // HOD Attendance Condonation & Override State
+  const [overrideTarget, setOverrideTarget] = useState<{
+    student_id: number;
+    student_name: string;
+    roll_number: string;
+    session_id: number;
+    current_status: string;
+    current_present: boolean;
+  } | null>(null);
+  const [overrideTag, setOverrideTag] = useState<string>('PRESENT');
+  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [overrideSubmitting, setOverrideSubmitting] = useState<boolean>(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [overrideSuccessMsg, setOverrideSuccessMsg] = useState<string | null>(null);
+
+  const handleOverrideSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!overrideTarget) return;
+    if (overrideReason.trim().length < 3) {
+      setOverrideError("Please enter a valid official reason (minimum 3 characters).");
+      return;
+    }
+    setOverrideSubmitting(true);
+    setOverrideError(null);
     try {
+      const isPresent = overrideTag !== 'ABSENT';
+      const res = await authFetchWithRetry(`${API_BASE_URL}/management/attendance/override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: overrideTarget.session_id,
+          student_id: overrideTarget.student_id,
+          status_tag: overrideTag,
+          is_present: isPresent,
+          reason: overrideReason.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to update attendance.");
+      }
+
+      if (selectedSessionModal && selectedSessionModal.session_id === overrideTarget.session_id) {
+        const updatedRoster = selectedSessionModal.roster.map(st => {
+          if (st.student_id === overrideTarget.student_id) {
+            return {
+              ...st,
+              is_present: isPresent,
+              status_tag: overrideTag,
+              remarks: data.remarks || `[HOD OVERRIDE]: ${overrideReason.trim()}`
+            };
+          }
+          return st;
+        });
+        const newPresent = updatedRoster.filter(r => r.is_present).length;
+        setSelectedSessionModal({
+          ...selectedSessionModal,
+          present_count: newPresent,
+          absent_count: updatedRoster.length - newPresent,
+          roster: updatedRoster
+        });
+      }
+
+      setRawRecords(prev => prev.map(r => {
+        if (r.session_id === overrideTarget.session_id && r.student_id === overrideTarget.student_id) {
+          return {
+            ...r,
+            is_present: isPresent,
+            status: isPresent ? (overrideTag === 'PRESENT' ? 'Present' : overrideTag as any) : 'Absent',
+            status_tag: overrideTag,
+            remarks: data.remarks
+          };
+        }
+        return r;
+      }));
+
+      setOverrideSuccessMsg(`Attendance updated to ${overrideTag} for ${overrideTarget.student_name}!`);
+      setTimeout(() => {
+        setOverrideTarget(null);
+        setOverrideSuccessMsg(null);
+        setOverrideReason('');
+      }, 1000);
+    } catch (err: any) {
+      setOverrideError(err.message || "Failed to save condonation.");
+    } finally {
+      setOverrideSubmitting(false);
+    }
+  };
+
+  // Fetch Comprehensive Attendance Analytics & Records
+  const fetchAttendanceData = async (isManualRetry = false) => {
+    try {
+      if (isManualRetry) setRetrying(true);
       setLoading(true);
+      setFetchError(null);
 
       const params = new URLSearchParams();
       params.append('branch', selectedBranch);
@@ -205,8 +331,12 @@ export default function ClassAttendancePage() {
         params.append('teacher_name', selectedTeacher);
       }
 
-      // 1. Fetch Comprehensive Analytics (Sessions + Cumulative Students)
-      const analyticsRes = await authFetch(`${API_BASE_URL}/management/attendance/comprehensive-analytics?${params.toString()}`);
+      // 1. Fetch Comprehensive Analytics & Raw Class Records in parallel with retry
+      const [analyticsRes, rawRes] = await Promise.all([
+        authFetchWithRetry(`${API_BASE_URL}/management/attendance/comprehensive-analytics?${params.toString()}`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/attendance/class-records?${params.toString()}`, {}, { maxRetries: 2, delayMs: 600 })
+      ]);
+
       if (analyticsRes.ok) {
         const data = await analyticsRes.json();
         setSessionsLog(data.sessions_log || []);
@@ -216,18 +346,20 @@ export default function ClassAttendancePage() {
           if (data.available_filters.subjects) setAvailableSubjects(data.available_filters.subjects);
           if (data.available_filters.teachers) setAvailableTeachers(data.available_filters.teachers);
         }
+      } else {
+        setFetchError("Department attendance analytics service returned an unexpected response.");
       }
 
-      // 2. Fetch Raw Class Records (for detailed log exports)
-      const rawRes = await authFetch(`${API_BASE_URL}/management/attendance/class-records?${params.toString()}`);
       if (rawRes.ok) {
         const rawData = await rawRes.json();
         setRawRecords(rawData.records || []);
       }
-    } catch {
-      console.log('Error fetching comprehensive attendance data.');
+    } catch (err: any) {
+      console.log('Error fetching comprehensive attendance data:', err);
+      setFetchError("Unable to connect to departmental records database. Please check connection and retry.");
     } finally {
       setLoading(false);
+      setRetrying(false);
     }
   };
 
@@ -347,9 +479,7 @@ export default function ClassAttendancePage() {
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <span className="text-[11px] px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold uppercase tracking-wider">
-              HOD Attendance Intelligence
-            </span>
+
             <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Department Attendance Explorer</h1>
           </div>
           <p className="text-xs text-stone-500 mt-1 font-medium">
@@ -359,7 +489,7 @@ export default function ClassAttendancePage() {
 
         <div className="flex items-center space-x-3 w-full sm:w-auto">
           <button 
-            onClick={fetchAttendanceData}
+            onClick={() => fetchAttendanceData()}
             className="p-2.5 rounded-2xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-sm transition"
             title="Refresh Attendance Data"
           >
@@ -623,9 +753,42 @@ export default function ClassAttendancePage() {
           </div>
 
           {loading ? (
-            <div className="py-20 text-center text-stone-500 flex flex-col items-center justify-center space-y-3 bg-white/80 rounded-3xl border border-stone-200 shadow-sm">
-              <RefreshCw className="h-6 w-6 animate-spin text-emerald-600" />
-              <p className="text-xs font-medium">Fetching conducted lectures history...</p>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 text-xs text-stone-400 font-medium pb-1">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                <span>Loading conducted lectures from department database...</span>
+              </div>
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-3xl p-6 bg-white/80 border border-stone-200/80 shadow-sm animate-pulse flex flex-col md:flex-row justify-between gap-4">
+                  <div className="space-y-2.5">
+                    <div className="h-4 w-48 bg-stone-200/80 rounded-md"></div>
+                    <div className="h-3 w-32 bg-stone-100 rounded-md"></div>
+                    <div className="h-3 w-64 bg-stone-100 rounded-md"></div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="h-8 w-20 bg-stone-200/70 rounded-full"></div>
+                    <div className="h-8 w-28 bg-stone-200/70 rounded-2xl"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : fetchError ? (
+            <div className="py-12 px-6 text-center space-y-4 rounded-3xl bg-rose-50/70 border border-rose-200/80">
+              <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1">
+                <h3 className="text-sm font-bold text-rose-900">Department Attendance Telemetry Disconnected</h3>
+                <p className="text-xs text-rose-700">{fetchError}</p>
+              </div>
+              <button
+                onClick={() => fetchAttendanceData(true)}
+                disabled={retrying}
+                className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-2 shadow-xs disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`} />
+                <span>{retrying ? 'Re-syncing Records...' : 'Retry Connection'}</span>
+              </button>
             </div>
           ) : filteredSessions.length === 0 ? (
             <div className="py-16 text-center text-stone-400 bg-white/80 rounded-3xl border border-stone-200 shadow-sm space-y-2">
@@ -765,10 +928,49 @@ export default function ClassAttendancePage() {
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-stone-700">
                   {loading ? (
+                    <>
+                      {[...Array(5)].map((_, i) => (
+                        <tr key={i} className="animate-pulse">
+                          <td className="px-6 py-4">
+                            <div className="h-4 w-32 bg-stone-200/80 rounded mb-1.5"></div>
+                            <div className="h-3 w-20 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="h-3.5 w-16 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="h-5 w-12 bg-stone-200/70 rounded-full mx-auto"></div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="h-3 w-40 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="h-5 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  ) : fetchError ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center text-stone-500">
-                        <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-600" />
-                        <span>Computing student attendance ledgers...</span>
+                      <td colSpan={7} className="px-6 py-12 text-center">
+                        <div className="max-w-md mx-auto space-y-3">
+                          <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
+                          <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
+                          <button
+                            onClick={() => fetchAttendanceData(true)}
+                            disabled={retrying}
+                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+                            <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ) : filteredStudents.length === 0 ? (
@@ -887,10 +1089,48 @@ export default function ClassAttendancePage() {
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-stone-700">
                   {loading ? (
+                    <>
+                      {[...Array(5)].map((_, i) => (
+                        <tr key={i} className="animate-pulse">
+                          <td className="px-6 py-3.5">
+                            <div className="h-4 w-32 bg-stone-200/80 rounded mb-1"></div>
+                            <div className="h-3 w-20 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <div className="h-3.5 w-28 bg-stone-200/70 rounded mb-1"></div>
+                            <div className="h-3 w-16 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <div className="h-3.5 w-24 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <div className="h-3.5 w-20 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <div className="h-3.5 w-20 bg-stone-100 rounded mb-1"></div>
+                            <div className="h-3 w-12 bg-stone-100 rounded"></div>
+                          </td>
+                          <td className="px-6 py-3.5 text-right">
+                            <div className="h-6 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  ) : fetchError ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-16 text-center text-stone-500">
-                        <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-emerald-600" />
-                        <span>Loading raw attendance records...</span>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                        <div className="max-w-md mx-auto space-y-3">
+                          <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
+                          <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
+                          <button
+                            onClick={() => fetchAttendanceData(true)}
+                            disabled={retrying}
+                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+                            <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ) : filteredRawRecords.length === 0 ? (
@@ -921,13 +1161,39 @@ export default function ClassAttendancePage() {
                           <div className="text-[11px] text-stone-400">{rec.time}</div>
                         </td>
                         <td className="px-6 py-3.5 text-right">
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                            rec.is_present
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
-                            {rec.status}
-                          </span>
+                          <div className="flex items-center justify-end space-x-2">
+                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                              rec.is_present
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}>
+
+                              {rec.status_tag || rec.status}
+                            </span>
+                            {rec.student_id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOverrideTarget({
+                                    student_id: rec.student_id!,
+                                    student_name: rec.student_name,
+                                    roll_number: rec.roll_number,
+                                    session_id: rec.session_id,
+                                    current_status: rec.status_tag || (rec.is_present ? 'PRESENT' : 'ABSENT'),
+                                    current_present: rec.is_present
+                                  });
+                                  setOverrideTag(rec.is_present ? 'ABSENT' : 'PRESENT');
+                                  setOverrideReason('');
+                                  setOverrideError(null);
+                                  setOverrideSuccessMsg(null);
+                                }}
+                                className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
+                                title="HOD Attendance Override"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1020,16 +1286,161 @@ export default function ClassAttendancePage() {
                         <div className="font-mono text-stone-500 text-[11px]">{st.roll_number}</div>
                       </div>
 
-                      <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${
-                        st.is_present
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-rose-50 text-rose-700 border-rose-200'
-                      }`}>
-                        {st.is_present ? 'Present' : 'Absent'}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${
+                          st.is_present
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+
+                          {st.status_tag || (st.is_present ? 'Present' : 'Absent')}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOverrideTarget({
+                              student_id: st.student_id,
+                              student_name: st.student_name,
+                              roll_number: st.roll_number,
+                              session_id: selectedSessionModal.session_id,
+                              current_status: st.status_tag || (st.is_present ? 'PRESENT' : 'ABSENT'),
+                              current_present: st.is_present
+                            });
+                            setOverrideTag(st.is_present ? 'ABSENT' : 'PRESENT');
+                            setOverrideReason('');
+                            setOverrideError(null);
+                            setOverrideSuccessMsg(null);
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 font-bold text-[10px] transition inline-flex items-center space-x-1 shadow-2xs"
+                          title="HOD Attendance Override / Condonation Desk"
+                        >
+                          <Edit3 className="h-3 w-3 text-stone-600" />
+                          <span>Override</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* HOD Attendance Condonation & Override Modal */}
+      <AnimatePresence>
+        {overrideTarget && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-5"
+            >
+              <div className="flex justify-between items-start border-b border-stone-100 pb-4">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider">
+                      HOD Condonation Desk
+                    </span>
+                    <span className="text-xs text-stone-400 font-mono">Session #{overrideTarget.session_id}</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-stone-900 mt-1">
+                    Override Attendance Status
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Updating institutional record for <strong className="text-stone-800">{overrideTarget.student_name}</strong> ({overrideTarget.roll_number})
+                  </p>
+                </div>
+                <button
+                  onClick={() => setOverrideTarget(null)}
+                  className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 transition"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {overrideSuccessMsg ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{overrideSuccessMsg}</span>
+                </div>
+              ) : (
+                <form onSubmit={handleOverrideSubmit} className="space-y-4 text-xs">
+                  {overrideError && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium flex items-center space-x-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                      <span>{overrideError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
+                      Select New Attendance Status
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { tag: 'PRESENT', label: 'Present', desc: 'Classroom Attended', color: 'border-emerald-300 text-emerald-800 bg-emerald-50/50' },
+                        { tag: 'DUTY_LEAVE', label: 'Duty Leave (OD)', desc: 'Official / Sports / Event', color: 'border-blue-300 text-blue-800 bg-blue-50/50' },
+                        { tag: 'MEDICAL', label: 'Medical Leave', desc: 'Approved Doctor Slip', color: 'border-purple-300 text-purple-800 bg-purple-50/50' },
+                        { tag: 'ABSENT', label: 'Absent', desc: 'Mark Absent', color: 'border-rose-300 text-rose-800 bg-rose-50/50' }
+                      ].map(opt => (
+                        <button
+                          key={opt.tag}
+                          type="button"
+                          onClick={() => setOverrideTag(opt.tag)}
+                          className={`p-3 rounded-2xl border text-left transition-all ${
+                            overrideTag === opt.tag
+                              ? `${opt.color} ring-2 ring-stone-900 border-transparent shadow-xs font-bold`
+                              : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-700'
+                          }`}
+                        >
+                          <div className="font-bold text-xs">{opt.label}</div>
+                          <div className="text-[10px] text-stone-500 font-normal">{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
+                      Official Justification / Reason <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                      placeholder="e.g. Medical Certificate #MED-2024 verified by HOD, or University TechFest duty leave approved."
+                      className="w-full p-3 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-stone-900"
+                    />
+                    <p className="text-[10px] text-stone-400 mt-1">
+                      This reason is permanently logged in the institutional security audit trail for NAAC/NBA compliance.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setOverrideTarget(null)}
+                      className="flex-1 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={overrideSubmitting}
+                      className="flex-1 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold transition flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
+                    >
+                      {overrideSubmitting ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      )}
+                      <span>{overrideSubmitting ? 'Submitting...' : 'Apply Condonation'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

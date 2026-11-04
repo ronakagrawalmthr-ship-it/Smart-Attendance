@@ -36,8 +36,16 @@ const DEFAULT_STUDENT_COMMANDS: SearchItem[] = [
   { type: 'page', title: 'Account & Security Settings', subtitle: 'Password changes and notification preferences', url: '/settings', category: 'Settings' }
 ];
 
-export default function SpotlightSearch() {
-  const [isOpen, setIsOpen] = useState(false);
+export interface SpotlightSearchProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClose }: SpotlightSearchProps = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = propIsOpen !== undefined ? propIsOpen : internalOpen;
+  const onClose = propOnClose || (() => setInternalOpen(false));
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchItem[]>(DEFAULT_STUDENT_COMMANDS);
@@ -50,24 +58,49 @@ export default function SpotlightSearch() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsOpen(prev => !prev);
+        if (propIsOpen !== undefined && propOnClose) {
+          if (isOpen) propOnClose();
+        } else {
+          setInternalOpen(prev => !prev);
+        }
       }
       if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
-        setIsOpen(false);
+        onClose();
       }
     };
-    const handleOpenCustom = () => setIsOpen(true);
+
+    const handleOpen = () => setInternalOpen(true);
+    const handleClose = () => {
+      if (propOnClose) propOnClose();
+      setInternalOpen(false);
+    };
+    const handleToggle = () => {
+      if (propIsOpen !== undefined && propOnClose) {
+        if (isOpen) propOnClose();
+      } else {
+        setInternalOpen(prev => !prev);
+      }
+    };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('open-spotlight-search', handleOpenCustom);
-    window.addEventListener('open-spotlight', handleOpenCustom);
+    window.addEventListener('open-spotlight-search', handleOpen);
+    window.addEventListener('open-spotlight', handleOpen);
+    window.addEventListener('toggle-spotlight', handleToggle);
+    window.addEventListener('toggle-spotlight-search', handleToggle);
+    window.addEventListener('close-spotlight', handleClose);
+    window.addEventListener('close-spotlight-search', handleClose);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('open-spotlight-search', handleOpenCustom);
-      window.removeEventListener('open-spotlight', handleOpenCustom);
+      window.removeEventListener('open-spotlight-search', handleOpen);
+      window.removeEventListener('open-spotlight', handleOpen);
+      window.removeEventListener('toggle-spotlight', handleToggle);
+      window.removeEventListener('toggle-spotlight-search', handleToggle);
+      window.removeEventListener('close-spotlight', handleClose);
+      window.removeEventListener('close-spotlight-search', handleClose);
     };
-  }, [isOpen]);
+  }, [isOpen, propIsOpen, propOnClose, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -94,7 +127,7 @@ export default function SpotlightSearch() {
   }, [query]);
 
   const handleSelect = (item: SearchItem) => {
-    setIsOpen(false);
+    onClose();
     router.push(item.url);
   };
 
@@ -113,35 +146,19 @@ export default function SpotlightSearch() {
     }
   };
 
-  return (
-    <>
-      {/* Spotlight Trigger Pill */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="w-full flex items-center justify-between px-4 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200/80 text-stone-500 hover:text-stone-800 transition shadow-inner border border-stone-200/80 text-xs group"
-        title="Search Portal (Cmd+K)"
-      >
-        <div className="flex items-center space-x-2.5">
-          <Search className="h-3.5 w-3.5 text-stone-400 group-hover:text-stone-700 transition" />
-          <span className="font-medium text-stone-500 group-hover:text-stone-900">Spotlight quick-search...</span>
-        </div>
-        <kbd className="font-mono text-[10px] bg-white border border-stone-300/80 px-1.5 py-0.5 rounded-md text-stone-500 shadow-2xs font-semibold">
-          ⌘K
-        </kbd>
-      </button>
+  if (!isOpen) return null;
 
-      {/* Modal Dialog */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-stone-900/40 backdrop-blur-md animate-in fade-in duration-150"
-          onClick={() => setIsOpen(false)}
-        >
-          <div 
-            className="w-full max-w-xl bg-white/95 rounded-[28px] shadow-2xl border border-stone-200/90 overflow-hidden backdrop-blur-2xl flex flex-col max-h-[80vh]"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Search Input Bar */}
-            <div className="flex items-center px-5 py-4 border-b border-stone-200/80">
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-stone-900/40 backdrop-blur-md animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div 
+        className="w-full max-w-xl bg-white/95 rounded-[28px] shadow-2xl border border-stone-200/90 overflow-hidden backdrop-blur-2xl flex flex-col max-h-[80vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Search Input Bar */}
+        <div className="flex items-center px-5 py-4 border-b border-stone-200/80">
               <Search className="h-5 w-5 text-blue-600 shrink-0 mr-3" />
               <input
                 ref={inputRef}
@@ -162,7 +179,7 @@ export default function SpotlightSearch() {
                 </button>
               )}
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={onClose}
                 className="text-[11px] font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 px-2 py-1 rounded-lg transition"
               >
                 ESC
@@ -231,7 +248,31 @@ export default function SpotlightSearch() {
             </div>
           </div>
         </div>
-      )}
-    </>
+  );
+}
+
+export const triggerSpotlight = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+    window.dispatchEvent(new CustomEvent('open-spotlight'));
+  }
+};
+
+export function SpotlightTriggerPill({ className = '' }: { className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={triggerSpotlight}
+      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200/80 text-stone-500 hover:text-stone-800 transition shadow-inner border border-stone-200/80 text-xs group ${className}`}
+      title="Search Portal (Cmd+K)"
+    >
+      <div className="flex items-center space-x-2.5">
+        <Search className="h-3.5 w-3.5 text-stone-400 group-hover:text-stone-700 transition" />
+        <span className="font-medium text-stone-500 group-hover:text-stone-900">Spotlight quick-search...</span>
+      </div>
+      <kbd className="font-mono text-[10px] bg-white border border-stone-300/80 px-1.5 py-0.5 rounded-md text-stone-500 shadow-2xs font-semibold">
+        ⌘K
+      </kbd>
+    </button>
   );
 }

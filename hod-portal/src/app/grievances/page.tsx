@@ -93,9 +93,6 @@ export default function HODGrievanceResolution() {
 
       <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm">
         <div className="flex items-center space-x-2">
-          <span className="text-[11px] px-3 py-1 rounded-full bg-teal-100 text-teal-800 border border-teal-200 font-bold uppercase tracking-wider">
-            Department Redressal Desk
-          </span>
           <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Student Absence Dispute Resolution</h1>
         </div>
         <p className="text-xs text-stone-500 mt-1 font-medium">

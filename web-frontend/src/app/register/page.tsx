@@ -25,6 +25,7 @@ export default function RegisterStudent() {
   
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
 
   React.useEffect(() => {
     fetch(`${API_BASE_URL}/attendance/departments-meta`)
@@ -37,11 +38,39 @@ export default function RegisterStudent() {
           if (Array.isArray(data.semesters) && data.semesters.length > 0) {
             setAvailableSemesters(data.semesters);
           }
+          if (data.branch_programs && typeof data.branch_programs === 'object') {
+            setBranchPrograms(data.branch_programs);
+          }
         }
       })
       .catch(() => {});
   }, []);
-  
+
+  // Dynamic semester adaptation based on degree course
+  React.useEffect(() => {
+    if (!formData.branch) return;
+    const bp = branchPrograms[formData.branch];
+    let sems: number[] = [];
+    if (bp && Array.isArray(bp.semesters) && bp.semesters.length > 0) {
+      sems = bp.semesters;
+    } else {
+      const lower = formData.branch.toLowerCase();
+      if (lower.includes('mbbs') || lower.includes('b.arch') || lower.includes('ballb') || lower.includes('5 year')) {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      } else if (lower.includes('bba') || lower.includes('bca') || lower.includes('b.sc') || lower.includes('b.com') || lower.includes('diploma')) {
+        sems = [1, 2, 3, 4, 5, 6];
+      } else if (lower.includes('mba') || lower.includes('m.tech') || lower.includes('mca') || lower.includes('m.sc') || lower.includes('m.com')) {
+        sems = [1, 2, 3, 4];
+      } else {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8];
+      }
+    }
+    setAvailableSemesters(sems);
+    if (!sems.includes(Number(formData.semester))) {
+      setFormData(prev => ({ ...prev, semester: String(sems[0] || 1) }));
+    }
+  }, [formData.branch, branchPrograms]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [streamActive, setStreamActive] = useState(false);
@@ -190,7 +219,7 @@ export default function RegisterStudent() {
         <div className="bg-white/90 border border-stone-200/80 rounded-3xl shadow-sm overflow-hidden flex flex-col md:flex-row backdrop-blur-xl">
           
           {/* Form Section */}
-          <div className="flex-1 p-8 sm:p-10">
+          <div className="flex-1 p-5 sm:p-8 lg:p-10">
             <h2 className="text-xl font-bold mb-6 flex items-center text-stone-900">
               <User className="mr-3 text-stone-700 h-5 w-5" /> Academic Identity Details
             </h2>

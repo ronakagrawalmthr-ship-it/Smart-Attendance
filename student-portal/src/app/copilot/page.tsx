@@ -17,10 +17,11 @@ import {
   User,
   Trash2,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  AlertCircle
 } from 'lucide-react';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 
 interface ChatMessage {
   id: string;
@@ -28,6 +29,8 @@ interface ChatMessage {
   content: string;
   source?: string;
   timestamp: string;
+  isError?: boolean;
+  failedQuery?: string;
 }
 
 export default function CampusCopilotPage() {
@@ -62,8 +65,8 @@ export default function CampusCopilotPage() {
           : `${API_BASE_URL}/timetable/ai-advisor`;
 
         const [resMetrics, resAdvisor] = await Promise.all([
-          authFetch(`${API_BASE_URL}/portal/metrics`),
-          authFetch(advisorUrl)
+          authFetchWithRetry(`${API_BASE_URL}/portal/metrics`, {}, { maxRetries: 2, delayMs: 600 }),
+          authFetchWithRetry(advisorUrl, {}, { maxRetries: 2, delayMs: 600 })
         ]);
         if (resMetrics.ok) {
           const m = await resMetrics.json();
@@ -113,13 +116,13 @@ export default function CampusCopilotPage() {
     try {
       // Build history for multi-turn context
       const historyPayload = messages
-        .filter(m => m.id !== 'init-1')
+        .filter(m => m.id !== 'init-1' && !m.isError)
         .slice(-6)
         .map(m => ({ role: m.role, content: m.content }));
 
       const currentRoll = studentInfo.roll || (typeof window !== 'undefined' ? (localStorage.getItem('student_roll') || undefined) : undefined);
 
-      const res = await authFetch(`${API_BASE_URL}/timetable/ai-chat`, {
+      const res = await authFetchWithRetry(`${API_BASE_URL}/timetable/ai-chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,7 +130,7 @@ export default function CampusCopilotPage() {
           student_roll: currentRoll,
           history: historyPayload
         })
-      });
+      }, { maxRetries: 2, delayMs: 800 });
 
       if (res.ok) {
         const data = await res.json();
@@ -143,13 +146,15 @@ export default function CampusCopilotPage() {
         throw new Error('Chat API returned error');
       }
     } catch {
-      // Safe fallback
+      // Actionable retry fallback message
       const fallbackMsg: ChatMessage = {
         id: `fb-${Date.now()}`,
         role: 'model',
-        content: `Aapki current attendance **${studentInfo.attendance}%** hai. Aapke paas **${studentInfo.safeBunks} safe bunk buffer** available hai. Timetable aur dynamic QR codes scan karke apna record maintain rakhein!`,
+        content: `Network timeout ya connection interruption hui. Main Google Gemini se connect nahi kar paaya.\n\nAapki current verified attendance **${studentInfo.attendance}%** hai (Safe Bunks: **${studentInfo.safeBunks}**). Aap is question ko retry kar sakte hain!`,
         source: 'Campus Copilot Fallback Engine',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isError: true,
+        failedQuery: query
       };
       setMessages(prev => [...prev, fallbackMsg]);
     } finally {
@@ -160,6 +165,7 @@ export default function CampusCopilotPage() {
   const suggestedQuestions = [
     "Kya mai aaj ki last class bunk kar sakta hoon?",
     "Show my today's timetable schedule",
+    "Upcoming college holidays and dates?",
     "How to reach 85% attendance?",
     "Which subjects have lowest attendance?"
   ];
@@ -249,6 +255,20 @@ export default function CampusCopilotPage() {
                   <div className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium">
                     {msg.content}
                   </div>
+
+                  {msg.isError && msg.failedQuery && (
+                    <div className="pt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSend(msg.failedQuery)}
+                        disabled={loading}
+                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-2xs disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+                        <span>Retry Question</span>
+                      </button>
+                    </div>
+                  )}
 
                   <div className={`text-[10px] pt-1 text-right ${isUser ? 'text-stone-400' : 'text-stone-400'}`}>
                     {msg.timestamp}

@@ -13,9 +13,12 @@ import {
   Download, 
   ChevronRight,
   ShieldCheck,
-  TrendingUp
+  TrendingUp,
+  Trophy,
+  Award,
+  X
 } from 'lucide-react';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 import CollegeAnalyticsCharts from '@/components/CollegeAnalyticsCharts';
 
@@ -38,11 +41,15 @@ const getClientGreeting = () => {
 
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [adminName, setAdminName] = useState<string>('Administrator');
   const initialGreeting = getClientGreeting();
   const [greeting, setGreeting] = useState<string>(initialGreeting.greeting);
   const [greetingIcon, setGreetingIcon] = useState<string>(initialGreeting.icon);
-  const [activeSchedule, setActiveSchedule] = useState<string>('Whole Campus Biometrics');
+  const [activeSchedule, setActiveSchedule] = useState<string>('Campus Lectures');
+  const [isAchieversModalOpen, setIsAchieversModalOpen] = useState(false);
   const [matrices, setMatrices] = useState<any[]>([]);
 
   const [stats, setStats] = useState({
@@ -56,19 +63,22 @@ export default function AdminDashboard() {
   const [kpiStats, setKpiStats] = useState<any>({});
   const [studentFeed, setStudentFeed] = useState<StudentFeedItem[]>([]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isManualRetry = false) => {
     try {
+      if (isManualRetry) setRetrying(true);
       setLoading(true);
+      setFetchError(null);
+
       if (typeof window !== 'undefined') {
         const cached = localStorage.getItem('admin_name');
         if (cached) setAdminName(cached);
       }
 
       const [resLive, resKpi, resMe, resTelemetry] = await Promise.all([
-        authFetch(`${API_BASE_URL}/management/attendance/live`),
-        authFetch(`${API_BASE_URL}/management/college/kpi-stats`),
-        authFetch(`${API_BASE_URL}/api/auth/me`),
-        authFetch(`${API_BASE_URL}/management/telemetry/recent-scans?limit=8`)
+        authFetchWithRetry(`${API_BASE_URL}/management/attendance/live`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/college/kpi-stats`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/api/auth/me`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/telemetry/recent-scans?limit=8`, {}, { maxRetries: 2, delayMs: 600 })
       ]);
 
       if (resMe.ok) {
@@ -122,10 +132,18 @@ export default function AdminDashboard() {
         }
       }
 
-    } catch (e) {
-      console.log('Using local fallback state.');
+      // If key endpoints failed
+      if (!resLive.ok && !resKpi.ok) {
+        setFetchError('Institutional system server returned an unexpected response.');
+      }
+
+    } catch (e: any) {
+      console.log('Error synchronizing dashboard metrics:', e);
+      setFetchError('Unable to connect to live campus attendance system. Check network status or retry.');
     } finally {
       setLoading(false);
+      setInitialLoading(false);
+      setRetrying(false);
     }
   };
 
@@ -183,7 +201,7 @@ export default function AdminDashboard() {
     return () => clearInterval(liveInterval);
   }, []);
 
-  const turnoutFloat = parseFloat(stats.turnout.replace('%', '')) || 0.0;
+  const turnoutFloat = parseFloat(String(stats?.turnout || '0').replace('%', '')) || 0.0;
   const ringOffset = 251.2 * (1 - Math.min(Math.max(turnoutFloat / 100, 0), 1));
 
   const exportCSV = () => {
@@ -202,7 +220,7 @@ export default function AdminDashboard() {
   return (
     <AppleDeluxeShell userRole="Institutional Governance" userName={adminName}>
       
-      {/* ☀️ Top Contextual Smart Header */}
+      {/* ☀️ Top Contextual Smart Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900">
           {greeting}, {adminName} {greetingIcon} • {activeSchedule}
@@ -210,7 +228,7 @@ export default function AdminDashboard() {
 
         <div className="flex items-center space-x-2">
           <button 
-            onClick={fetchDashboardData} 
+            onClick={() => fetchDashboardData()} 
             className="p-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 transition shadow-2xs"
             title="Refresh Matrices"
           >
@@ -226,11 +244,36 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* âš  Actionable Connection Recovery Banner */}
+      {fetchError && (
+        <div className="rounded-2xl bg-rose-50/90 border border-rose-200/90 p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-rose-900">Institutional Telemetry Connection Error</p>
+              <p className="text-[11px] text-rose-700">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchDashboardData(true)}
+            disabled={retrying}
+            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-xs disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+            <span>{retrying ? 'Re-syncing...' : 'Retry Sync'}</span>
+          </button>
+        </div>
+      )}
+
       {/* 🔍 Inline Spotlight Quick-Search Trigger Pill */}
       <div 
         onClick={() => {
-          // Dispatch synthetic Cmd+K
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+            window.dispatchEvent(new CustomEvent('open-spotlight'));
+          }
         }}
         className="w-full rounded-2xl bg-stone-50/90 hover:bg-white border border-stone-200/80 px-4 py-2.5 flex items-center justify-between cursor-pointer transition shadow-2xs group"
       >
@@ -243,13 +286,33 @@ export default function AdminDashboard() {
         </kbd>
       </div>
 
-      {/* ⭕ Top Widgets Deck: Attendance Fitness-Ring + 4 Tinted Pastel Squircle Tiles */}
+      {initialLoading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4.5">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="rounded-3xl bg-white border border-stone-200/70 p-5 shadow-xs h-48 flex flex-col justify-between animate-pulse">
+                <div className="h-9 w-9 rounded-2xl bg-stone-100"></div>
+                <div className="space-y-2">
+                  <div className="h-7 w-24 bg-stone-200/80 rounded-lg"></div>
+                  <div className="h-3 w-16 bg-stone-100 rounded-md"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="h-72 rounded-3xl bg-white border border-stone-200/70 p-8 animate-pulse flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="h-6 w-6 animate-spin text-stone-400" />
+            <span className="text-xs font-semibold text-stone-500">Synchronizing Institutional Analytics & Live Matrices...</span>
+          </div>
+        </div>
+      ) : (
+        <>
+      {/* ⭕ Top Widgets Deck: Overall Attendance + 4 Tinted Pastel Squircle Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4.5">
         
-        {/* Widget 1: Attendance Fitness-Ring Card */}
+        {/* Widget 1: Overall Attendance Card */}
         <div className="rounded-3xl bg-white border border-stone-200/80 p-5 shadow-xs flex flex-col justify-between items-center text-center relative overflow-hidden group">
           <div className="w-full flex justify-between items-center mb-1">
-            <span className="text-xs font-bold text-stone-800">Attendance fitness-ring</span>
+            <span className="text-xs font-bold text-stone-800">Overall Attendance</span>
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
           </div>
 
@@ -295,7 +358,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="w-full text-center text-[10px] text-stone-400 font-medium">
-            Campus statutory target: 75.0%
+            Campus required minimum: 75.0%
           </div>
         </div>
 
@@ -329,7 +392,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Widget 4: 🍑 Defaulters (Pastel Coral Peach Card) */}
+        {/* Widget 4: ⚠️ Defaulters (Pastel Coral Peach Card) */}
         <div className="rounded-3xl bg-[#FEF1F0] border border-rose-200/60 p-5 shadow-xs flex flex-col justify-between transition-all hover:scale-[1.01]">
           <div className="h-9 w-9 rounded-2xl bg-rose-100/90 text-rose-600 flex items-center justify-center mb-4">
             <AlertTriangle className="h-5 w-5" />
@@ -344,7 +407,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Widget 5: 🍃 On-Time Punctuality (Pastel Mint Green Card) */}
+        {/* Widget 5: ⏱️ On-Time Punctuality (Pastel Mint Green Card) */}
         <div className="rounded-3xl bg-[#EFFBF5] border border-emerald-200/60 p-5 shadow-xs flex flex-col justify-between transition-all hover:scale-[1.01]">
           <div className="h-9 w-9 rounded-2xl bg-emerald-100/90 text-emerald-600 flex items-center justify-center mb-4">
             <Clock className="h-5 w-5" />
@@ -361,12 +424,202 @@ export default function AdminDashboard() {
 
       </div>
 
+      {/* 🏆 Institutional Hall of Fame: Top 3 High Attendance Achievers */}
+      <div className="rounded-3xl bg-linear-to-br from-amber-50/50 via-white to-stone-50 border border-amber-200/80 p-6 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="h-10 w-10 rounded-2xl bg-amber-500/10 border border-amber-300/40 text-amber-600 flex items-center justify-center shrink-0">
+              <Trophy className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-bold text-stone-900 tracking-tight">Institutional Attendance Champions</h2>
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                  Top 3 College-Wide
+                </span>
+              </div>
+              <p className="text-xs text-stone-500 mt-0.5">Recognizing outstanding academic consistency & zero-proxy commitment</p>
+            </div>
+          </div>
+
+          {(kpiStats?.topAchievers || []).length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsAchieversModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white border border-stone-200 hover:border-amber-300 text-xs font-semibold text-stone-700 hover:text-amber-700 shadow-xs transition cursor-pointer"
+            >
+              <Award className="h-3.5 w-3.5 text-amber-500" />
+              <span>View Merit List (Top 10)</span>
+              <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+            </button>
+          )}
+        </div>
+
+        {(!kpiStats?.topAchievers || kpiStats.topAchievers.length === 0) ? (
+          <div className="p-8 text-center bg-stone-50/60 rounded-2xl border border-dashed border-stone-200">
+            <Trophy className="h-8 w-8 text-stone-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-stone-600">No attendance records logged yet</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">Top attendance achievers will appear here as live classroom sessions are recorded</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {(kpiStats.topAchievers || []).slice(0, 3).map((student: any, idx: number) => {
+              const medalStyles = [
+                {
+                  ring: 'border-amber-300 bg-linear-to-b from-amber-50 to-white shadow-amber-500/10',
+                  badgeBg: 'bg-amber-100 text-amber-900 border-amber-300',
+                  medalIcon: '🥇',
+                  title: '1st Place • Gold',
+                  pctColor: 'text-amber-700'
+                },
+                {
+                  ring: 'border-slate-300 bg-linear-to-b from-slate-50 to-white shadow-slate-500/10',
+                  badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
+                  medalIcon: '🥈',
+                  title: '2nd Place • Silver',
+                  pctColor: 'text-slate-700'
+                },
+                {
+                  ring: 'border-orange-300 bg-linear-to-b from-orange-50 to-white shadow-orange-500/10',
+                  badgeBg: 'bg-orange-100 text-orange-900 border-orange-300',
+                  medalIcon: '🥉',
+                  title: '3rd Place • Bronze',
+                  pctColor: 'text-orange-700'
+                }
+              ][idx] || {
+                ring: 'border-stone-200 bg-white shadow-xs',
+                badgeBg: 'bg-stone-100 text-stone-800 border-stone-200',
+                medalIcon: '🎖️',
+                title: `Rank #${idx + 1}`,
+                pctColor: 'text-stone-700'
+              };
+
+              return (
+                <div 
+                  key={student.id || student.roll_number}
+                  className={`relative p-5 rounded-2xl border ${medalStyles.ring} shadow-xs flex flex-col justify-between transition-all hover:scale-[1.01]`}
+                >
+                  <div className="flex items-start justify-between">
+                    <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${medalStyles.badgeBg}`}>
+                      <span>{medalStyles.medalIcon}</span>
+                      <span>{medalStyles.title}</span>
+                    </span>
+                    <span className={`text-xl font-black ${medalStyles.pctColor}`}>
+                      {student.attendance_percentage}%
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-3.5 my-4">
+                    <div className="h-12 w-12 rounded-full overflow-hidden bg-stone-100 border-2 border-white shadow-xs shrink-0 flex items-center justify-center">
+                      {student.photo_thumbnail ? (
+                        <img 
+                          src={student.photo_thumbnail} 
+                          alt={student.name} 
+                          className="h-full w-full object-cover" 
+                        />
+                      ) : (
+                        <span className="text-base font-extrabold text-stone-500">
+                          {student.name?.charAt(0) || 'S'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-stone-900 truncate" title={student.name}>
+                        {student.name}
+                      </h3>
+                      <div className="text-[11px] font-mono text-stone-500 font-semibold">
+                        {student.roll_number}
+                      </div>
+                      <div className="text-[10px] text-stone-400 truncate mt-0.5">
+                        {student.branch} • Sem {student.semester}-{student.section}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-stone-100/90 flex items-center justify-between text-[11px] text-stone-500">
+                    <span>Lectures Attended</span>
+                    <span className="font-bold text-stone-800">
+                      {student.attended_classes} of {student.total_classes}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 🏅 Top Achievers Merit List Modal */}
+      {isAchieversModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-stone-200/80 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-stone-100 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="h-9 w-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <Trophy className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">College Attendance Merit List</h3>
+                  <p className="text-xs text-stone-400">Top ranked students by overall attendance percentage</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAchieversModalOpen(false)}
+                className="h-8 w-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-2">
+              {(kpiStats?.topAchievers || []).map((st: any, i: number) => (
+                <div 
+                  key={st.id || st.roll_number}
+                  className="flex items-center justify-between p-3.5 rounded-2xl hover:bg-stone-50 transition border border-stone-100"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm font-black w-7 text-center text-stone-400">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                    </span>
+                    <div className="h-9 w-9 rounded-full overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center border border-stone-200">
+                      {st.photo_thumbnail ? (
+                        <img src={st.photo_thumbnail} alt={st.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-xs font-bold text-stone-500">{st.name?.charAt(0)}</span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-stone-900">{st.name}</div>
+                      <div className="text-[10px] text-stone-400">{st.roll_number} • {st.branch} (Sem {st.semester}-{st.section})</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-amber-600">{st.attendance_percentage}%</div>
+                    <div className="text-[10px] text-stone-400">{st.attended_classes}/{st.total_classes} classes</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 bg-stone-50 border-t border-stone-100 text-center">
+              <button
+                type="button"
+                onClick={() => setIsAchieversModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition cursor-pointer"
+              >
+                Close Merit List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 📋 Student Live-Feed Table Card (Exact match to Reference Image) */}
       <div className="rounded-3xl bg-white border border-stone-200/80 p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-stone-900">Student live-feed</h2>
+          <h2 className="text-sm font-bold text-stone-900">Recent Attendance Activity</h2>
           <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
-            Real-Time Stream
+            Live Updates
           </span>
         </div>
 
@@ -374,7 +627,7 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-stone-100 text-stone-400 font-semibold text-[11px]">
-                <th className="pb-3 pl-2">Indian Roll No. ↑</th>
+                <th className="pb-3 pl-2">Roll Number</th>
                 <th className="pb-3">Student Name</th>
                 <th className="pb-3 text-right pr-4">Status</th>
               </tr>
@@ -448,7 +701,7 @@ export default function AdminDashboard() {
               <div key={dept.branch} className="p-4 rounded-2xl bg-stone-50 border border-stone-200/70 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-stone-800 truncate" title={dept.branch}>
-                    {dept.branch.replace('& Engineering', '').replace('Engineering', 'Engg')}
+                    {(dept?.branch || 'General').replace('& Engineering', '').replace('Engineering', 'Engg')}
                   </span>
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                     pct >= 75 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
@@ -479,6 +732,8 @@ export default function AdminDashboard() {
           />
         </div>
       </div>
+      </>
+      )}
 
     </AppleDeluxeShell>
   );

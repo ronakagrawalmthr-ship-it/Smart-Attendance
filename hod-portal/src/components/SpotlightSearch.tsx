@@ -38,8 +38,16 @@ const DEFAULT_COMMANDS: SearchItem[] = [
   { type: 'page', title: 'Department Settings', subtitle: 'Cutoff thresholds and HOD credentials', url: '/settings', category: 'Quick Navigation' },
 ];
 
-export default function SpotlightSearch() {
-  const [isOpen, setIsOpen] = useState(false);
+export interface SpotlightSearchProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClose }: SpotlightSearchProps = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = propIsOpen !== undefined ? propIsOpen : internalOpen;
+  const onClose = propOnClose || (() => setInternalOpen(false));
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchItem[]>(DEFAULT_COMMANDS);
@@ -48,29 +56,54 @@ export default function SpotlightSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // Cmd+K / Ctrl+K listener
+  // Cmd+K / Ctrl+K listener and unified events
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsOpen(prev => !prev);
+        if (propIsOpen !== undefined && propOnClose) {
+          if (isOpen) propOnClose();
+        } else {
+          setInternalOpen(prev => !prev);
+        }
       }
       if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
-        setIsOpen(false);
+        onClose();
       }
     };
-    const handleOpenCustom = () => setIsOpen(true);
+
+    const handleOpen = () => setInternalOpen(true);
+    const handleClose = () => {
+      if (propOnClose) propOnClose();
+      setInternalOpen(false);
+    };
+    const handleToggle = () => {
+      if (propIsOpen !== undefined && propOnClose) {
+        if (isOpen) propOnClose();
+      } else {
+        setInternalOpen(prev => !prev);
+      }
+    };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('open-spotlight-search', handleOpenCustom);
-    window.addEventListener('open-spotlight', handleOpenCustom);
+    window.addEventListener('open-spotlight-search', handleOpen);
+    window.addEventListener('open-spotlight', handleOpen);
+    window.addEventListener('toggle-spotlight', handleToggle);
+    window.addEventListener('toggle-spotlight-search', handleToggle);
+    window.addEventListener('close-spotlight', handleClose);
+    window.addEventListener('close-spotlight-search', handleClose);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('open-spotlight-search', handleOpenCustom);
-      window.removeEventListener('open-spotlight', handleOpenCustom);
+      window.removeEventListener('open-spotlight-search', handleOpen);
+      window.removeEventListener('open-spotlight', handleOpen);
+      window.removeEventListener('toggle-spotlight', handleToggle);
+      window.removeEventListener('toggle-spotlight-search', handleToggle);
+      window.removeEventListener('close-spotlight', handleClose);
+      window.removeEventListener('close-spotlight-search', handleClose);
     };
-  }, [isOpen]);
+  }, [isOpen, propIsOpen, propOnClose, onClose]);
 
   // Focus input
   useEffect(() => {
@@ -120,14 +153,17 @@ export default function SpotlightSearch() {
   }, [query]);
 
   const handleSelect = (item: SearchItem) => {
-    setIsOpen(false);
+    onClose();
     router.push(item.url);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-stone-900/40 backdrop-blur-md animate-in fade-in duration-150">
+    <div 
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-stone-900/40 backdrop-blur-md animate-in fade-in duration-150"
+      onClick={onClose}
+    >
       <div 
         className="w-full max-w-xl bg-white rounded-3xl border border-stone-200/80 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -144,7 +180,7 @@ export default function SpotlightSearch() {
           />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-teal-600" />}
           <button 
-            onClick={() => setIsOpen(false)}
+            onClick={onClose}
             className="p-1 rounded-full hover:bg-stone-200 text-stone-400 hover:text-stone-600"
           >
             <X className="h-4 w-4" />
@@ -182,6 +218,33 @@ export default function SpotlightSearch() {
           <span className="font-medium text-teal-700">HOD Quick Navigator</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+export const triggerSpotlight = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+    window.dispatchEvent(new CustomEvent('open-spotlight'));
+  }
+};
+
+export function SpotlightTriggerPill({ className = '' }: { className?: string }) {
+  return (
+    <div 
+      onClick={triggerSpotlight}
+      className={`w-full rounded-2xl bg-stone-50/90 hover:bg-white border border-stone-200/80 px-4 py-2.5 flex items-center justify-between cursor-pointer transition shadow-2xs group ${className}`}
+      role="button"
+      tabIndex={0}
+      title="HOD Quick Search (Cmd+K)"
+    >
+      <div className="flex items-center space-x-2.5 text-xs text-stone-400 group-hover:text-stone-600">
+        <Search className="h-4 w-4 text-stone-400 group-hover:text-teal-600 transition" />
+        <span className="font-medium text-stone-500 group-hover:text-stone-800">Spotlight quick-search</span>
+      </div>
+      <kbd className="px-2 py-0.5 rounded-lg bg-stone-200/60 border border-stone-300/60 text-[10px] font-mono font-bold text-stone-600">
+        ⌘K
+      </kbd>
     </div>
   );
 }

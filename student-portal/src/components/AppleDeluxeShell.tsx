@@ -404,6 +404,7 @@ export default function AppleDeluxeShell({
               onClick={() => {
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+                  window.dispatchEvent(new CustomEvent('open-spotlight'));
                 }
               }}
               className="p-1.5 rounded-xl bg-stone-200/60 active:bg-stone-300 text-stone-700 transition flex items-center space-x-1 text-xs px-2"
@@ -554,7 +555,7 @@ export default function AppleDeluxeShell({
 
       {/* Footer Info */}
       <footer className="mt-4 md:mt-8 pb-16 md:pb-0 text-center text-xs text-stone-400 font-medium transition-all">
-        Student Academic Console • Deluxe Apple Experience Edition
+        Student Academic Portal • Smart Attendance Platform
       </footer>
 
     </div>

@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Building2, ArrowRight, Lock, Mail, ShieldCheck, AlertCircle, Sparkles, KeyRound } from 'lucide-react';
+import { Building2, ArrowRight, Lock, Mail, AlertCircle, Sparkles, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetchWithRetry } from '@/lib/api';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function AdminLogin() {
   useEffect(() => {
     async function checkSetup() {
       try {
-        const res = await fetch(`${API_BASE_URL}/setup/status`);
+        const res = await authFetchWithRetry(`${API_BASE_URL}/setup/status`, {}, { maxRetries: 2, delayMs: 500 });
         if (res.ok) {
           const data = await res.json();
           if (data.institution_name) {
@@ -47,11 +47,11 @@ export default function AdminLogin() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const res = await authFetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password: password.trim() })
-      });
+      }, { maxRetries: 2, delayMs: 600 });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -174,9 +174,10 @@ export default function AdminLogin() {
           </div>
           )}
 
-          <div className="mt-4 pt-4 border-t border-stone-100 text-center text-xs text-stone-400 flex items-center justify-center space-x-1.5">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span>Zero Default Passwords • OTP Verified Access</span>
+          <div className="mt-4 flex justify-center">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 border border-indigo-200/60 text-indigo-700 shadow-2xs">
+              Created by Ronak Agrawal
+            </span>
           </div>
         </motion.div>
       </div>

@@ -112,39 +112,39 @@ export default function Home() {
       externalPortUrl: studentUrl,
       icon: GraduationCap,
       iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200/60',
-      tag: 'Port 3002 Live',
+      tag: 'Active',
       buttonText: 'Access Student Portal',
       features: ['Live % breakdown against 75% cutoff', 'Class absence grievance ticketing', 'Direct database synchronization']
     },
     {
       id: 'hod-portal',
-      title: 'HOD Control Center',
+      title: 'Department HOD Portal',
       category: 'Administration & Governance',
       desc: 'Live department matrices, automated defaulter roster (<75%), emergency holiday announcements with Resend email automation, and semester archiving.',
       href: '/hod',
       externalPortUrl: hodUrl,
       icon: Building2,
       iconBg: 'bg-purple-50 text-purple-600 border border-purple-200/60',
-      tag: 'Port 3003 Live',
-      buttonText: 'Open HOD Command Deck',
+      tag: 'Active',
+      buttonText: 'Open Department HOD Portal',
       features: ['Automated parent email notifications', 'Audited semester lifecycle archiving', 'Defaulter list exports']
     },
     {
       id: 'admin-portal',
       title: 'College Administrator Portal',
       category: 'Whole Institution Governance',
-      desc: 'Master institutional intelligence across all academic departments, full faculty directory CRUD, statutory defaulters, and emergency broadcasts.',
+      desc: 'Master institutional management across all academic departments, faculty directory, attendance defaulters, and campus broadcasts.',
       href: adminUrl,
       isExternal: true,
       icon: Building2,
       iconBg: 'bg-rose-50 text-rose-600 border border-rose-200/60',
-      tag: 'Port 3001 Live',
-      buttonText: 'Launch Admin Console (:3001)',
-      features: ['All Academic Departments', 'Faculty & Student Directory CRUD', 'Statutory Accreditation Snapshots']
+      tag: 'Active',
+      buttonText: 'Open Administrator Portal',
+      features: ['All Academic Departments', 'Faculty & Student Directory', 'Accreditation & Compliance Snapshots']
     },
     {
       id: 'teacher-kiosk',
-      title: 'Teacher Classroom Terminal',
+      title: 'Teacher Attendance Portal',
       category: 'Attendance Marking Deck',
       desc: 'Select any class, semester, section, and choose between regular subjects or guest lectures with custom conductors. Instant transmission to HOD.',
       href: '/teacher',
@@ -152,7 +152,7 @@ export default function Home() {
       icon: Smartphone,
       iconBg: 'bg-amber-50 text-amber-600 border border-amber-200/60',
       tag: 'Live Terminal',
-      buttonText: 'Launch Teacher Attendance Deck',
+      buttonText: 'Open Teacher Attendance Portal',
       features: ['Dynamic Branch/Sem/Sec Selection', 'Regular vs Guest Lecture Modes', 'Direct Conductor Attribution to HOD']
     }
   ];
@@ -167,7 +167,7 @@ export default function Home() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span className="tracking-wide">
-            {institutionName ? `${institutionName} Biometric Grid` : 'University Biometric Grid'}: All 4 Portals Synchronized • AI Liveness Active
+            {institutionName ? `${institutionName} Campus Network` : 'Campus Academic Network'}: All Portals Synchronized • AI Liveness Active
           </span>
           <span className="text-[10px] bg-stone-800 px-2 py-0.5 rounded-full text-stone-300 font-mono">
             {backendStatus === 'online' ? 'BACKEND ONLINE' : backendStatus === 'checking' ? 'SYNCING' : 'OFFLINE MODE'}
@@ -176,7 +176,7 @@ export default function Home() {
       </div>
 
       {/* Top Navigation Bar */}
-      <header className="sticky top-12 z-40 backdrop-blur-xl bg-white/70 border-b border-stone-200/70 px-6 py-3.5 transition-all">
+      <header className="sticky top-12 z-40 backdrop-blur-xl bg-white/70 border-b border-stone-200/70 px-4 sm:px-6 py-3.5 transition-all">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="h-10 w-10 rounded-2xl bg-stone-900 text-white flex items-center justify-center shadow-md shadow-stone-900/10">
@@ -185,8 +185,8 @@ export default function Home() {
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-extrabold text-base tracking-tight text-stone-900">Smart Attendance</span>
-                <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
-                  Enterprise Deluxe
+                <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
+                  Institutional Edition
                 </span>
               </div>
               <p className="text-[11px] text-stone-500 font-medium">Autonomous AI Face-Biometrics Suite</p>
@@ -224,7 +224,7 @@ export default function Home() {
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
-              title="Open Administrator Portal on port 3001"
+              title="Open Administrator Portal"
             >
               <Building2 className="h-3.5 w-3.5 text-rose-500" />
               <span>Admin</span>
@@ -234,7 +234,7 @@ export default function Home() {
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
-              title="Open Department HOD Deck on port 3003"
+              title="Open Department HOD Portal"
             >
               <Building2 className="h-3.5 w-3.5 text-purple-600" />
               <span>HOD</span>
@@ -244,7 +244,7 @@ export default function Home() {
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
-              title="Open Student Portal on port 3002"
+              title="Open Student Academic Portal"
             >
               <GraduationCap className="h-3.5 w-3.5 text-emerald-600" />
               <span>Student</span>
@@ -252,7 +252,7 @@ export default function Home() {
             <Link
               href="/settings"
               className="flex items-center space-x-1.5 text-xs font-semibold px-3.5 py-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200/80 transition shadow-sm"
-              title="System Settings & Port Status"
+              title="System Settings & Services"
             >
               <Settings className="h-4 w-4 text-stone-500" />
               <span>Settings</span>
@@ -451,7 +451,6 @@ export default function Home() {
             </Link>
           </div>
           <div className="flex items-center space-x-2 text-stone-500 text-xs">
-            <span>Designed & Engineered by</span>
             <span className="font-bold text-stone-800 bg-stone-100 border border-stone-200 px-3 py-1 rounded-full shadow-sm">
               Created by Ronak Agrawal
             </span>

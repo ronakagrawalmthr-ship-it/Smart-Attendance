@@ -4,18 +4,21 @@ color 0a
 cls
 echo ===============================================================================
 echo       SMART ATTENDANCE SYSTEM - FASTAPI BACKEND & BIOMETRICS ENGINE
-echo                       Engineered by Ronak Agrawal
+echo                        Created by Ronak Agrawal
 echo ===============================================================================
 echo.
 echo Starting FastAPI Backend Server on http://localhost:8000 ...
 echo Swagger API Documentation will be available at: http://localhost:8000/docs
 echo.
 cd /d "%~dp0backend"
-if not exist "venv\Scripts\python.exe" (
-    echo [ERROR] Python Virtual Environment (venv) not found in backend directory!
-    echo Please create it first: python -m venv venv
-    pause
-    exit /b 1
+if exist "venv\Scripts\python.exe" (
+    venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    if not errorlevel 1 goto end
+    echo.
+    echo [NOTICE] venv python failed, attempting system python...
 )
-venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+if not errorlevel 1 goto end
+py -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+:end
 pause

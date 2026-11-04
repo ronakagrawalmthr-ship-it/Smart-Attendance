@@ -1,40 +1,80 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, case
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional, List
+from pydantic import BaseModel
 
 try:
     from .. import models, schemas, database, security
 except (ImportError, ValueError):
     import models, schemas, database, security
 from .auth import get_current_user
+try:
+    from ..academic_config import resolve_program_meta, calculate_attendance_ia_marks
+except (ImportError, ValueError):
+    try:
+        from academic_config import resolve_program_meta, calculate_attendance_ia_marks
+    except (ImportError, ValueError):
+        def resolve_program_meta(branch=None, db=None):
+            return {"duration_years": 4, "total_semesters": 8}
+        def calculate_attendance_ia_marks(attendance_pct):
+            return {
+                "attendance_percentage": attendance_pct,
+                "ia_marks": 5 if attendance_pct >= 90 else (2 if attendance_pct >= 75 else 0),
+                "max_ia_marks": 5,
+                "standing": "Good Standing" if attendance_pct >= 75 else "Debarment Risk",
+                "color": "emerald" if attendance_pct >= 75 else "rose",
+                "tier": "GREEN" if attendance_pct >= 75 else "RED",
+                "condonation_eligible": 65.0 <= attendance_pct < 75.0,
+                "debarment_risk": attendance_pct < 65.0,
+                "description": ""
+            }
+try:
+    from ..time_utils import now_ist_naive, today_ist_str, format_time_ist
+except (ImportError, ValueError):
+    try:
+        from time_utils import now_ist_naive, today_ist_str, format_time_ist
+    except (ImportError, ValueError):
+        from datetime import timezone, timedelta
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
+        def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
+        def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
 
 router = APIRouter(
     prefix="/portal",
     tags=["Student Self-Service Portal"]
 )
 
-def get_year_details(semester: int):
+def get_year_details(semester: int, branch: Optional[str] = None):
     sem = semester if semester and semester > 0 else 1
     year_num = (sem + 1) // 2
-    ordinals = {1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year"}
-    year_label = ordinals.get(year_num, f"Year {year_num}")
-    if year_num == 4:
-        stage = "Final Year (Graduating Batch)"
-    elif year_num == 3:
-        stage = "3rd Year (Junior Batch)"
-    elif year_num == 2:
-        stage = "2nd Year (Sophomore Batch)"
+    prog_meta = resolve_program_meta(branch)
+    total_years = prog_meta.get("duration_years", 4)
+    total_sems = prog_meta.get("total_semesters", total_years * 2)
+
+    ordinals = {1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year", 5: "5th Year", 6: "6th Year"}
+    year_label = ordinals.get(year_num, f"{year_num}th Year")
+
+    if sem > total_sems:
+        stage = "Graduated Alumni"
+    elif year_num >= total_years:
+        stage = f"{year_label} (Final Year - Graduating Cohort)"
+    elif year_num == total_years - 1:
+        stage = f"{year_label} (Pre-Final Year)"
     else:
-        stage = "1st Year (Freshman Batch)"
+        stage = f"{year_label}"
+
     return {
         "academic_year": year_num,
         "academic_year_label": f"{year_label} (Semester {sem})",
         "year_name": year_label,
         "stage": stage,
-        "semester": sem
+        "semester": sem,
+        "total_years": total_years,
+        "total_semesters": total_sems
     }
 
 @router.get("/metrics")
@@ -45,22 +85,22 @@ def get_student_metrics(
     if current_user.role != models.RoleEnum.student:
         raise HTTPException(status_code=403, detail="Not authorized.")
         
-    student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
+    # Strict RBAC Ownership: Link strictly by authenticated user_id (Zero Hijacking Vector)
+    student = current_user.student_profile or db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
     if not student:
-        roll_candidate = current_user.email.split("@")[0].upper()
-        student = db.query(models.StudentProfile).filter(func.upper(models.StudentProfile.roll_number) == roll_candidate).first()
-        if student:
-            student.user_id = current_user.id
-            db.commit()
-            db.refresh(student)
-        else:
-            raise HTTPException(status_code=404, detail="Student profile not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not linked to this authenticated account. Contact university administration."
+        )
 
-    year_info = get_year_details(student.semester)
+    year_info = get_year_details(student.semester, student.branch)
         
     # Get all logs for this student
     logs_query = db.query(models.AttendanceLog, models.AcademicSession).join(
         models.AcademicSession, models.AttendanceLog.session_id == models.AcademicSession.id
+    ).options(
+        joinedload(models.AcademicSession.teacher),
+        joinedload(models.AcademicSession.subject)
     ).filter(
         models.AttendanceLog.student_id == student.id
     ).order_by(models.AcademicSession.start_time.desc()).all()
@@ -70,10 +110,25 @@ def get_student_metrics(
     absent_classes = total_classes - attended_classes
     overall_percentage = round((attended_classes / total_classes * 100), 1) if total_classes > 0 else 0.0
 
+    # Mathematical exact rest/bunk and recovery calculations (75% mandatory university cutoff)
+    if overall_percentage >= 75.0 and total_classes > 0:
+        safe_bunk_margin = max(0, int((attended_classes - 0.75 * total_classes) // 0.75))
+        recovery_goal = 0
+    elif total_classes > 0:
+        safe_bunk_margin = 0
+        recovery_goal = max(0, 3 * total_classes - 4 * attended_classes)
+    else:
+        safe_bunk_margin = 0
+        recovery_goal = 0
+
+    today_str = today_ist_str()
+    today_holiday = db.query(models.Holiday).filter(models.Holiday.date == today_str).first()
+    upcoming_holidays = db.query(models.Holiday).filter(models.Holiday.date >= today_str).order_by(models.Holiday.date.asc()).limit(5).all()
+
     # 1. Day-Wise Attendance Grouping
     day_groups = defaultdict(list)
     for log, sess in logs_query:
-        dt = sess.start_time or log.timestamp or datetime.utcnow()
+        dt = sess.start_time or log.timestamp or now_ist_naive()
         date_str = dt.strftime("%Y-%m-%d")
         time_str = dt.strftime("%I:%M %p")
         if sess.end_time:
@@ -130,9 +185,9 @@ def get_student_metrics(
     accounted_session_ids = set()
 
     for subj in subjects_db:
-        subj_logs = [l for l, sess in logs_query if sess.subject_id == subj.id]
+        subj_logs = [(l, sess) for l, sess in logs_query if sess.subject_id == subj.id]
         s_total = len(subj_logs)
-        s_present = sum(1 for l in subj_logs if l.is_present)
+        s_present = sum(1 for l, sess in subj_logs if l.is_present)
         s_pct = round(s_present / s_total * 100, 1) if s_total > 0 else 0.0
 
         for l, sess in subj_logs:
@@ -196,7 +251,7 @@ def get_student_metrics(
             {
                 "topic": sess.custom_subject_name or "Special Guest Lecture",
                 "conducted_by": sess.conducted_by_name or "Guest Speaker",
-                "date": (sess.start_time or datetime.utcnow()).strftime("%Y-%m-%d"),
+                "date": (sess.start_time or now_ist_naive()).strftime("%Y-%m-%d"),
                 "is_present": l.is_present
             }
             for l, sess in guest_logs
@@ -206,7 +261,7 @@ def get_student_metrics(
     # 4. Recent Raw Logs (last 15)
     logs_data = []
     for log, sess in logs_query[:15]:
-        dt = sess.start_time or log.timestamp or datetime.utcnow()
+        dt = sess.start_time or log.timestamp or now_ist_naive()
         is_guest = sess.session_type == models.SessionType.guest_lecture
         subj_name = sess.custom_subject_name or (sess.subject.name if sess.subject else ("Special Guest Lecture" if is_guest else "Classroom Session"))
         conductor = sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator")
@@ -220,7 +275,7 @@ def get_student_metrics(
             "session_type": sess.session_type.value if hasattr(sess.session_type, 'value') else str(sess.session_type),
             "status": "Present" if log.is_present else "Absent",
             "status_tag": log.status_tag or ("PRESENT" if log.is_present else "ABSENT"),
-            "confidence": f"{min(99.8, round(98.3 + ((log.id * 7) % 15) * 0.1, 1))}%" if log.is_present else "No Match",
+            "confidence": f"{round(log.confidence_score, 1)}%" if (log.is_present and log.confidence_score is not None) else ("100.0%" if log.is_present else "No Match"),
             "remarks": log.remarks
         })
 
@@ -238,23 +293,51 @@ def get_student_metrics(
             "stage": year_info["stage"],
             "section": student.section or "A",
             "photo_thumbnail": student.photo_thumbnail,
-            "branch": student.branch or "Academic Department"
+            "branch": student.branch or "Academic Department",
+            "sub_batch": student.sub_batch or "A1",
+            "mentor_name": student.mentor_name or "Faculty Mentor",
+            "parent_contact": student.emergency_contact or student.phone or student.parent_email or "None",
+            "parent_email": student.parent_email if student.parent_email and student.parent_email.strip() else "None",
+            "parent_phone": student.emergency_contact or student.phone or "None"
         },
         "metrics": {
             "overall_percentage": overall_percentage,
             "total_classes": total_classes,
             "attended_classes": attended_classes,
             "absent_classes": absent_classes,
-            "eligibility_status": "Eligible" if overall_percentage >= 75.0 else ("Defaulter Risk" if total_classes > 0 else "New Semester")
+            "safe_bunk_margin": safe_bunk_margin,
+            "recovery_goal": recovery_goal,
+            "eligibility_status": "Eligible" if overall_percentage >= 75.0 else ("Defaulter Risk" if total_classes > 0 else "New Semester"),
+            "ia_marks": calculate_attendance_ia_marks(overall_percentage)["ia_marks"],
+            "ia_max": 5,
+            "standing": calculate_attendance_ia_marks(overall_percentage)["standing"],
+            "standing_tier": calculate_attendance_ia_marks(overall_percentage)["tier"],
+            "condonation_eligible": calculate_attendance_ia_marks(overall_percentage)["condonation_eligible"],
+            "debarment_risk": calculate_attendance_ia_marks(overall_percentage)["debarment_risk"],
+            "is_holiday_today": bool(today_holiday),
+            "today_holiday": {
+                "title": today_holiday.title,
+                "description": today_holiday.description,
+                "date": today_holiday.date,
+                "end_date": getattr(today_holiday, 'end_date', None),
+                "event_type": getattr(today_holiday, 'event_type', 'HOLIDAY')
+            } if today_holiday else None
         },
+        "upcoming_holidays": [
+            {
+                "id": h.id,
+                "title": h.title,
+                "date": h.date,
+                "description": h.description,
+                "department": h.department
+            }
+            for h in upcoming_holidays
+        ],
         "subjects": subject_wise,
         "guest_lectures": guest_summary,
         "day_wise": day_wise,
         "recent_logs": logs_data
     }
-
-from pydantic import BaseModel
-import random
 
 class GrievanceSubmission(BaseModel):
     session_id: Optional[int] = None
@@ -263,8 +346,8 @@ class GrievanceSubmission(BaseModel):
     document_url: Optional[str] = None
     document_name: Optional[str] = None
 
-@router.post("/grievance")
 @router.post("/grievances")
+@router.post("/grievance", include_in_schema=False)
 def submit_grievance(
     payload: Optional[GrievanceSubmission] = None,
     session_id: Optional[int] = None,
@@ -286,16 +369,10 @@ def submit_grievance(
 
     student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
     if not student:
-        roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
-        student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
-        if student and not student.user_id:
-            student.user_id = current_user.id
-            db.commit()
-            db.refresh(student)
-    if not student:
         raise HTTPException(status_code=404, detail="Student profile not found for this account.")
 
-    ticket_id = f"GRV-{random.randint(100, 999)}"
+    import uuid
+    ticket_id = f"GRV-{uuid.uuid4().hex[:8].upper()}"
     
     # Resolve real subject name from session if available
     resolved_subject = final_subject_name
@@ -329,10 +406,26 @@ def submit_grievance(
         audit = models.AuditLog(
             action=f"Student ({st_name}, {st_roll}) lodged attendance dispute {ticket_id} for {resolved_subject}.",
             user_id=current_user.id,
-            timestamp=datetime.utcnow()
+            timestamp=now_ist_naive()
         )
         db.add(audit)
         db.commit()
+
+        # Real-time Push Notification to HOD
+        try:
+            try:
+                from ..services.push_notification_service import notify_role
+            except (ImportError, ValueError):
+                from services.push_notification_service import notify_role
+            notify_role(
+                db=db,
+                role=models.RoleEnum.hod,
+                title="New Student Grievance Filed",
+                body=f"{st_name} ({st_roll}) lodged dispute for {resolved_subject} [#{ticket_id}]",
+                data={"ticket_id": ticket_id, "type": "NEW_GRIEVANCE"}
+            )
+        except Exception:
+            pass
     except Exception as e:
         print("Audit log error:", e)
     
@@ -351,12 +444,8 @@ def get_student_grievances(
     if not student:
         roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
         student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
-        if student and not student.user_id:
-            student.user_id = current_user.id
-            db.commit()
-            db.refresh(student)
-    if not student:
-        return []
+        if student and student.user_id and student.user_id != current_user.id:
+            student = None
     if not student:
         return []
     records = db.query(models.Grievance).filter(models.Grievance.student_id == student.id).order_by(models.Grievance.created_at.desc()).all()
@@ -378,18 +467,15 @@ def get_student_profile(
     if current_user.role != models.RoleEnum.student:
         raise HTTPException(status_code=403, detail="Not authorized.")
         
-    student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
+    # Strict RBAC Ownership: Link strictly by authenticated user_id (Zero Hijacking Vector)
+    student = current_user.student_profile or db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
     if not student:
-        roll_candidate = current_user.email.split("@")[0].upper()
-        student = db.query(models.StudentProfile).filter(func.upper(models.StudentProfile.roll_number) == roll_candidate).first()
-        if student:
-            student.user_id = current_user.id
-            db.commit()
-            db.refresh(student)
-        else:
-            raise HTTPException(status_code=404, detail="Student profile not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not linked to this authenticated account. Contact university administration."
+        )
         
-    year_info = get_year_details(student.semester)
+    year_info = get_year_details(student.semester, student.branch)
 
     # Calculate live attendance standing and telemetry for this student
     logs_query = db.query(models.AttendanceLog, models.AcademicSession).join(
@@ -444,7 +530,7 @@ def get_student_profile(
     # Recent raw logs (up to 10)
     recent_logs = []
     for log, sess in logs_query[:10]:
-        dt = sess.start_time or log.timestamp or datetime.utcnow()
+        dt = sess.start_time or log.timestamp or now_ist_naive()
         is_guest = sess.session_type == models.SessionType.guest_lecture
         subj_name = sess.custom_subject_name or (sess.subject.name if sess.subject else ("Special Guest Lecture" if is_guest else "Classroom Session"))
         conductor = sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator")
@@ -460,6 +546,7 @@ def get_student_profile(
             "status_tag": log.status_tag or ("PRESENT" if log.is_present else "ABSENT")
         })
 
+    ia_info = calculate_attendance_ia_marks(overall_percentage)
     return {
         "full_name": student.full_name,
         "roll_number": student.roll_number,
@@ -471,13 +558,16 @@ def get_student_profile(
         "stage": year_info["stage"],
         "section": student.section or "A",
         "email": current_user.email,
-        "phone": student.phone or "",
-        "emergency_contact": student.emergency_contact or "",
-        "parent_email": student.parent_email or "",
+        "phone": student.phone if student.phone and student.phone.strip() else "None",
+        "emergency_contact": student.emergency_contact if student.emergency_contact and student.emergency_contact.strip() else "None",
+        "parent_email": student.parent_email if student.parent_email and student.parent_email.strip() else "None",
+        "parent_contact": student.emergency_contact or student.phone or student.parent_email or "None",
+        "sub_batch": student.sub_batch or "A1",
+        "mentor_name": student.mentor_name or "Faculty Mentor",
         "has_face_enrolled": bool(student.face_encoding),
         "photo_thumbnail": student.photo_thumbnail,
         "is_active": current_user.is_active,
-        # Live Attendance Details
+        # Live Attendance Details & IA Marks Weightage
         "overall_percentage": overall_percentage,
         "total_classes": total_classes,
         "attended_classes": attended_classes,
@@ -485,6 +575,11 @@ def get_student_profile(
         "is_defaulter": is_defaulter,
         "eligibility_status": eligibility_status,
         "classes_needed": classes_needed,
+        "ia_marks": ia_info["ia_marks"],
+        "ia_max": 5,
+        "standing": ia_info["standing"],
+        "condonation_eligible": ia_info["condonation_eligible"],
+        "debarment_risk": ia_info["debarment_risk"],
         "subject_wise": subject_wise,
         "recent_logs": recent_logs
     }
@@ -534,8 +629,8 @@ def update_student_profile(
             raise HTTPException(status_code=400, detail="Current password is required to establish a new account password.")
         if not security.verify_password(payload.current_password, current_user.hashed_password):
             raise HTTPException(status_code=400, detail="The current password provided is incorrect.")
-        if len(payload.new_password.strip()) < 6:
-            raise HTTPException(status_code=400, detail="New password must be at least 6 characters long.")
+        if len(payload.new_password.strip()) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters long.")
         
         current_user.hashed_password = security.get_password_hash(payload.new_password.strip())
         updated_fields.append("password")
@@ -582,12 +677,14 @@ def get_student_live_notifications(
     if not student:
         roll_prefix = (current_user.email or "").split('@')[0].strip().upper()
         student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(roll_prefix)).first()
+        if student and student.user_id and student.user_id != current_user.id:
+            student = None
 
     if not student:
         return []
 
     notifications = []
-    now = datetime.utcnow()
+    now = now_ist_naive()
     one_day_ago = now - timedelta(hours=24)
 
     # 1. Student's own attendance records from the last 24 hours
@@ -596,8 +693,14 @@ def get_student_live_notifications(
         models.AttendanceLog.timestamp >= one_day_ago
     ).order_by(models.AttendanceLog.timestamp.desc()).limit(5).all()
 
+    session_ids = [l.session_id for l in recent_logs if l.session_id]
+    sessions_map = {}
+    if session_ids:
+        sessions = db.query(models.AcademicSession).filter(models.AcademicSession.id.in_(session_ids)).all()
+        sessions_map = {s.id: s for s in sessions}
+
     for l in recent_logs:
-        sess = db.query(models.AcademicSession).filter(models.AcademicSession.id == l.session_id).first()
+        sess = sessions_map.get(l.session_id)
         subj_name = sess.subject.name if (sess and sess.subject) else (sess.custom_subject_name if sess else "Class Lecture")
         status_str = "Present" if l.is_present else "Absent"
         notifications.append({
@@ -644,12 +747,13 @@ def get_student_live_notifications(
             })
 
     # 4. Personal Defaulter / Low Attendance Alert (<75%)
-    total_logs = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == student.id).count()
+    log_stats = db.query(
+        func.count(models.AttendanceLog.id),
+        func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0))
+    ).filter(models.AttendanceLog.student_id == student.id).first()
+    total_logs = log_stats[0] if log_stats else 0
+    present_count = int(log_stats[1] or 0) if (log_stats and log_stats[1] is not None) else 0
     if total_logs > 0:
-        present_count = db.query(models.AttendanceLog).filter(
-            models.AttendanceLog.student_id == student.id,
-            models.AttendanceLog.is_present == True
-        ).count()
         pct = round((present_count / total_logs) * 100, 1)
         if pct < 75.0:
             notifications.append({

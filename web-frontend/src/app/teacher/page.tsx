@@ -33,12 +33,13 @@ import {
   Lock,
   KeyRound,
   Settings,
-  QrCode
+  QrCode,
+  Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
-import { API_BASE_URL, getHodPortalUrl } from '@/lib/api';
+import { getApiBaseUrl, getHodPortalUrl, authFetchWithRetry, isNetworkError } from '@/lib/api';
 
 interface Student {
   id: number;
@@ -62,9 +63,12 @@ interface Subject {
 export default function TeacherAttendancePage() {
   const [branches, setBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
 
   // Kiosk PIN Security States (Default: null / No PIN)
   const [kioskExitPin, setKioskExitPin] = useState<string | null>(null);
@@ -90,11 +94,11 @@ export default function TeacherAttendancePage() {
 
     if (kioskExitPin) {
       if (!currentPinInput) {
-        setKioskPinError("Please enter your current PIN (purani PIN).");
+        setKioskPinError("Please enter your current PIN.");
         return;
       }
       if (currentPinInput !== kioskExitPin) {
-        setKioskPinError("Incorrect Current PIN! Purani PIN galat hai.");
+        setKioskPinError("Incorrect current PIN. Please verify and try again.");
         return;
       }
     }
@@ -165,7 +169,11 @@ export default function TeacherAttendancePage() {
   const [selectedBranch, setSelectedBranch] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('teacher_department')) || '');
   const [selectedSemester, setSelectedSemester] = useState<number>(1);
   const [selectedSection, setSelectedSection] = useState<string>('A');
-  const [sessionCategory, setSessionCategory] = useState<'regular' | 'guest' | 'proxy'>('regular');
+  type AcademicSessionType = 'regular' | 'practical' | 'test' | 'guest' | 'proxy';
+  const [sessionCategory, setSessionCategory] = useState<AcademicSessionType>('regular');
+  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(60);
+  const [sessionCreditWeight, setSessionCreditWeight] = useState<number>(1);
+  const [selectedSubBatch, setSelectedSubBatch] = useState<string>('All');
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [customSubjectName, setCustomSubjectName] = useState<string>('');
   const [conductedByName, setConductedByName] = useState<string>('');
@@ -204,11 +212,134 @@ export default function TeacherAttendancePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState<any | null>(null);
 
+  // Today's Sessions & Same-Day Attendance Corrections
+  const [isTodaySessionsModalOpen, setIsTodaySessionsModalOpen] = useState(false);
+  const [todaySessions, setTodaySessions] = useState<any[]>([]);
+  const [loadingTodaySessions, setLoadingTodaySessions] = useState(false);
+  const [selectedCorrectionSession, setSelectedCorrectionSession] = useState<any | null>(null);
+  const [correctionSearch, setCorrectionSearch] = useState('');
+  const [correctionFilter, setCorrectionFilter] = useState<'all' | 'absent' | 'present'>('absent');
+
+  // Single Student Correction Modal
+  const [correctionTarget, setCorrectionTarget] = useState<{
+    session_id: number;
+    student_id: number;
+    student_name: string;
+    roll_number: string;
+    current_status: string;
+    current_present: boolean;
+  } | null>(null);
+  const [correctionReason, setCorrectionReason] = useState('Late entry permitted by subject teacher');
+  const [correctionStatusTag, setCorrectionStatusTag] = useState('PRESENT');
+  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState<string | null>(null);
+
+  const fetchTodaySessions = async (autoSelectSessionId?: number) => {
+    try {
+      setLoadingTodaySessions(true);
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${getApiBaseUrl()}/management/attendance/today-sessions`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.sessions || [];
+        setTodaySessions(list);
+        if (autoSelectSessionId) {
+          const match = list.find((s: any) => s.session_id === autoSelectSessionId);
+          if (match) setSelectedCorrectionSession(match);
+          else if (list.length > 0) setSelectedCorrectionSession(list[0]);
+        } else if (list.length > 0 && !selectedCorrectionSession) {
+          setSelectedCorrectionSession(list[0]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch today sessions:', err);
+    } finally {
+      setLoadingTodaySessions(false);
+    }
+  };
+
+  const handleTeacherCorrectionSubmit = async (statusTag?: string, customReason?: string) => {
+    if (!correctionTarget) return;
+    const finalTag = statusTag || correctionStatusTag || 'PRESENT';
+    const finalReason = customReason || correctionReason.trim();
+    if (finalReason.length < 3) {
+      setCorrectionError('Please provide a reason of at least 3 characters.');
+      return;
+    }
+    setCorrectionSubmitting(true);
+    setCorrectionError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const isPresent = finalTag !== 'ABSENT';
+      const res = await fetch(`${getApiBaseUrl()}/management/attendance/override`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: correctionTarget.session_id,
+          student_id: correctionTarget.student_id,
+          status_tag: finalTag,
+          is_present: isPresent,
+          reason: finalReason
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Correction failed.');
+      }
+
+      if (selectedCorrectionSession && selectedCorrectionSession.session_id === correctionTarget.session_id) {
+        const updatedRoster = selectedCorrectionSession.roster.map((st: any) => {
+          if (st.student_id === correctionTarget.student_id) {
+            return {
+              ...st,
+              is_present: isPresent,
+              status_tag: finalTag,
+              remarks: data.remarks || `[TEACHER OVERRIDE]: ${finalReason}`
+            };
+          }
+          return st;
+        });
+        const newPres = updatedRoster.filter((r: any) => r.is_present).length;
+        const updatedSess = {
+          ...selectedCorrectionSession,
+          present_count: newPres,
+          absent_count: updatedRoster.length - newPres,
+          roster: updatedRoster
+        };
+        setSelectedCorrectionSession(updatedSess);
+        setTodaySessions(prev => prev.map(s => s.session_id === updatedSess.session_id ? updatedSess : s));
+      }
+
+      setCorrectionSuccessMsg(`Attendance marked as ${finalTag} for ${correctionTarget.student_name}!`);
+      setTimeout(() => {
+        setCorrectionTarget(null);
+        setCorrectionSuccessMsg(null);
+        setCorrectionReason('Late entry permitted by subject teacher');
+      }, 900);
+    } catch (err: any) {
+      setCorrectionError(err.message || 'Failed to submit correction.');
+    } finally {
+      setCorrectionSubmitting(false);
+    }
+  };
+
   // 1. Fetch Metadata (Branches, Subjects)
   const fetchMeta = async () => {
     try {
       setLoadingMeta(true);
-      const res = await fetch(`${API_BASE_URL}/attendance/departments-meta`);
+      setMetaError(null);
+      const res = await authFetchWithRetry(
+        `${getApiBaseUrl()}/attendance/departments-meta`,
+        {},
+        { retries: 2, backoffMs: 300 }
+      );
       if (res.ok) {
         const data = await res.json();
         if (data.branches && data.branches.length > 0) {
@@ -216,14 +347,20 @@ export default function TeacherAttendancePage() {
           setSelectedBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
         }
         if (data.subjects) setAvailableSubjects(data.subjects);
+        if (data.branch_programs && typeof data.branch_programs === 'object') {
+          setBranchPrograms(data.branch_programs);
+        }
         if (data.semesters && data.semesters.length > 0) setAvailableSemesters(data.semesters);
         if (data.sections && data.sections.length > 0) setAvailableSections(data.sections);
         if (data.teachers && data.teachers.length > 0) {
           setConductedByName(prev => prev || data.teachers[0].name);
         }
+      } else {
+        setMetaError('Unable to load department metadata from server.');
       }
-    } catch {
-      console.log('Error loading metadata, using defaults');
+    } catch (e: any) {
+      console.warn('Error loading metadata:', e);
+      setMetaError('Network error while loading academic metadata.');
     } finally {
       setLoadingMeta(false);
     }
@@ -258,16 +395,24 @@ export default function TeacherAttendancePage() {
   const fetchStudents = async () => {
     try {
       setLoadingStudents(true);
+      setRosterError(null);
       const params = new URLSearchParams({
         branch: selectedBranch,
         semester: selectedSemester.toString(),
         section: selectedSection
       });
-      const res = await fetch(`${API_BASE_URL}/attendance/class-students?${params.toString()}`);
+      if (sessionCategory === 'practical' && selectedSubBatch && selectedSubBatch !== 'All') {
+        params.append('sub_batch', selectedSubBatch);
+      }
+      const res = await authFetchWithRetry(
+        `${getApiBaseUrl()}/attendance/class-students?${params.toString()}`,
+        {},
+        { retries: 2, backoffMs: 350 }
+      );
       if (res.ok) {
         const data = await res.json();
         const roster: Student[] = (data.students || []).sort((a: Student, b: Student) => 
-          a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' })
+          (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' })
         );
         setStudents(roster);
 
@@ -277,9 +422,12 @@ export default function TeacherAttendancePage() {
           initialAttendance[s.id] = false;
         });
         setAttendanceState(initialAttendance);
+      } else {
+        setRosterError(`Server returned status ${res.status}. Could not fetch student roster.`);
       }
-    } catch {
-      console.log('Error fetching students roster');
+    } catch (e: any) {
+      console.warn('Error fetching students roster:', e);
+      setRosterError('Failed to synchronize student roster with campus server.');
     } finally {
       setLoadingStudents(false);
     }
@@ -287,7 +435,7 @@ export default function TeacherAttendancePage() {
 
   useEffect(() => {
     fetchStudents();
-  }, [selectedBranch, selectedSemester, selectedSection]);
+  }, [selectedBranch, selectedSemester, selectedSection, sessionCategory, selectedSubBatch]);
 
   // Attendance Toggles
   const toggleAttendance = (studentId: number) => {
@@ -363,7 +511,7 @@ export default function TeacherAttendancePage() {
         const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(`${API_BASE_URL}/attendance/qr/token/${qrSessionId}`, { headers });
+        const res = await fetch(`${getApiBaseUrl()}/attendance/qr/token/${qrSessionId}`, { headers });
         if (res.ok) {
           const data = await res.json();
           setQrToken(data.token);
@@ -403,7 +551,7 @@ export default function TeacherAttendancePage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${API_BASE_URL}/attendance/qr/init-session`, {
+      const res = await fetch(`${getApiBaseUrl()}/attendance/qr/init-session`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -411,7 +559,10 @@ export default function TeacherAttendancePage() {
           branch: selectedBranch,
           semester: selectedSemester,
           section: selectedSection,
-          session_type: sessionCategory,
+          session_type: sessionCategory === 'guest' ? 'guest_lecture' : (sessionCategory === 'practical' ? 'practical' : (sessionCategory === 'test' ? 'test' : 'lecture')),
+          duration_minutes: sessionDurationMinutes,
+          credit_weight: sessionCreditWeight,
+          sub_batch: sessionCategory === 'practical' ? selectedSubBatch : 'All',
           conducted_by_name: conductedByName || 'Faculty Coordinator',
           custom_subject_name: sessionCategory === 'guest' 
             ? (customSubjectName || 'Special Guest Lecture') 
@@ -473,7 +624,10 @@ export default function TeacherAttendancePage() {
         branch: selectedBranch,
         semester: selectedSemester,
         section: selectedSection,
-        session_type: sessionCategory === 'guest' ? 'guest_lecture' : 'lecture',
+        session_type: sessionCategory === 'guest' ? 'guest_lecture' : (sessionCategory === 'practical' ? 'practical' : (sessionCategory === 'test' ? 'test' : 'lecture')),
+        duration_minutes: sessionDurationMinutes,
+        credit_weight: sessionCreditWeight,
+        sub_batch: sessionCategory === 'practical' ? selectedSubBatch : 'All',
         subject_id: sessionCategory === 'guest' ? null : selectedSubjectId,
         custom_subject_name: sessionCategory === 'guest' ? (customSubjectName.trim() || 'Special Industry Guest Lecture') : (currentSubjectObj?.name || null),
         conducted_by_name: conductedByName.trim() || 'Faculty Coordinator',
@@ -485,7 +639,7 @@ export default function TeacherAttendancePage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${API_BASE_URL}/attendance/create-and-submit`, {
+      const res = await fetch(`${getApiBaseUrl()}/attendance/create-and-submit`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -523,12 +677,12 @@ export default function TeacherAttendancePage() {
         
         {/* 🏆 Top Section: Apple Fitness-Ring Card + 4 Colourful Pastel Squircles (Exact Reference Match) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Left Column: Attendance Fitness-Ring Card (lg:col-span-5) */}
+          {/* Left Column: Overall Attendance Card (lg:col-span-5) */}
           <div className="lg:col-span-5 rounded-[28px] bg-white p-6 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                  Live Classroom Telemetry
+                  Classroom Attendance Overview
                 </span>
                 <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                   Number(turnoutPct) >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
@@ -671,25 +825,25 @@ export default function TeacherAttendancePage() {
               </div>
             </div>
 
-            {/* 🍃 Mint Squircle: Biometric Confidence */}
+            {/* Real Attendance Turnout & Roster Standing */}
             <div className="rounded-[26px] bg-[#EFFBF5] border border-[#CEF4DE] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1F7A4D]">Confidence</span>
+                <span className="text-xs font-bold text-[#1F7A4D]">Attendance Rate</span>
                 <div className="h-8 w-8 rounded-xl bg-emerald-100/90 text-emerald-700 flex items-center justify-center shadow-2xs">
                   <Clock className="h-4 w-4" />
                 </div>
               </div>
               <div className="my-2">
                 <span className="text-3xl font-extrabold text-stone-900 tracking-tight block">
-                  {presentCount > 0 ? "98.8%" : "—"}
+                  {turnoutPct}%
                 </span>
                 <span className="text-[11px] text-stone-500 font-medium">
-                  Average vector fidelity
+                  {presentCount} of {totalStudentsCount} Enrolled Present
                 </span>
               </div>
               <div className="pt-2 border-t border-emerald-200/50 flex items-center justify-between text-[11px]">
-                <span className="text-emerald-700 font-semibold">Anti-Spoofing</span>
-                <span className="font-mono text-emerald-900 font-bold">Liveness Verified</span>
+                <span className="text-emerald-700 font-semibold">Session Standing</span>
+                <span className="font-mono text-emerald-900 font-bold">{presentCount > 0 ? "Active Roster" : "Pending Records"}</span>
               </div>
             </div>
 
@@ -708,22 +862,48 @@ export default function TeacherAttendancePage() {
               </p>
             </div>
 
-            {/* Lecture Mode Tabs */}
-            <div className="flex rounded-2xl bg-stone-100 p-1 border border-stone-200/80 self-stretch sm:self-auto">
+            {/* Lecture Mode Tabs with Multi-Hour Lab & Test Support */}
+            <div className="flex flex-wrap rounded-2xl bg-stone-100 p-1 border border-stone-200/80 gap-1 self-stretch sm:self-auto">
               <button
-                onClick={() => setSessionCategory('regular')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                type="button"
+                onClick={() => { setSessionCategory('regular'); setSessionDurationMinutes(60); setSessionCreditWeight(1); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
                   sessionCategory === 'regular'
                     ? 'bg-white text-stone-900 shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>Regular Subject</span>
+                <span>Regular (1 Hr)</span>
               </button>
               <button
-                onClick={() => setSessionCategory('guest')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                type="button"
+                onClick={() => { setSessionCategory('practical'); setSessionDurationMinutes(120); setSessionCreditWeight(2); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                  sessionCategory === 'practical'
+                    ? 'bg-white text-emerald-800 shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Practical / Lab (2-3 Hrs)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSessionCategory('test'); setSessionDurationMinutes(60); setSessionCreditWeight(1); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                  sessionCategory === 'test'
+                    ? 'bg-white text-blue-800 shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <Check className="h-3.5 w-3.5 text-blue-600" />
+                <span>Class Test / Exam</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSessionCategory('guest'); setSessionDurationMinutes(60); setSessionCreditWeight(1); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
                   sessionCategory === 'guest'
                     ? 'bg-white text-purple-700 shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -733,8 +913,9 @@ export default function TeacherAttendancePage() {
                 <span>Guest Lecture</span>
               </button>
               <button
-                onClick={() => setSessionCategory('proxy')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                type="button"
+                onClick={() => { setSessionCategory('proxy'); setSessionDurationMinutes(60); setSessionCreditWeight(1); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
                   sessionCategory === 'proxy'
                     ? 'bg-white text-amber-700 shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -744,6 +925,71 @@ export default function TeacherAttendancePage() {
                 <span>Proxy Class</span>
               </button>
             </div>
+
+            {/* Quick Multi-Period Duration & Credit Weight Selector for Practical Labs */}
+            {sessionCategory === 'practical' && (
+              <div className="flex items-center space-x-2 bg-emerald-50/80 border border-emerald-200/80 px-3 py-1.5 rounded-2xl text-xs">
+                <span className="font-bold text-emerald-900">Lab Duration:</span>
+                <button
+                  type="button"
+                  onClick={() => { setSessionDurationMinutes(120); setSessionCreditWeight(2); }}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition ${
+                    sessionDurationMinutes === 120 ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-emerald-800 border border-emerald-200'
+                  }`}
+                >
+                  2 Hours (2 Credits)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSessionDurationMinutes(180); setSessionCreditWeight(3); }}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition ${
+                    sessionDurationMinutes === 180 ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-emerald-800 border border-emerald-200'
+                  }`}
+                >
+                  3 Hours (3 Credits)
+                </button>
+                <div className="flex items-center space-x-1 ml-2 pl-2 border-l border-emerald-300">
+                  <span className="text-[11px] font-bold text-emerald-900">Batch:</span>
+                  {['All', 'A1', 'A2', 'A3'].map(b => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setSelectedSubBatch(b)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${
+                        selectedSubBatch === b ? 'bg-emerald-800 text-white shadow-2xs' : 'bg-white text-emerald-800 border border-emerald-200'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Duration Selector for Class Tests */}
+            {sessionCategory === 'test' && (
+              <div className="flex items-center space-x-2 bg-blue-50/80 border border-blue-200/80 px-3 py-1.5 rounded-2xl text-xs">
+                <span className="font-bold text-blue-900">Test Duration:</span>
+                <button
+                  type="button"
+                  onClick={() => { setSessionDurationMinutes(60); setSessionCreditWeight(1); }}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition ${
+                    sessionDurationMinutes === 60 ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-blue-800 border border-blue-200'
+                  }`}
+                >
+                  1 Hour (Unit Test)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSessionDurationMinutes(120); setSessionCreditWeight(2); }}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition ${
+                    sessionDurationMinutes === 120 ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-blue-800 border border-blue-200'
+                  }`}
+                >
+                  2 Hours (Mid-Term Exam)
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1011,9 +1257,30 @@ export default function TeacherAttendancePage() {
 
           {/* Student Roster Grid */}
           {loadingStudents ? (
-            <div className="py-16 text-center text-stone-500 flex flex-col items-center justify-center space-y-3">
-              <RefreshCw className="h-6 w-6 animate-spin text-stone-600" />
-              <p className="text-xs font-medium">Loading class roster from database...</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 animate-pulse">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="h-20 bg-stone-100 rounded-2xl border border-stone-200/60 p-4 flex items-center justify-between">
+                  <div className="space-y-2">
+                    <div className="h-3.5 w-28 bg-stone-200 rounded" />
+                    <div className="h-2.5 w-20 bg-stone-200/70 rounded" />
+                  </div>
+                  <div className="h-7 w-16 bg-stone-200 rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : rosterError ? (
+            <div className="py-10 px-6 text-center rounded-3xl bg-rose-50/80 border border-rose-200/80 space-y-3 max-w-md mx-auto">
+              <AlertCircle className="h-8 w-8 text-rose-500 mx-auto" />
+              <p className="text-xs font-bold text-rose-900">{rosterError}</p>
+              <button
+                type="button"
+                onClick={fetchStudents}
+                disabled={loadingStudents}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5 mx-auto cursor-pointer"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingStudents ? 'animate-spin' : ''}`} />
+                <span>Retry Roster Sync</span>
+              </button>
             </div>
           ) : displayStudents.length === 0 ? (
             <div className="py-12 text-center text-stone-500 bg-stone-50 rounded-3xl border border-stone-200">
@@ -1628,6 +1895,319 @@ export default function TeacherAttendancePage() {
                   </button>
                 </div>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+            {/* Today's Conducted Sessions (Same-Day Grace Corrections Desk) */}
+      <AnimatePresence>
+        {isTodaySessionsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-4xl max-h-[90vh] rounded-3xl bg-white border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-stone-100 flex justify-between items-start bg-gradient-to-r from-amber-50/50 via-white to-stone-50/50">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider flex items-center space-x-1">
+                      <Clock className="h-3 w-3 text-amber-700" />
+                      <span>Same-Day Grace Window</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-bold">
+                      Institutional Audit Trail Enabled
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-extrabold text-stone-900 tracking-tight">
+                    Today&apos;s Conducted Sessions &amp; Attendance Corrections
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Faculty desk to adjust attendance and mark late arrivals for sessions held today. Past sessions are locked and require HOD condonation.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTodaySessionsModalOpen(false)}
+                  className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-900 transition"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Sessions Selector Tabs */}
+              <div className="px-6 py-3 bg-stone-50 border-b border-stone-200 flex items-center gap-2 overflow-x-auto">
+                {loadingTodaySessions ? (
+                  <div className="text-xs text-stone-400 font-medium py-1">Loading today&apos;s classes...</div>
+                ) : todaySessions.length === 0 ? (
+                  <div className="text-xs text-stone-500 font-medium py-1">
+                    No classroom sessions submitted today yet. Sessions submitted today will appear here for grace corrections.
+                  </div>
+                ) : (
+                  todaySessions.map((s: any) => (
+                    <button
+                      key={s.session_id}
+                      type="button"
+                      onClick={() => setSelectedCorrectionSession(s)}
+                      className={`px-3.5 py-2 rounded-2xl text-xs font-bold shrink-0 transition flex items-center space-x-2 border ${
+                        selectedCorrectionSession?.session_id === s.session_id
+                          ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
+                          : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
+                      }`}
+                    >
+                      <span>{s.time}</span>
+                      <span className="opacity-60">•</span>
+                      <span>{s.subject_name}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                        selectedCorrectionSession?.session_id === s.session_id
+                          ? 'bg-white/20 text-white'
+                          : 'bg-emerald-50 text-emerald-800'
+                      }`}>
+                        {s.present_count}/{s.total_enrolled}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Session Drilldown / Roster Corrections */}
+              {selectedCorrectionSession && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Toolbar */}
+                  <div className="p-4 border-b border-stone-100 bg-white flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <div className="flex items-center space-x-2 w-full sm:w-auto">
+                      <div className="relative flex-1 sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+                        <input
+                          type="text"
+                          value={correctionSearch}
+                          onChange={(e) => setCorrectionSearch(e.target.value)}
+                          placeholder="Search roll no or student..."
+                          className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-stone-900"
+                        />
+                      </div>
+                      <div className="flex bg-stone-100 rounded-xl p-1 text-[11px] font-bold">
+                        {(['absent', 'all', 'present'] as const).map(tab => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setCorrectionFilter(tab)}
+                            className={`px-2.5 py-1 rounded-lg capitalize transition ${
+                              correctionFilter === tab ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-800'
+                            }`}
+                          >
+                            {tab === 'absent' ? `Absent (${selectedCorrectionSession.absent_count})` : tab === 'present' ? `Present (${selectedCorrectionSession.present_count})` : `All (${selectedCorrectionSession.total_enrolled})`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-stone-500 font-medium">
+                      <span>Conducted by: <strong>{selectedCorrectionSession.conducted_by}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Student list */}
+                  <div className="p-6 overflow-y-auto space-y-2 flex-1">
+                    {selectedCorrectionSession.roster
+                      .filter((st: any) => {
+                        const matchesSearch = st.student_name.toLowerCase().includes(correctionSearch.toLowerCase()) ||
+                          st.roll_number.toLowerCase().includes(correctionSearch.toLowerCase());
+                        if (!matchesSearch) return false;
+                        if (correctionFilter === 'absent') return !st.is_present;
+                        if (correctionFilter === 'present') return st.is_present;
+                        return true;
+                      })
+                      .map((st: any) => (
+                        <div
+                          key={st.student_id}
+                          className="p-3.5 rounded-2xl bg-stone-50/70 border border-stone-200/80 flex items-center justify-between text-xs transition hover:bg-stone-50"
+                        >
+                          <div>
+                            <div className="font-bold text-stone-900">{st.student_name}</div>
+                            <div className="font-mono text-stone-500 text-[11px]">{st.roll_number}</div>
+                            {st.remarks && (
+                              <div className="text-[10px] text-stone-400 italic mt-0.5 max-w-md truncate">{st.remarks}</div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${
+                              st.is_present
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}>
+                              {st.status_tag || (st.is_present ? 'Present' : 'Absent')}
+                            </span>
+
+                            {!st.is_present ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCorrectionTarget({
+                                    session_id: selectedCorrectionSession.session_id,
+                                    student_id: st.student_id,
+                                    student_name: st.student_name,
+                                    roll_number: st.roll_number,
+                                    current_status: st.status_tag || 'ABSENT',
+                                    current_present: false
+                                  });
+                                  setCorrectionStatusTag('PRESENT');
+                                  setCorrectionReason('Late entry permitted by subject teacher');
+                                  setCorrectionError(null);
+                                  setCorrectionSuccessMsg(null);
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition inline-flex items-center space-x-1 shadow-2xs"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>Mark Present (Late)</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCorrectionTarget({
+                                    session_id: selectedCorrectionSession.session_id,
+                                    student_id: st.student_id,
+                                    student_name: st.student_name,
+                                    roll_number: st.roll_number,
+                                    current_status: st.status_tag || 'PRESENT',
+                                    current_present: true
+                                  });
+                                  setCorrectionStatusTag('ABSENT');
+                                  setCorrectionReason('Mistakenly marked present - corrected by teacher');
+                                  setCorrectionError(null);
+                                  setCorrectionSuccessMsg(null);
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-rose-50 text-stone-600 hover:text-rose-700 border border-stone-200 font-bold text-[10px] transition inline-flex items-center space-x-1"
+                              >
+                                <Edit3 className="h-3 w-3" />
+                                <span>Adjust</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Single Student Correction Prompt Modal */}
+      <AnimatePresence>
+        {correctionTarget && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-4"
+            >
+              <div className="flex justify-between items-start border-b border-stone-100 pb-3">
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider">
+                    Same-Day Faculty Correction
+                  </span>
+                  <h3 className="text-base font-bold text-stone-900 mt-1">
+                    {correctionStatusTag === 'PRESENT' ? 'Confirm Late Arrival Entry' : 'Adjust Attendance Status'}
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Student: <strong className="text-stone-800">{correctionTarget.student_name}</strong> ({correctionTarget.roll_number})
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCorrectionTarget(null)}
+                  className="p-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+
+              {correctionSuccessMsg ? (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{correctionSuccessMsg}</span>
+                </div>
+              ) : (
+                <div className="space-y-3 text-xs">
+                  {correctionError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium flex items-center space-x-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{correctionError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">
+                      Quick Reason Preset:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'Late entry permitted by subject teacher',
+                        'Biometric scanner missed during rush',
+                        'Manual roll call verification',
+                        'Approved duty leave for college event'
+                      ].map(r => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setCorrectionReason(r)}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition ${
+                            correctionReason === r
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">
+                      Official Remarks:
+                    </label>
+                    <input
+                      type="text"
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      placeholder="Specify reason for audit..."
+                      className="w-full p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-stone-900"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setCorrectionTarget(null)}
+                      className="flex-1 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={correctionSubmitting}
+                      onClick={() => handleTeacherCorrectionSubmit(correctionStatusTag)}
+                      className="flex-1 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold transition flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
+                    >
+                      {correctionSubmitting ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      <span>{correctionSubmitting ? 'Saving...' : 'Confirm & Save'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

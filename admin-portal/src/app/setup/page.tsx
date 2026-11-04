@@ -469,7 +469,7 @@ export default function SetupWizardPage() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Indian Institute of Technology / Oxford / Stanford"
+                        placeholder="e.g. Delhi Technical Campus / National Institute of Technology"
                         value={institutionName}
                         onChange={(e) => setInstitutionName(e.target.value)}
                         className="w-full bg-stone-50 border border-stone-200/90 rounded-2xl pl-10 pr-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition"

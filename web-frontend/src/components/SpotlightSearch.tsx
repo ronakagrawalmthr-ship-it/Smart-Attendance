@@ -36,12 +36,12 @@ interface SpotlightSearchProps {
 const getFallbackGateways = (): SpotlightResult[] => [
   { type: 'page', title: 'Teacher Attendance Terminal', subtitle: 'Live webcam face detection & session marking', url: '/teacher', category: 'University Gateways' },
   { type: 'page', title: 'Student Academic Portal', subtitle: 'Attendance %, subject thresholds & grievances (:3002)', url: getPortalUrl(3002), category: 'University Gateways' },
-  { type: 'page', title: 'HOD Command Center', subtitle: 'Departmental rosters, analytics & live telemetry (:3003)', url: getPortalUrl(3003), category: 'University Gateways' },
-  { type: 'page', title: 'College Administrator Portal', subtitle: 'Executive accreditation, directory CRUD & audits (:3001)', url: getPortalUrl(3001), category: 'University Gateways' },
-  { type: 'page', title: 'Biometric Face Enrollment', subtitle: '128-d AI face vector registration kiosk', url: '/register', category: 'University Gateways' },
-  { type: 'page', title: 'System Settings & Diagnostics', subtitle: 'Camera FPS, biometric confidence & port health', url: '/settings', category: 'University Gateways' },
-  { type: 'page', title: 'Defaulters Roster (<75%)', subtitle: 'Statutory attendance alerts & warning notices', url: getPortalUrl(3001, '/defaulters'), category: 'Executive Control' },
-  { type: 'page', title: 'Academic Directory Management', subtitle: 'CRUD students, faculty, HODs and subjects', url: getPortalUrl(3001, '/directory'), category: 'Executive Control' },
+  { type: 'page', title: 'HOD Department Console', subtitle: 'Departmental rosters, class attendance & analytics (:3003)', url: getPortalUrl(3003), category: 'University Gateways' },
+  { type: 'page', title: 'College Administrator Portal', subtitle: 'Institutional governance, campus directory & audit reports (:3001)', url: getPortalUrl(3001), category: 'University Gateways' },
+  { type: 'page', title: 'Biometric Face Enrollment', subtitle: 'Face biometric enrollment & photo capture', url: '/register', category: 'University Gateways' },
+  { type: 'page', title: 'System Settings & Diagnostics', subtitle: 'Camera configuration, network health & security', url: '/settings', category: 'University Gateways' },
+  { type: 'page', title: 'Defaulters Roster (<75%)', subtitle: 'Attendance shortage notices & critical defaulters', url: getPortalUrl(3001, '/defaulters'), category: 'Executive Control' },
+  { type: 'page', title: 'Academic Directory Management', subtitle: 'Manage students, faculty, departments and curriculum', url: getPortalUrl(3001, '/directory'), category: 'Executive Control' },
 ];
 
 export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClose }: SpotlightSearchProps = {}) {
@@ -55,22 +55,51 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
+        if (propIsOpen !== undefined && propOnClose) {
+          if (isOpen) propOnClose();
+        } else {
+          setInternalOpen(prev => !prev);
+        }
+      }
+      if (e.key === 'Escape' && isOpen) {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    const handleOpen = () => setInternalOpen(true);
+    const handleClose = () => {
+      if (propOnClose) propOnClose();
+      setInternalOpen(false);
+    };
+    const handleToggle = () => {
+      if (propIsOpen !== undefined && propOnClose) {
+        if (isOpen) propOnClose();
+      } else {
         setInternalOpen(prev => !prev);
       }
     };
-    const handleCustomSpotlight = () => setInternalOpen(true);
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('open-spotlight', handleCustomSpotlight);
-    window.addEventListener('open-spotlight-search', handleCustomSpotlight);
+    window.addEventListener('open-spotlight', handleOpen);
+    window.addEventListener('open-spotlight-search', handleOpen);
+    window.addEventListener('toggle-spotlight', handleToggle);
+    window.addEventListener('toggle-spotlight-search', handleToggle);
+    window.addEventListener('close-spotlight', handleClose);
+    window.addEventListener('close-spotlight-search', handleClose);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('open-spotlight', handleCustomSpotlight);
-      window.removeEventListener('open-spotlight-search', handleCustomSpotlight);
+      window.removeEventListener('open-spotlight', handleOpen);
+      window.removeEventListener('open-spotlight-search', handleOpen);
+      window.removeEventListener('toggle-spotlight', handleToggle);
+      window.removeEventListener('toggle-spotlight-search', handleToggle);
+      window.removeEventListener('close-spotlight', handleClose);
+      window.removeEventListener('close-spotlight-search', handleClose);
     };
-  }, []);
+  }, [isOpen, propIsOpen, propOnClose, onClose]);
 
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<'all' | 'page' | 'student' | 'faculty' | 'subject'>('all');
@@ -358,3 +387,10 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
     </AnimatePresence>
   );
 }
+
+export const triggerSpotlight = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+    window.dispatchEvent(new CustomEvent('open-spotlight'));
+  }
+};

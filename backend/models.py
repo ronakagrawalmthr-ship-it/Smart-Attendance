@@ -2,6 +2,10 @@ from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, Date
 from sqlalchemy.orm import relationship
 import enum
 from datetime import datetime
+try:
+    from .time_utils import now_ist_naive
+except (ImportError, ValueError):
+    from time_utils import now_ist_naive
 
 try:
     from .database import Base
@@ -28,10 +32,23 @@ class User(Base):
     hashed_password = Column(String)
     role = Column(Enum(RoleEnum))
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=True)
 
     # Relationships
     student_profile = relationship("StudentProfile", back_populates="user", uselist=False)
     teacher_profile = relationship("TeacherProfile", back_populates="user", uselist=False)
+
+class EmailVerificationOTP(Base):
+    __tablename__ = "email_verification_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True, nullable=False)
+    otp_code = Column(String, nullable=False)
+    purpose = Column(String, default="registration")
+    expires_at = Column(DateTime, nullable=False)
+    is_verified = Column(Boolean, default=False)
+    sub_batch = Column(String, default="All") # "All" or "A1", "A2", "A3"
+    created_at = Column(DateTime, default=now_ist_naive)
 
 class StudentProfile(Base):
     __tablename__ = "student_profiles"
@@ -44,13 +61,16 @@ class StudentProfile(Base):
     semester = Column(Integer)
     section = Column(String)
     
-    # Store face vector as a simple string or Array if using pgvector in Postgres
-    # For now, we represent it as a generic column (e.g., String/Text) to store serialized array
+    # Store face vector as AES-256 encrypted string (DPDP Act 2023 compliance)
     face_encoding = Column(String, nullable=True) 
+    biometric_consent = Column(Boolean, default=False)
+    consent_timestamp = Column(DateTime, nullable=True)
     phone = Column(String, nullable=True)
     emergency_contact = Column(String, nullable=True)
     parent_email = Column(String, nullable=True)  # Guardian email for automated attendance alerts
     photo_thumbnail = Column(String, nullable=True)  # Compressed base64 JPEG (80x80) for avatar display
+    sub_batch = Column(String, default="A1")         # Sub-batch for Labs: A1, A2, A3
+    mentor_name = Column(String, nullable=True)      # Faculty Proctor / Mentor
 
     user = relationship("User", back_populates="student_profile")
     attendance_records = relationship("AttendanceLog", back_populates="student")
@@ -87,12 +107,15 @@ class AcademicSession(Base):
     session_type = Column(Enum(SessionType), default=SessionType.lecture)
     start_time = Column(DateTime)
     end_time = Column(DateTime, nullable=True)
+    duration_minutes = Column(Integer, default=60)
+    credit_weight = Column(Integer, default=1)
     branch = Column(String)
     semester = Column(Integer, nullable=True)
     section = Column(String, nullable=True) # Specific section or batch
     conducted_by_name = Column(String, nullable=True) # Faculty name or Guest Speaker name
     custom_subject_name = Column(String, nullable=True) # Custom topic or Guest Lecture title
     notes = Column(String, nullable=True) # e.g. "Lecture 2 of the day", "Guest Lecture on AI"
+    sub_batch = Column(String, default="All") # "All" or specific Lab batch: "A1", "A2", "A3"
     
     teacher = relationship("TeacherProfile", back_populates="sessions")
     subject = relationship("Subject", back_populates="sessions")
@@ -107,7 +130,7 @@ class AttendanceLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("academic_sessions.id"))
     student_id = Column(Integer, ForeignKey("student_profiles.id"))
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=now_ist_naive)
     is_present = Column(Boolean, default=True)
     status_tag = Column(String, default="PRESENT")  # "PRESENT", "ABSENT", "DUTY_LEAVE", "MEDICAL"
     remarks = Column(String, nullable=True)
@@ -124,7 +147,7 @@ class AuditLog(Base):
     action = Column(String)
     ip_address = Column(String, nullable=True)
     device_info = Column(String, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=now_ist_naive)
     
     user = relationship("User")
 
@@ -140,7 +163,7 @@ class Grievance(Base):
     status = Column(String, default="Pending HOD Decision")
     document_url = Column(String, nullable=True)
     document_name = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_ist_naive)
 
     student = relationship("StudentProfile")
 
@@ -148,15 +171,18 @@ class ParentNotificationLog(Base):
     __tablename__ = "parent_notification_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    idempotency_key = Column(String, unique=True, index=True, nullable=True) # e.g. "student_12:2026-10-28:Defaulter Warning (<75%)"
     student_id = Column(Integer, ForeignKey("student_profiles.id"), nullable=True)
     student_roll = Column(String, nullable=True)
     student_name = Column(String, nullable=True)
     parent_phone = Column(String, nullable=True)
-    channel = Column(String, default="Email")  # "Email", "SMS" (WhatsApp removed — using Resend)
+    parent_email = Column(String, nullable=True)
+    recipient = Column(String, nullable=True)
+    channel = Column(String, default="Email")  # "Email", "SMS", "WhatsApp" 
     trigger_reason = Column(String)               # "3 Consecutive Missed Classes", "Defaulter Warning (<75%)"
     message_content = Column(String)
     status = Column(String, default="Delivered")  # "Delivered", "Sent", "Queued"
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=now_ist_naive)
 
     student = relationship("StudentProfile")
 
@@ -172,10 +198,12 @@ class Holiday(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     date = Column(String, index=True)  # YYYY-MM-DD
+    end_date = Column(String, nullable=True, index=True)  # YYYY-MM-DD (For multi-day Preparation Leave / Exam Breaks)
+    event_type = Column(String, default="HOLIDAY")  # HOLIDAY, PREPARATION_LEAVE, EXAM_PERIOD, SEMESTER_BREAK, EMERGENCY_CLOSURE
     department = Column(String, default="all")  # "all" or specific e.g. "Computer Science"
     description = Column(String, nullable=True)
     created_by = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_ist_naive)
 
 class ProxyAssignment(Base):
     __tablename__ = "proxy_assignments"
@@ -188,7 +216,7 @@ class ProxyAssignment(Base):
     reason = Column(String, nullable=True)
     status = Column(String, default="Active")
     assigned_by = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_ist_naive)
 
     original_teacher = relationship("TeacherProfile", foreign_keys=[original_teacher_id])
     proxy_teacher = relationship("TeacherProfile", foreign_keys=[proxy_teacher_id])
@@ -205,17 +233,46 @@ class TimetableSlot(Base):
     slot_index = Column(Integer, default=1)       # 1 to 8
     start_time = Column(String)                   # "09:00 AM"
     end_time = Column(String)                     # "10:00 AM"
+    duration_minutes = Column(Integer, default=60) # 50, 60, 100, 120, 180 (Lab blocks)
+    credit_weight = Column(Integer, default=1)    # 1 lecture unit, 2 or 3 for lab blocks
     subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
     custom_subject_name = Column(String, nullable=True)
     teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), nullable=True)
     custom_teacher_name = Column(String, nullable=True)
     room_number = Column(String, default="LH-101")
     session_type = Column(String, default="lecture") # lecture, practical, tutorial
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_ist_naive)
 
     subject = relationship("Subject")
     teacher = relationship("TeacherProfile")
 
+class DevicePushToken(Base):
+    __tablename__ = "device_push_tokens"
 
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    token = Column(String, unique=True, index=True) # e.g. "ExponentPushToken[...]"
+    platform = Column(String, default="expo")       # "expo", "web", "ios", "android"
+    device_name = Column(String, nullable=True)     # "iPhone 15", "Pixel 8", etc.
+    updated_at = Column(DateTime, default=now_ist_naive)
 
+    user = relationship("User")
+
+class Department(Base):
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True, nullable=False) # e.g. "CSE", "BBA", "MBBS", "MECH"
+    name = Column(String, unique=True, index=True, nullable=False) # e.g. "Computer Science & Engineering"
+    degree_type = Column(String, default="UG")                     # "UG", "PG", "Diploma", "Integrated", "Doctorate"
+    duration_years = Column(Integer, default=4)                    # e.g. 1 to 6
+    total_semesters = Column(Integer, default=8)                   # e.g. 2 to 12
+    sections = Column(String, default="A, B, C")                   # e.g. "A, B", "A, B, C, D" or custom
+    hod_name = Column(String, nullable=True)
+    hod_email = Column(String, nullable=True)
+    hod_phone = Column(String, nullable=True)
+    color = Column(String, default="from-emerald-500 to-teal-600")
+    rank = Column(String, default="Academic Faculty")
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=now_ist_naive)
 

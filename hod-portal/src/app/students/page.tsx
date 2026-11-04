@@ -161,7 +161,7 @@ export default function HODStudentRosterPage() {
         </header>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="rounded-3xl bg-white border border-stone-200/70 p-5 shadow-2xs space-y-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
               Enrolled In Class
@@ -354,7 +354,7 @@ export default function HODStudentRosterPage() {
 
                       <td className="py-3.5 px-6">
                         <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-800 font-semibold text-[11px]">
-                          Sem {s.semester} • Sec {s.section}
+                          Sem {s.semester} • Sec {s.section} • Batch {s.sub_batch || 'A1'}
                         </span>
                       </td>
 
@@ -392,27 +392,32 @@ export default function HODStudentRosterPage() {
                       </td>
 
                       <td className="py-3.5 px-6">
-                        <span
-                          className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                            s.is_defaulter
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                          }`}
-                        >
-                          {s.is_defaulter ? (
-                            <AlertTriangle className="h-3 w-3 text-rose-600" />
-                          ) : (
-                            <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                          )}
-                          <span>{s.is_defaulter ? 'Defaulter Risk' : 'Eligible'}</span>
-                        </span>
+                        <div className="flex flex-col space-y-1">
+                          <span
+                            className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                              s.is_defaulter
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                            }`}
+                          >
+                            {s.is_defaulter ? (
+                              <AlertTriangle className="h-3 w-3 text-rose-600" />
+                            ) : (
+                              <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                            )}
+                            <span>{s.standing || (s.is_defaulter ? 'Defaulter Risk' : 'Eligible')}</span>
+                          </span>
+                          <span className="text-[10px] text-stone-500 font-mono">
+                            IA: {s.ia_marks ?? (s.attendance_percentage >= 90 ? 5 : (s.attendance_percentage >= 75 ? 2 : 0))} / 5 Marks
+                          </span>
+                        </div>
                       </td>
 
-                      <td className="py-3.5 px-6 text-right">
-                        <div className="text-[11px] font-mono text-stone-600">{s.email}</div>
-                        {s.phone && s.phone !== 'N/A' && (
-                          <div className="text-[10px] text-stone-400">{s.phone}</div>
-                        )}
+                      <td className="py-3.5 px-6 text-right space-y-0.5">
+                        <div className="text-[11px] font-mono text-stone-700 font-medium">{s.email}</div>
+                        <div className="text-[10px] text-stone-500 font-mono">
+                          Parent: <span className="font-semibold text-stone-800">{s.parent_email || s.parent_contact || 'None'}</span>
+                        </div>
                       </td>
                     </tr>
                   ))}

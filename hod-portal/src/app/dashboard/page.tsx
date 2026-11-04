@@ -16,7 +16,7 @@ import {
   Calendar,
   BookOpen
 } from 'lucide-react';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 import AttendanceTrendsChart from '@/components/AttendanceTrendsChart';
 
@@ -29,8 +29,6 @@ interface StudentFeedItem {
   time: string;
 }
 
-
-
 const getClientGreeting = () => {
   const hour = new Date().getHours();
   if (hour >= 4 && hour < 12) return { greeting: 'Good morning', icon: '🌅' };
@@ -41,6 +39,9 @@ const getClientGreeting = () => {
 
 export default function HODDashboard() {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [departmentName, setDepartmentName] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || "Department Administration");
   const initialGreeting = getClientGreeting();
   const [greeting, setGreeting] = useState<string>(initialGreeting.greeting);
@@ -68,9 +69,12 @@ export default function HODDashboard() {
     return '';
   };
 
-  const fetchDepartmentData = async () => {
+  const fetchDepartmentData = async (isManualRetry = false) => {
     try {
+      if (isManualRetry) setRetrying(true);
       setLoading(true);
+      setFetchError(null);
+
       if (typeof window !== 'undefined') {
         const cached = localStorage.getItem('hod_name');
         if (cached) setHodName(cached);
@@ -80,8 +84,8 @@ export default function HODDashboard() {
 
       const activeBranch = getDeptBranch();
       const [resDept, resTelemetry] = await Promise.all([
-        authFetch(`${API_BASE_URL}/management/department/overview?branch=${encodeURIComponent(activeBranch)}`),
-        authFetch(`${API_BASE_URL}/management/telemetry/recent-scans?branch=${encodeURIComponent(activeBranch)}&limit=8`)
+        authFetchWithRetry(`${API_BASE_URL}/management/department/overview?branch=${encodeURIComponent(activeBranch)}`, {}, { maxRetries: 2, delayMs: 600 }),
+        authFetchWithRetry(`${API_BASE_URL}/management/telemetry/recent-scans?branch=${encodeURIComponent(activeBranch)}&limit=8`, {}, { maxRetries: 2, delayMs: 600 })
       ]);
 
       if (resDept.ok) {
@@ -106,6 +110,8 @@ export default function HODDashboard() {
         if (data.semesterStats && data.semesterStats.length > 0) {
           setSemesterStats(data.semesterStats);
         }
+      } else {
+        setFetchError('Department overview service returned an unexpected response.');
       }
 
       if (resTelemetry.ok) {
@@ -123,10 +129,13 @@ export default function HODDashboard() {
         }
       }
 
-    } catch (e) {
-      console.log("Using cached department metrics.");
+    } catch (e: any) {
+      console.log("Error synchronizing department metrics:", e);
+      setFetchError("Unable to connect to departmental telemetry service. Please retry.");
     } finally {
       setLoading(false);
+      setInitialLoading(false);
+      setRetrying(false);
     }
   };
 
@@ -212,7 +221,7 @@ export default function HODDashboard() {
 
         <div className="flex items-center space-x-2">
           <button 
-            onClick={fetchDepartmentData} 
+            onClick={() => fetchDepartmentData()} 
             className="p-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-600 transition shadow-2xs"
             title="Refresh Matrices"
           >
@@ -228,10 +237,36 @@ export default function HODDashboard() {
         </div>
       </div>
 
+      {/* ⚠️ Actionable Connection Recovery Banner */}
+      {fetchError && (
+        <div className="rounded-2xl bg-rose-50/90 border border-rose-200/90 p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="h-8 w-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-rose-900">Department Telemetry Connection Error</p>
+              <p className="text-[11px] text-rose-700">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchDepartmentData(true)}
+            disabled={retrying}
+            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-xs disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+            <span>{retrying ? 'Re-syncing...' : 'Retry Sync'}</span>
+          </button>
+        </div>
+      )}
+
       {/* 🔍 Inline Spotlight Quick-Search Trigger Pill */}
       <div 
         onClick={() => {
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('open-spotlight-search'));
+            window.dispatchEvent(new CustomEvent('open-spotlight'));
+          }
         }}
         className="w-full rounded-2xl bg-stone-50/90 hover:bg-white border border-stone-200/80 px-4 py-2.5 flex items-center justify-between cursor-pointer transition shadow-2xs group"
       >
@@ -244,13 +279,33 @@ export default function HODDashboard() {
         </kbd>
       </div>
 
-      {/* ⭕ Top Widgets Deck: Attendance Fitness-Ring + 4 Tinted Pastel Squircle Tiles */}
+      {initialLoading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4.5">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="rounded-3xl bg-white border border-stone-200/70 p-5 shadow-xs h-48 flex flex-col justify-between animate-pulse">
+                <div className="h-9 w-9 rounded-2xl bg-stone-100"></div>
+                <div className="space-y-2">
+                  <div className="h-7 w-24 bg-stone-200/80 rounded-lg"></div>
+                  <div className="h-3 w-16 bg-stone-100 rounded-md"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="h-72 rounded-3xl bg-white border border-stone-200/70 p-8 animate-pulse flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
+            <span className="text-xs font-semibold text-stone-500">Synchronizing Department Curriculum & Real-Time Scans...</span>
+          </div>
+        </div>
+      ) : (
+        <>
+      {/* ⭕ Top Widgets Deck: Overall Attendance + 4 Tinted Pastel Squircle Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4.5">
         
-        {/* Widget 1: Attendance Fitness-Ring Card */}
+        {/* Widget 1: Overall Attendance Card */}
         <div className="rounded-3xl bg-white border border-stone-200/80 p-5 shadow-xs flex flex-col justify-between items-center text-center relative overflow-hidden group">
           <div className="w-full flex justify-between items-center mb-1">
-            <span className="text-xs font-bold text-stone-800">Attendance fitness-ring</span>
+            <span className="text-xs font-bold text-stone-800">Overall Attendance</span>
             <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
           </div>
 
@@ -366,11 +421,11 @@ export default function HODDashboard() {
       <div className="rounded-3xl bg-white border border-stone-200/80 p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-stone-900">Student live-feed</h2>
-            <p className="text-[11px] text-stone-400">Live biometric recognition telemetry for {departmentName || 'academic'} batches</p>
+            <h2 className="text-sm font-bold text-stone-900">Recent Attendance Activity</h2>
+            <p className="text-[11px] text-stone-400">Recent student check-ins and attendance records for {departmentName || 'department'} classes</p>
           </div>
           <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200/60">
-            {departmentName || 'Dept'} Stream Active
+            {departmentName || 'Department'} • Active
           </span>
         </div>
 
@@ -378,7 +433,7 @@ export default function HODDashboard() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-stone-100 text-stone-400 font-semibold text-[11px]">
-                <th className="pb-3 pl-2">Indian Roll No. ↑</th>
+                <th className="pb-3 pl-2">Roll Number</th>
                 <th className="pb-3">Student Name</th>
                 <th className="pb-3 text-right pr-4">Status</th>
               </tr>
@@ -484,6 +539,8 @@ export default function HODDashboard() {
           <AttendanceTrendsChart />
         </div>
       </div>
+      </>
+      )}
 
     </AppleDeluxeShell>
   );

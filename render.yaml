@@ -1,11 +1,17 @@
+# ==============================================================================
+# Production Deployment Specification - Smart Attendance AI Backend
+# Cloud-native deployment manifest for Render Cloud & Container orchestration
+# ==============================================================================
+
 services:
   - type: web
     name: smart-attendance-api
     runtime: docker
     dockerfilePath: backend/Dockerfile
     dockerContext: backend
-    plan: free
+    plan: starter
     region: singapore
+    healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -15,3 +21,20 @@ services:
         value: 1440
       - key: PORT
         value: 8000
+      - key: ENVIRONMENT
+        value: production
+      # Production PostgreSQL: Supabase Pooled IPv4 Connection URL (or Render internal DB)
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DEFAULT_ADMIN_PASSWORD
+        sync: false
+      - key: DEFAULT_HOD_PASSWORD
+        sync: false
+      - key: DEFAULT_TEACHER_PASSWORD
+        sync: false
+      - key: DEFAULT_STUDENT_PASSWORD
+        sync: false

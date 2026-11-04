@@ -35,7 +35,7 @@ import {
   Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry, isNetworkError } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 interface DaySession {
@@ -79,6 +79,8 @@ interface SubjectItem {
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryingMetrics, setRetryingMetrics] = useState(false);
   const [activeTab, setActiveTab] = useState<'subject' | 'day' | 'recent'>('subject');
   const [simulatorDelta, setSimulatorDelta] = useState<number>(0);
 
@@ -91,6 +93,12 @@ export default function StudentDashboard() {
     academicYearLabel: '',
     stage: '',
     branch: '',
+    subBatch: 'A1',
+    mentorName: 'Faculty Mentor',
+    parentContact: 'None',
+    iaMarks: 0,
+    iaMax: 5,
+    standing: 'Safe Standing',
     photoThumbnail: '',
     overallAttendance: 0,
     eligibility: 'Loading status...',
@@ -108,12 +116,19 @@ export default function StudentDashboard() {
     recentLogs: [] as any[]
   });
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = async (isRetry = false) => {
     try {
-      setLoading(true);
-      const res = await authFetch(`${API_BASE_URL}/portal/metrics`);
+      if (isRetry) setRetryingMetrics(true);
+      else setLoading(true);
+
+      const res = await authFetchWithRetry(
+        `${API_BASE_URL}/portal/metrics`,
+        {},
+        { retries: 2, backoffMs: 350 }
+      );
 
       if (res.ok) {
+        setFetchError(null);
         const data = await res.json();
         if (data.profile && typeof window !== 'undefined') {
           if (data.profile.name) localStorage.setItem('student_name', data.profile.name);
@@ -139,6 +154,12 @@ export default function StudentDashboard() {
             stage: data.profile?.stage || prev.stage || 'Academic Batch',
             branch: data.profile?.branch || prev.branch || 'Engineering',
             photoThumbnail: data.profile?.photo_thumbnail || prev.photoThumbnail,
+            subBatch: data.profile?.sub_batch || prev.subBatch || 'A1',
+            mentorName: data.profile?.mentor_name || prev.mentorName || 'Faculty Mentor',
+            parentContact: data.profile?.parent_contact || prev.parentContact || 'None',
+            iaMarks: Number(data.metrics?.ia_marks ?? 0),
+            iaMax: Number(data.metrics?.ia_max ?? 5),
+            standing: data.metrics?.standing || 'Safe Standing',
             overallAttendance: Number(data.metrics.overall_percentage) || 0,
             totalClasses: Number(data.metrics.total_classes) || 0,
             attendedClasses: Number(data.metrics.attended_classes) || 0,
@@ -150,32 +171,45 @@ export default function StudentDashboard() {
             recentLogs: data.recent_logs || []
           }));
         }
+      } else {
+        setFetchError(`Campus portal responded with HTTP ${res.status}. Data could not be synchronized.`);
       }
-    } catch {
-      console.log("Using cached/preview attendance data.");
+    } catch (err: any) {
+      console.warn("Metrics fetch error:", err);
+      setFetchError(isNetworkError(err) ? "Campus network timeout. Unable to reach attendance gateway." : "Failed to load attendance metrics.");
     } finally {
       setLoading(false);
+      setRetryingMetrics(false);
     }
   };
 
   // 📅 Timetable & Gemini AI Advisor States
   const [todaySchedule, setTodaySchedule] = useState<any[]>([]);
   const [scheduleDay, setScheduleDay] = useState<string>('Today');
+  const [todayHoliday, setTodayHoliday] = useState<any>(null);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+
   const [aiAdvisor, setAiAdvisor] = useState<any>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+  const [aiAdvisorError, setAiAdvisorError] = useState<string | null>(null);
 
   const fetchTodaySchedule = async () => {
     try {
       setLoadingSchedule(true);
-      const res = await authFetch(`${API_BASE_URL}/timetable/today`);
+      setScheduleError(null);
+      const res = await authFetchWithRetry(`${API_BASE_URL}/timetable/today`, {}, { retries: 2, backoffMs: 300 });
       if (res && res.ok) {
         const data = await res.json();
         setTodaySchedule(data.slots || []);
         setScheduleDay(data.day_of_week || 'Today');
+        setTodayHoliday(data.is_holiday ? data.holiday : null);
+      } else {
+        setScheduleError('Timetable not available for current batch.');
       }
-    } catch (e) {
-      console.error('Error fetching today schedule:', e);
+    } catch (e: any) {
+      console.warn('Error fetching today schedule:', e);
+      setScheduleError('Network error while loading today’s schedule.');
     } finally {
       setLoadingSchedule(false);
     }
@@ -184,16 +218,28 @@ export default function StudentDashboard() {
   const fetchAiAdvisor = async () => {
     try {
       setLoadingAi(true);
-      const res = await authFetch(`${API_BASE_URL}/timetable/ai-advisor`);
+      setAiAdvisorError(null);
+      const res = await authFetchWithRetry(`${API_BASE_URL}/timetable/ai-advisor`, {}, { retries: 2, backoffMs: 300 });
       if (res && res.ok) {
         const data = await res.json();
         setAiAdvisor(data.ai_advisory);
+      } else {
+        setAiAdvisorError('AI advisory server returned non-200 response.');
       }
-    } catch (e) {
-      console.error('Error fetching AI advisor:', e);
+    } catch (e: any) {
+      console.warn('Error fetching AI advisor:', e);
+      setAiAdvisorError('Could not reach Gemini advisor engine.');
     } finally {
       setLoadingAi(false);
     }
+  };
+
+  const handleRetryAll = async () => {
+    await Promise.allSettled([
+      fetchMetrics(true),
+      fetchTodaySchedule(),
+      fetchAiAdvisor()
+    ]);
   };
 
   useEffect(() => {
@@ -270,11 +316,62 @@ export default function StudentDashboard() {
     <AppleDeluxeShell 
       studentName={studentData.name} 
       rollNumber={studentData.roll}
-      semester={`Sem ${studentData.semester} • Sec ${studentData.section} • ${studentData.branch}`}
+      semester={`Sem ${studentData.semester} • Sec ${studentData.section} • Batch ${studentData.subBatch || 'A1'} • ${studentData.branch}`}
       studentAvatar={studentData.photoThumbnail || undefined}
     >
       <div className="w-full space-y-6">
-        
+
+        {/* ⚠️ Network / Server Connection Error Notice with Retry */}
+        {fetchError && (
+          <div className="rounded-[24px] bg-rose-50/90 border border-rose-200/90 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-rose-900">Attendance Data Synchronization Error</h4>
+                <p className="text-xs text-rose-700 font-medium mt-0.5">{fetchError}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRetryAll}
+              disabled={retryingMetrics}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition flex items-center space-x-2 shrink-0 self-end sm:self-auto cursor-pointer"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${retryingMetrics ? 'animate-spin' : ''}`} />
+              <span>{retryingMetrics ? 'Reconnecting...' : 'Retry Connection'}</span>
+            </button>
+          </div>
+        )}
+
+        {/* ⏳ Apple Deluxe Skeleton Loading State */}
+        {loading && !studentData.name && studentData.totalClasses === 0 ? (
+          <div className="w-full space-y-6 animate-pulse">
+            <div className="h-24 rounded-[26px] bg-stone-200/70" />
+            <div className="h-44 rounded-[28px] bg-stone-100 border border-stone-200/60 p-5 space-y-3">
+              <div className="h-4 w-48 bg-stone-200 rounded-md" />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2">
+                <div className="h-24 bg-stone-200/60 rounded-2xl" />
+                <div className="h-24 bg-stone-200/60 rounded-2xl" />
+                <div className="h-24 bg-stone-200/60 rounded-2xl" />
+                <div className="h-24 bg-stone-200/60 rounded-2xl" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="md:col-span-5 h-64 bg-stone-100 border border-stone-200/60 rounded-[28px] p-6 space-y-4">
+                <div className="h-4 w-32 bg-stone-200 rounded-md" />
+                <div className="h-32 w-32 rounded-full bg-stone-200/80 mx-auto" />
+              </div>
+              <div className="md:col-span-7 grid grid-cols-2 gap-3">
+                <div className="h-30 bg-stone-100 rounded-2xl border border-stone-200/60" />
+                <div className="h-30 bg-stone-100 rounded-2xl border border-stone-200/60" />
+                <div className="h-30 bg-stone-100 rounded-2xl border border-stone-200/60" />
+                <div className="h-30 bg-stone-100 rounded-2xl border border-stone-200/60" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* ⚡ Dynamic Anti-Proxy QR Scanner Quick Check-in Banner */}
         <div className="rounded-[26px] bg-gradient-to-r from-stone-900 via-stone-850 to-stone-900 text-white p-5 sm:p-6 border border-stone-850 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
@@ -332,10 +429,38 @@ export default function StudentDashboard() {
             </button>
           </div>
 
-          {loadingSchedule && todaySchedule.length === 0 ? (
+          {todayHoliday ? (
+            <div className="py-6 px-5 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200/90 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left shadow-2xs">
+              <div className="h-12 w-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200 shadow-sm">
+                <Sparkles className="h-6 w-6 text-amber-600 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-center sm:justify-start space-x-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/60 px-2.5 py-0.5 rounded-full border border-amber-300/50">
+                    Official College Holiday
+                  </span>
+                  <span className="text-xs text-amber-900 font-mono font-bold">{todayHoliday.date}</span>
+                </div>
+                <h4 className="text-sm font-extrabold text-stone-900">{todayHoliday.title}</h4>
+                <p className="text-xs text-stone-600">{todayHoliday.description || 'Classes suspended across all departments.'}</p>
+              </div>
+            </div>
+          ) : loadingSchedule && todaySchedule.length === 0 ? (
             <div className="py-6 text-center text-xs text-stone-400 flex items-center justify-center space-x-2">
               <RefreshCw className="h-4 w-4 animate-spin text-stone-500" />
               <span>Fetching departmental timetable...</span>
+            </div>
+          ) : scheduleError && todaySchedule.length === 0 ? (
+            <div className="py-5 px-4 text-center text-xs text-amber-800 bg-amber-50/70 rounded-2xl border border-amber-200/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <span className="font-medium">{scheduleError}</span>
+              <button
+                onClick={fetchTodaySchedule}
+                disabled={loadingSchedule}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition flex items-center space-x-1.5 cursor-pointer shrink-0"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingSchedule ? 'animate-spin' : ''}`} />
+                <span>Retry Timetable</span>
+              </button>
             </div>
           ) : todaySchedule.length === 0 ? (
             <div className="py-6 text-center text-xs text-stone-400 bg-stone-50/60 rounded-2xl border border-stone-100">
@@ -409,20 +534,25 @@ export default function StudentDashboard() {
         {/* 🏆 Top Section: Apple Fitness-Ring Card + 4 Colourful Pastel Squircles (Exact Reference Match) */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
           
-          {/* Left Column: Attendance Fitness-Ring Card (md:col-span-5) */}
+          {/* Left Column: Overall Attendance Card (md:col-span-5) */}
           <div className="md:col-span-5 rounded-[28px] bg-white p-5 sm:p-6 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col justify-between transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
                   Biometric Attendance
                 </span>
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                  isAboveThreshold 
-                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
-                    : 'text-rose-700 bg-rose-50 border-rose-200'
-                }`}>
-                  {isAboveThreshold ? 'Safe Standing' : 'Debarment Risk'}
-                </span>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    IA: {studentData.iaMarks}/{studentData.iaMax} M
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    isAboveThreshold 
+                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                      : 'text-rose-700 bg-rose-50 border-rose-200'
+                  }`}>
+                    {studentData.standing || (isAboveThreshold ? 'Safe Standing' : 'Debarment Risk')}
+                  </span>
+                </div>
               </div>
 
               {/* Fitness Ring Gauge & Percentage Display */}
@@ -490,7 +620,7 @@ export default function StudentDashboard() {
             <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-xs">
               <span className="text-stone-400 text-[11px]">{nextSubjectText}</span>
               <button 
-                onClick={fetchMetrics}
+                onClick={() => fetchMetrics()}
                 className="inline-flex items-center space-x-1 text-blue-600 font-bold hover:text-blue-800 transition"
               >
                 <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
@@ -541,7 +671,7 @@ export default function StudentDashboard() {
                 </span>
               </div>
               <div className="pt-2 border-t border-blue-200/50 flex items-center justify-between text-[11px]">
-                <span className="text-blue-700 font-semibold">Semester Schedule</span>
+                <span className="text-blue-700 font-semibold">Batch {studentData.subBatch || 'A1'} • Schedule</span>
                 <span className="font-mono text-blue-900 font-bold truncate max-w-[120px]">{studentData.branch || 'Academic Dept'}</span>
               </div>
             </div>
@@ -646,7 +776,7 @@ export default function StudentDashboard() {
             {loadingAi && !aiAdvisor ? (
               <div className="py-8 text-center text-xs text-stone-400 flex flex-col items-center justify-center space-y-2">
                 <Sparkles className="h-6 w-6 animate-spin text-purple-500" />
-                <span>Consulting Gemini AI with your academic telemetry...</span>
+                <span>Analyzing your attendance standing and schedule...</span>
               </div>
             ) : aiAdvisor ? (
               <div className="space-y-4">
@@ -713,7 +843,19 @@ export default function StudentDashboard() {
                   </Link>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="py-5 px-4 text-center text-xs text-purple-900 bg-purple-50/60 rounded-2xl border border-purple-200/70 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <span className="font-medium">{aiAdvisorError || 'AI Advisory could not be refreshed.'}</span>
+                <button
+                  onClick={fetchAiAdvisor}
+                  disabled={loadingAi}
+                  className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-2xs transition flex items-center space-x-1.5 cursor-pointer shrink-0"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingAi ? 'animate-spin' : ''}`} />
+                  <span>Retry AI Advice</span>
+                </button>
+              </div>
+            )}
 
           </div>
         </div>
@@ -1145,6 +1287,8 @@ export default function StudentDashboard() {
             </table>
           </div>
         </div>
+        </>
+        )}
 
       </div>
 

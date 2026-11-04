@@ -15,6 +15,7 @@ taskkill /F /IM ngrok.exe >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Backend API (8000)*" >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Ngrok Cloud Tunnel (8000)*" >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Teacher Mobile App (Expo QR)*" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Mobile App (Expo QR)*" >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Web & Teacher (3000)*" >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Admin Portal (3001)*" >nul 2>&1
 taskkill /F /FI "WINDOWTITLE eq Smart Attendance - Student Portal (3002)*" >nul 2>&1

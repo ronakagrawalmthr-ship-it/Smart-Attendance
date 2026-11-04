@@ -138,7 +138,7 @@ export default function CollegeAnalyticsCharts({
             </div>
             <h3 className="text-base font-bold text-stone-900">Institutional Analytics</h3>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-              Live Database Connected
+              Real-Time Sync Active
             </span>
           </div>
           <p className="text-xs text-stone-500 mt-1">

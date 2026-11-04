@@ -1,15 +1,24 @@
+import secrets
+import time
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request, Query
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dt_time
 import json
 
 try:
     from .. import models, schemas, database, security
-    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
+    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness, read_and_validate_image_upload
     from ..sort_utils import natural_sort_key
+    from ..time_utils import now_ist_naive, today_ist_str, format_time_ist, today_ist_date
+    from ..academic_config import resolve_program_meta, get_all_supported_programs, get_program_total_semesters
 except (ImportError, ValueError):
     import models, schemas, database, security
-    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness
+    from services.biometrics import compare_group_faces, compare_group_faces_with_scores, verify_liveness, read_and_validate_image_upload
+    try:
+        from academic_config import resolve_program_meta, get_all_supported_programs, get_program_total_semesters
+    except (ImportError, ValueError):
+        pass
     try:
         from sort_utils import natural_sort_key
     except (ImportError, ValueError):
@@ -27,6 +36,25 @@ except (ImportError, ValueError):
                 else:
                     key.append((1, chunk.lower()))
             return key
+    try:
+        from time_utils import now_ist_naive, today_ist_str, format_time_ist, today_ist_date
+    except (ImportError, ValueError):
+        from datetime import timezone, timedelta
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
+        def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
+        def today_ist_date(): return datetime.now(_IST).date()
+        def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
+try:
+    from ..services.websocket_manager import ws_manager
+    from ..services.push_notification_service import notify_user_id
+except (ImportError, ValueError):
+    try:
+        from services.push_notification_service import notify_user_id
+    except (ImportError, ValueError):
+        from backend.services.websocket_manager import ws_manager
+        from backend.services.push_notification_service import notify_user_id
+
 from typing import Optional, List, Dict, Any
 from jose import jwt, JWTError
 try:
@@ -34,6 +62,20 @@ try:
 except (ImportError, ValueError):
     import security
 from .auth import get_current_user
+
+def safe_dispatch_ws_task(coro):
+    """Schedules a WebSocket broadcast background coroutine with safe error boundary."""
+    import asyncio
+    task = asyncio.create_task(coro)
+    def _done_handler(t):
+        try:
+            t.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+    task.add_done_callback(_done_handler)
+    return task
 
 def get_current_user_optional(request: Request, db: Session = Depends(database.get_db)) -> Optional[models.User]:
     auth_header = request.headers.get("Authorization")
@@ -54,6 +96,55 @@ router = APIRouter(
     tags=["Teacher Mobile Kiosk"]
 )
 
+def get_client_ip(request: Request) -> Optional[str]:
+    if not request:
+        return None
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else None
+
+
+def get_or_create_session_from_slot(
+    session_id: int,
+    db: Session,
+    current_user: Optional[models.User] = None
+) -> Optional[models.AcademicSession]:
+    """
+    Canonical helper for resolving live academic session or initializing it from a timetable slot.
+    Eliminates duplicated queries and ensures consistent error handling.
+    """
+    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    if session:
+        return session
+    slot = db.query(models.TimetableSlot).filter(models.TimetableSlot.id == session_id).first()
+    if slot:
+        today_start = datetime.combine(today_ist_date(), dt_time.min)
+        session = db.query(models.AcademicSession).filter(
+            models.AcademicSession.subject_id == slot.subject_id,
+            models.AcademicSession.section == slot.section,
+            models.AcademicSession.branch == slot.branch,
+            models.AcademicSession.start_time >= today_start
+        ).first()
+        if not session:
+            teacher_prof_id = slot.teacher_id or (current_user.teacher_profile.id if (current_user and getattr(current_user, 'teacher_profile', None)) else None)
+            session = models.AcademicSession(
+                teacher_id=teacher_prof_id,
+                subject_id=slot.subject_id,
+                branch=slot.branch,
+                semester=slot.semester,
+                section=slot.section,
+                start_time=now_ist_naive()
+            )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+    return session
+
+
 @router.post("/scan/{session_id}")
 async def process_classroom_scan(
     session_id: int,
@@ -71,17 +162,16 @@ async def process_classroom_scan(
         raise HTTPException(status_code=403, detail="Only teachers can perform classroom scans.")
         
     # Verify the session exists and belongs to the teacher or an authorized proxy teacher
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
         
-    is_owner = session.teacher.user_id == current_user.id
+    is_owner = bool(session.teacher and session.teacher.user_id == current_user.id)
     is_proxy = False
-    if not is_owner and current_user.teacher_profile:
-        from datetime import datetime
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    if not is_owner and current_user and getattr(current_user, 'teacher_profile', None):
+        today_str = today_ist_str()
         proxy_exists = db.query(models.ProxyAssignment).filter(
-            models.ProxyAssignment.proxy_teacher_id == current_user.teacher_profile.id,
+            models.ProxyAssignment.proxy_teacher_id == getattr(current_user, 'teacher_profile', None).id,
             models.ProxyAssignment.subject_id == session.subject_id,
             models.ProxyAssignment.date == today_str,
             models.ProxyAssignment.status == "Active"
@@ -106,15 +196,17 @@ async def process_classroom_scan(
         if student.face_encoding:
             try:
                 # Deserialize the JSON string to a list of floats
-                vector = json.loads(student.face_encoding)
-                known_vectors[student.roll_number] = vector
+                raw_json = security.decrypt_biometric_vector(student.face_encoding)
+                if raw_json:
+                    vector = json.loads(raw_json)
+                    known_vectors[student.roll_number] = vector
             except Exception:
                 pass
                 
     if not known_vectors:
         return {"message": "No registered biometric profiles found for this class.", "present": []}
 
-    image_bytes = await image.read()
+    image_bytes = await read_and_validate_image_upload(image)
     
     # Process the group scan — returns {roll_number: confidence_pct}
     matched_scores = compare_group_faces_with_scores(image_bytes, known_vectors)
@@ -153,7 +245,7 @@ async def process_classroom_scan(
     audit = models.AuditLog(
         user_id=current_user.id,
         action=f"Submitted attendance scan for session {session_id}. {len(present_roll_numbers)} marked present.",
-        ip_address=request.client.host,
+        ip_address=get_client_ip(request),
         device_info=request.headers.get("user-agent")
     )
     db.add(audit)
@@ -180,30 +272,14 @@ async def verify_single_student_walkup(
     if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Faculty authorization required for classroom biometric verification.")
 
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if not session:
-        # If session does not exist, check if session_id is a subject ID or temporary ID
-        sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
-        branch = (sub.branch if sub else None) or (current_user.teacher_profile.department if current_user.teacher_profile else None) or "Academic Department"
-        semester = (sub.semester if sub else None) or 1
-        conductor = current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title()
-        now = datetime.utcnow()
-        session = models.AcademicSession(
-            teacher_id=current_user.teacher_profile.id if current_user.teacher_profile else None,
-            subject_id=sub.id if sub else None,
-            session_type=models.SessionType.lecture,
-            start_time=now,
-            end_time=now + timedelta(hours=1),
-            branch=branch,
-            semester=semester,
-            section="A",
-            conducted_by_name=conductor
+        raise HTTPException(
+            status_code=404,
+            detail=f"Academic session {session_id} not found. Please select or launch a valid active classroom session."
         )
-        db.add(session)
-        db.commit()
-        db.refresh(session)
 
-    image_bytes = await image.read()
+    image_bytes = await read_and_validate_image_upload(image)
 
     # 1. Anti-Spoofing Liveness Verification
     liveness_result = verify_liveness(image_bytes)
@@ -224,7 +300,9 @@ async def verify_single_student_walkup(
     for student in students:
         if student.face_encoding:
             try:
-                known_vectors[student.roll_number] = json.loads(student.face_encoding)
+                raw_json = security.decrypt_biometric_vector(student.face_encoding)
+                if raw_json:
+                    known_vectors[student.roll_number] = json.loads(raw_json)
                 student_map[student.roll_number] = student
             except Exception:
                 pass
@@ -256,10 +334,33 @@ async def verify_single_student_walkup(
             student_id=matched_student.id,
             is_present=True,
             status_tag="PRESENT",
-            timestamp=datetime.utcnow()
+            timestamp=now_ist_naive()
         )
         db.add(log)
         db.commit()
+
+        # Real-Time WebSocket Roster Broadcast
+        try:
+            present_count = db.query(models.AttendanceLog).filter(
+                models.AttendanceLog.session_id == target_session_id,
+                models.AttendanceLog.is_present == True
+            ).count()
+            import asyncio
+            safe_dispatch_ws_task(ws_manager.broadcast_to_session(
+                session_id=target_session_id,
+                event_type="STUDENT_CHECKED_IN",
+                data={
+                    "student_id": matched_student.id,
+                    "roll_number": matched_student.roll_number,
+                    "name": matched_student.full_name,
+                    "status_tag": "FACE_RECOGNIZED",
+                    "confidence": liveness_result.get("score"),
+                    "marked_at": format_time_ist(),
+                    "present_count": present_count
+                }
+            ))
+        except Exception:
+            pass
 
     return {
         "success": True,
@@ -285,87 +386,95 @@ def resolve_student_id(s: dict, db: Session):
     return None
 
 @router.get("/departments-meta")
-def get_departments_meta(db: Session = Depends(database.get_db)):
+def get_departments_meta(
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
     """
-    Returns available branches/departments, semesters, sections, subjects, and teachers
-    for dynamic classroom setup by any faculty member or guest lecturer.
+    Returns available branches/departments, semesters, sections, subjects, and teachers.
+    Protects faculty directory: internal teachers roster is only returned to authenticated users.
     """
-    all_branches = set()
-    for row in db.query(models.StudentProfile.branch).distinct().all():
-        if row[0] and row[0].strip():
-            all_branches.add(row[0].strip())
-    for row in db.query(models.TeacherProfile.department).distinct().all():
-        if row[0] and row[0].strip():
-            all_branches.add(row[0].strip())
-    for row in db.query(models.Subject.branch).distinct().all():
-        if row[0] and row[0].strip():
-            all_branches.add(row[0].strip())
-    for row in db.query(models.TimetableSlot.branch).distinct().all():
-        if row[0] and row[0].strip():
-            all_branches.add(row[0].strip())
+    # Batch fetch all active branches via a single UNION query
+    q1 = db.query(models.StudentProfile.branch).filter(models.StudentProfile.branch.isnot(None)).distinct()
+    q2 = db.query(models.TeacherProfile.department).filter(models.TeacherProfile.department.isnot(None)).distinct()
+    q3 = db.query(models.Subject.branch).filter(models.Subject.branch.isnot(None)).distinct()
+    q4 = db.query(models.TimetableSlot.branch).filter(models.TimetableSlot.branch.isnot(None)).distinct()
+    try:
+        q5 = db.query(models.Department.name).filter(models.Department.name.isnot(None)).distinct()
+        all_branch_rows = q1.union(q2, q3, q4, q5).all()
+    except Exception:
+        all_branch_rows = q1.union(q2, q3, q4).all()
+    all_branches = {r[0].strip() for r in all_branch_rows if r[0] and r[0].strip()}
 
-    # If database has no branch entries yet, offer standard institutional engineering departments
-    if not all_branches:
-        all_branches = {
-            "Civil Engineering",
-            "Computer Science & Engineering",
-            "Electrical Engineering",
-            "Electronics & Communication",
-            "Information Technology",
-            "Mechanical Engineering"
-        }
-
+    # Zero Mock Policy: Real database records only. No hardcoded fallback departments.
     branches = sorted(list(all_branches))
 
     # Dynamic Semesters
-    db_semesters = set()
-    for row in db.query(models.StudentProfile.semester).distinct().all():
-        if row[0] and isinstance(row[0], int) and row[0] > 0:
-            db_semesters.add(row[0])
-    for row in db.query(models.Subject.semester).distinct().all():
-        if row[0] and isinstance(row[0], int) and row[0] > 0:
-            db_semesters.add(row[0])
-    for row in db.query(models.TimetableSlot.semester).distinct().all():
-        if row[0] and isinstance(row[0], int) and row[0] > 0:
-            db_semesters.add(row[0])
-    semesters = sorted(list(db_semesters.union({1, 2, 3, 4, 5, 6, 7, 8})))
+    s1 = db.query(models.StudentProfile.semester).filter(models.StudentProfile.semester.isnot(None)).distinct()
+    s2 = db.query(models.Subject.semester).filter(models.Subject.semester.isnot(None)).distinct()
+    s3 = db.query(models.TimetableSlot.semester).filter(models.TimetableSlot.semester.isnot(None)).distinct()
+    db_semesters = {r[0] for r in s1.union(s2, s3).all() if r[0] and isinstance(r[0], int) and r[0] > 0}
+    # Dynamic Program Duration Resolution per Branch (BBA: 6 sems, MBBS: 10 sems, BTech: 8 sems, MBA: 4 sems)
+    branch_programs = {}
+    max_active_sem = 8
+    for b in branches:
+        try:
+            prog_meta = resolve_program_meta(b, db=db)
+            branch_programs[b] = prog_meta
+            if prog_meta.get("total_semesters", 8) > max_active_sem:
+                max_active_sem = prog_meta["total_semesters"]
+        except Exception:
+            pass
+
+    semesters = sorted(list(db_semesters.union(set(range(1, max_active_sem + 1)))))
 
     # Dynamic Sections
-    db_sections = set()
-    for row in db.query(models.StudentProfile.section).distinct().all():
-        if row[0] and row[0].strip():
-            db_sections.add(row[0].strip().upper())
-    for row in db.query(models.TimetableSlot.section).distinct().all():
-        if row[0] and row[0].strip():
-            db_sections.add(row[0].strip().upper())
-    sections = sorted(list(db_sections.union({"A", "B", "C"})))
+    sec1 = db.query(models.StudentProfile.section).filter(models.StudentProfile.section.isnot(None)).distinct()
+    sec2 = db.query(models.TimetableSlot.section).filter(models.TimetableSlot.section.isnot(None)).distinct()
+    db_sections = {r[0].strip().upper() for r in sec1.union(sec2).all() if r[0] and r[0].strip()}
+    try:
+        for row in db.query(models.Department.sections).all():
+            if row[0] and row[0].strip():
+                for s in row[0].split(","):
+                    if s.strip():
+                        db_sections.add(s.strip().upper())
+    except Exception:
+        pass
+    sections = sorted(list(db_sections)) if db_sections else ["A", "B", "C"]
 
-    subjects_db = db.query(models.Subject).all()
-    subjects = [
-        {
-            "id": s.id,
-            "code": s.code,
-            "name": s.name,
-            "branch": s.branch,
-            "semester": s.semester
-        }
-        for s in subjects_db
-    ]
+    # Only provide internal subjects and teacher faculty profiles if authenticated
+    subjects = []
+    teachers = []
+    if current_user:
+        subjects_db = db.query(models.Subject).all()
+        subjects = [
+            {
+                "id": s.id,
+                "code": s.code,
+                "name": s.name,
+                "branch": s.branch,
+                "semester": s.semester
+            }
+            for s in subjects_db
+        ]
 
-    teachers_db = db.query(models.TeacherProfile).all()
-    teachers = [
-        {
-            "id": t.id,
-            "name": t.full_name,
-            "department": t.department
-        }
-        for t in teachers_db
-    ]
+        teachers_db = db.query(models.TeacherProfile).all()
+        teachers = [
+            {
+                "id": t.id,
+                "name": t.full_name,
+                "department": t.department
+            }
+            for t in teachers_db
+        ]
 
     return {
         "branches": branches,
         "semesters": semesters,
         "sections": sections,
+        "branch_programs": branch_programs,
+        "supported_catalog": get_all_supported_programs(),
         "subjects": subjects,
         "teachers": teachers
     }
@@ -375,12 +484,13 @@ def get_class_students(
     branch: Optional[str] = Query(None),
     semester: int = None,
     section: str = None,
+    sub_batch: Optional[str] = Query(None),
     request: Request = None,
     db: Session = Depends(database.get_db)
 ):
     """
-    Returns student roster for the selected class/section for attendance marking.
-    Protects private contact numbers: phone numbers are masked unless caller is authenticated.
+    Returns student roster for the selected class/section/sub-batch for attendance marking.
+    Supports lab/practical sub-batch partitioning (A1, A2, A3) and graceful 'None' contact handling.
     """
     is_authenticated = False
     if request:
@@ -401,6 +511,8 @@ def get_class_students(
         query = query.filter(models.StudentProfile.semester == semester)
     if section and section != "all":
         query = query.filter(models.StudentProfile.section == section)
+    if sub_batch and sub_batch != "all" and sub_batch != "All":
+        query = query.filter(models.StudentProfile.sub_batch.ilike(sub_batch.strip()))
 
     students_db = query.order_by(models.StudentProfile.roll_number.asc()).all()
     students = sorted(students_db, key=lambda s: natural_sort_key(s.roll_number))
@@ -408,6 +520,7 @@ def get_class_students(
         "branch": branch,
         "semester": semester,
         "section": section,
+        "sub_batch": sub_batch or "All",
         "count": len(students),
         "students": [
             {
@@ -417,7 +530,12 @@ def get_class_students(
                 "branch": s.branch,
                 "semester": s.semester,
                 "section": s.section or "A",
-                "phone": s.phone if is_authenticated else (f"******{s.phone[-4:]}" if s.phone and len(s.phone) >= 4 else None),
+                "sub_batch": s.sub_batch or "A1",
+                "mentor_name": s.mentor_name or "Faculty Mentor",
+                "phone": (s.phone if is_authenticated else (f"******{s.phone[-4:]}" if s.phone and len(s.phone) >= 4 else "None")) or "None",
+                "emergency_contact": s.emergency_contact or "None",
+                "parent_email": s.parent_email or "None",
+                "parent_contact": s.emergency_contact or s.phone or s.parent_email or "None",
                 "has_face": bool(s.face_encoding)
             }
             for s in students
@@ -438,7 +556,7 @@ def create_session_and_submit_attendance(
     if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Faculty authorization required to submit attendance records.")
 
-    teacher_dept = current_user.teacher_profile.department if current_user.teacher_profile else None
+    teacher_dept = current_user.teacher_profile.department if (current_user and getattr(current_user, 'teacher_profile', None)) else None
     branch = payload.get("branch") or teacher_dept or "Academic Department"
     semester = payload.get("semester") or 1
     section = payload.get("section", "A")
@@ -467,17 +585,28 @@ def create_session_and_submit_attendance(
     if resolved_session_type == models.SessionType.guest_lecture and not custom_subject_name:
         custom_subject_name = "Special Guest Lecture"
 
-    # Create AcademicSession
-    now = datetime.utcnow()
+    # Create AcademicSession with flexible duration and lab credit weight
+    now = now_ist_naive()
+    raw_duration = payload.get("duration_minutes") or (120 if resolved_session_type == models.SessionType.practical else 60)
+    duration_mins = int(raw_duration)
+    raw_credit = payload.get("credit_weight") or (
+        3 if resolved_session_type == models.SessionType.practical and duration_mins >= 180 else
+        2 if resolved_session_type == models.SessionType.practical and duration_mins >= 100 else 1
+    )
+    credit_weight = int(raw_credit)
+
     new_session = models.AcademicSession(
         teacher_id=teacher_prof.id if teacher_prof else None,
         subject_id=subject_id if (resolved_session_type != models.SessionType.guest_lecture or subject_id) else None,
         session_type=resolved_session_type,
         start_time=now,
-        end_time=now + timedelta(hours=1),
+        end_time=now + timedelta(minutes=duration_mins),
+        duration_minutes=duration_mins,
+        credit_weight=credit_weight,
         branch=branch,
         semester=int(semester) if semester else 1,
         section=section,
+        sub_batch=payload.get("sub_batch") or "All",
         conducted_by_name=conductor_final,
         custom_subject_name=custom_subject_name,
         notes=notes
@@ -560,7 +689,7 @@ def create_session_and_submit_attendance(
         ))
 
     # Audit Log
-    client_host = request.client.host if request.client else "127.0.0.1"
+    client_host = get_client_ip(request)
     audit_action = f"Lecture conducted by '{conductor_final}' for {branch} Sem-{semester} Sec-{section}. Subject: '{custom_subject_name or 'Regular'}'. Present: {present_count}, Absent: {absent_count}."
     db.add(models.AuditLog(
         user_id=teacher_prof.user_id if teacher_prof else 1,
@@ -600,7 +729,7 @@ def submit_final_attendance(
     teacher_user = current_user
 
     # Update session metadata if provided, or initialize new session
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if session:
         if payload.get("conducted_by_name"):
             session.conducted_by_name = payload["conducted_by_name"].strip()
@@ -617,11 +746,11 @@ def submit_final_attendance(
                 pass
     else:
         sub = db.query(models.Subject).filter(models.Subject.id == session_id).first()
-        teacher_dept = current_user.teacher_profile.department if current_user.teacher_profile else None
+        teacher_dept = current_user.teacher_profile.department if (current_user and getattr(current_user, 'teacher_profile', None)) else None
         branch = payload.get("branch") or (sub.branch if sub else None) or teacher_dept or "Academic Department"
         semester = int(payload.get("semester") or (sub.semester if sub else 1))
         section = payload.get("section") or "A"
-        conductor = (payload.get("conducted_by_name") or (current_user.teacher_profile.full_name if current_user.teacher_profile else current_user.email.split("@")[0].title())).strip()
+        conductor = (payload.get("conducted_by_name") or (current_user.teacher_profile.full_name if (current_user and getattr(current_user, "teacher_profile", None)) else (current_user.email.split("@")[0].title() if current_user else "Designated Faculty"))).strip()
         custom_sub = payload.get("custom_subject_name") or (sub.name if sub else None)
         sess_type_str = payload.get("session_type", "lecture")
         try:
@@ -629,13 +758,23 @@ def submit_final_attendance(
         except Exception:
             sess_type = models.SessionType.lecture
         
-        now = datetime.utcnow()
+        now = now_ist_naive()
+        raw_duration = payload.get("duration_minutes") or (120 if sess_type == models.SessionType.practical else 60)
+        duration_mins = int(raw_duration)
+        raw_credit = payload.get("credit_weight") or (
+            3 if sess_type == models.SessionType.practical and duration_mins >= 180 else
+            2 if sess_type == models.SessionType.practical and duration_mins >= 100 else 1
+        )
+        credit_weight = int(raw_credit)
+
         session = models.AcademicSession(
             teacher_id=current_user.teacher_profile.id if current_user.teacher_profile else None,
             subject_id=sub.id if sub else None,
             session_type=sess_type,
             start_time=now,
-            end_time=now + timedelta(hours=1),
+            end_time=now + timedelta(minutes=duration_mins),
+            duration_minutes=duration_mins,
+            credit_weight=credit_weight,
             branch=branch,
             semester=semester,
             section=section,
@@ -680,7 +819,7 @@ def submit_final_attendance(
 
     # Audit Log
     user_id = teacher_user.id if teacher_user else 1
-    client_host = request.client.host if request.client else "127.0.0.1"
+    client_host = get_client_ip(request)
     conductor_name = session.conducted_by_name if (session and session.conducted_by_name) else "Faculty"
     db.add(models.AuditLog(
         user_id=user_id,
@@ -701,11 +840,6 @@ def submit_final_attendance(
 # DYNAMIC 10-SECOND ROTATING QR ATTENDANCE SYSTEM (ANTI-PROXY & SYSTEMATIC)
 # ==============================================================================
 
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
-import time
-import secrets
-from jose import jwt, JWTError
 try:
     from .. import security
 except (ImportError, ValueError):
@@ -744,12 +878,51 @@ def generate_dynamic_qr_jwt(session: models.AcademicSession) -> str:
     }
     return jwt.encode(payload, security.SECRET_KEY, algorithm=security.ALGORITHM)
 
+BRANCH_CANONICAL_MAP = {
+    "cse": "CSE",
+    "cs": "CSE",
+    "computer science": "CSE",
+    "computer science and engineering": "CSE",
+    "computer science & engineering": "CSE",
+    "it": "IT",
+    "information technology": "IT",
+    "ece": "ECE",
+    "electronics and communication": "ECE",
+    "electronics & communication engineering": "ECE",
+    "electronics and communication engineering": "ECE",
+    "ee": "EE",
+    "electrical": "EE",
+    "electrical engineering": "EE",
+    "me": "ME",
+    "mech": "ME",
+    "mechanical": "ME",
+    "mechanical engineering": "ME",
+    "ce": "CE",
+    "civil": "CE",
+    "civil engineering": "CE",
+    "aiml": "AIML",
+    "ai & ml": "AIML",
+    "ai and ml": "AIML",
+    "artificial intelligence": "AIML",
+    "ds": "DS",
+    "data science": "DS",
+}
+
+def normalize_branch(branch: Optional[str]) -> str:
+    if not branch:
+        return ""
+    clean = branch.lower().replace("&", "and").strip()
+    clean_no_eng = clean.replace("engineering", "").strip()
+    if clean in BRANCH_CANONICAL_MAP:
+        return BRANCH_CANONICAL_MAP[clean]
+    if clean_no_eng in BRANCH_CANONICAL_MAP:
+        return BRANCH_CANONICAL_MAP[clean_no_eng]
+    return clean_no_eng.upper()
+
 def check_branch_compatibility(student_branch: str, session_branch: str) -> bool:
     if not student_branch or not session_branch:
         return True
-    s_clean = student_branch.lower().replace("&", "and").replace("engineering", "").strip()
-    sess_clean = session_branch.lower().replace("&", "and").replace("engineering", "").strip()
-    return s_clean in sess_clean or sess_clean in s_clean
+    return normalize_branch(student_branch) == normalize_branch(session_branch)
 
 @router.post("/qr/init-session")
 def init_dynamic_qr_session(
@@ -782,13 +955,23 @@ def init_dynamic_qr_session(
     except Exception:
         sess_type = models.SessionType.lecture
 
-    now = datetime.utcnow()
+    now = now_ist_naive()
+    raw_duration = getattr(data, 'duration_minutes', None) or (120 if sess_type == models.SessionType.practical else 60)
+    duration_mins = int(raw_duration)
+    raw_credit = getattr(data, 'credit_weight', None) or (
+        3 if sess_type == models.SessionType.practical and duration_mins >= 180 else
+        2 if sess_type == models.SessionType.practical and duration_mins >= 100 else 1
+    )
+    credit_weight = int(raw_credit)
+
     session = models.AcademicSession(
         teacher_id=teacher_prof.id if teacher_prof else None,
         subject_id=sub.id if sub else None,
         session_type=sess_type,
         start_time=now,
-        end_time=now + timedelta(hours=1),
+        end_time=now + timedelta(minutes=duration_mins),
+        duration_minutes=duration_mins,
+        credit_weight=credit_weight,
         branch=data.branch,
         semester=data.semester,
         section=data.section.upper(),
@@ -813,6 +996,8 @@ def init_dynamic_qr_session(
         "session_id": session.id,
         "token": token,
         "expires_in": 10,
+        "display_expires_in": 10,
+        "ttl_seconds": 15,
         "subject_name": subj_name,
         "subject_code": sub.code if sub else "CORE",
         "conducted_by": conductor,
@@ -838,7 +1023,7 @@ def rotate_dynamic_qr_token(
     if current_user and current_user.role == models.RoleEnum.student:
         raise HTTPException(status_code=403, detail="Students are not authorized to view teacher QR broadcast.")
 
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Live academic session not found.")
 
@@ -857,7 +1042,7 @@ def rotate_dynamic_qr_token(
             "id": sp.id,
             "roll_number": sp.roll_number,
             "name": sp.full_name,
-            "time": (log.timestamp or datetime.utcnow()).strftime("%I:%M:%S %p")
+            "time": format_time_ist(log.timestamp, "%I:%M:%S %p")
         } for log, sp in present_logs[:15]
     ]
 
@@ -872,6 +1057,8 @@ def rotate_dynamic_qr_token(
         "session_id": session.id,
         "token": token,
         "expires_in": 10,
+        "display_expires_in": 10,
+        "ttl_seconds": 15,
         "checked_in_count": len(present_logs),
         "total_expected": total_expected,
         "recent_checkins": recent_checkins
@@ -882,7 +1069,7 @@ def verify_and_mark_qr_attendance(
     payload: QRVerifyStudentRequest,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(get_current_user_optional)
+    current_user: models.User = Depends(get_current_user)
 ):
     """
     Student Portal:
@@ -912,27 +1099,14 @@ def verify_and_mark_qr_attendance(
         raise HTTPException(status_code=400, detail="Unrecognized attendance QR token.")
 
     session_id = decoded.get("session_id")
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Active lecture session not found or closed by faculty.")
 
-    # 2. Resolve Student Profile (Self-healing & fallback support)
-    student = None
-    if current_user:
-        student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
-        if not student:
-            roll_candidate = current_user.email.split("@")[0].upper()
-            student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == roll_candidate).first()
-            if student:
-                student.user_id = current_user.id
-                db.commit()
-                db.refresh(student)
-
-    if not student and payload.student_roll:
-        student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == payload.student_roll.strip().upper()).first()
-
+    # 2. Resolve Student Profile (Strict RBAC isolation)
+    student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
     if not student:
-        raise HTTPException(status_code=401, detail="Student authentication required. Please log into the Student Portal before scanning.")
+        raise HTTPException(status_code=404, detail="Student profile not found for this account. Please contact administrator.")
 
     # 3. Systematic Academic Isolation & Verification (HTTP 400 Bad Request to prevent client session wipes)
     # A. Check Semester
@@ -965,7 +1139,7 @@ def verify_and_mark_qr_attendance(
         models.AttendanceLog.student_id == student.id
     ).first()
 
-    now_dt = datetime.utcnow()
+    now_dt = now_ist_naive()
 
     if existing_log and existing_log.is_present:
         log_time_str = (existing_log.timestamp or now_dt).strftime("%I:%M %p")
@@ -998,6 +1172,41 @@ def verify_and_mark_qr_attendance(
 
     db.commit()
 
+    # Real-Time WebSocket Roster Broadcast
+    try:
+        present_count = db.query(models.AttendanceLog).filter(
+            models.AttendanceLog.session_id == session.id,
+            models.AttendanceLog.is_present == True
+        ).count()
+        import asyncio
+        safe_dispatch_ws_task(ws_manager.broadcast_to_session(
+            session_id=session.id,
+            event_type="STUDENT_CHECKED_IN",
+            data={
+                "student_id": student.id,
+                "roll_number": student.roll_number,
+                "name": student.full_name,
+                "status_tag": "QR_VERIFIED",
+                "marked_at": now_dt.strftime("%I:%M %p"),
+                "present_count": present_count
+            }
+        ))
+    except Exception as ws_err:
+        print(f"[WS BROADCAST NOTE] {ws_err}")
+
+    # Real-Time Push Notification to Student Device
+    try:
+        if student.user_id:
+            notify_user_id(
+                db=db,
+                user_id=student.user_id,
+                title="Attendance Verified ✓",
+                body=f"Your attendance for {subj_name} was logged successfully at {now_dt.strftime('%I:%M %p')}.",
+                data={"sessionId": session.id, "type": "ATTENDANCE_CONFIRMATION"}
+            )
+    except Exception as push_err:
+        print(f"[PUSH NOTE] {push_err}")
+
     return {
         "success": True,
         "already_marked": False,
@@ -1021,7 +1230,7 @@ def get_qr_live_status(
     if current_user and current_user.role == models.RoleEnum.student:
         raise HTTPException(status_code=403, detail="Faculty authorization required.")
 
-    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first()
+    session = get_or_create_session_from_slot(session_id, db, current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
 
@@ -1043,7 +1252,7 @@ def get_qr_live_status(
             "id": sp.id,
             "roll_number": sp.roll_number,
             "name": sp.full_name,
-            "time": (log.timestamp or datetime.utcnow()).strftime("%I:%M:%S %p")
+            "time": format_time_ist(log.timestamp, "%I:%M:%S %p")
         } for log, sp in present_logs[:20]
     ]
 
@@ -1055,3 +1264,23 @@ def get_qr_live_status(
     }
 
 
+
+try:
+    from .management import override_student_attendance, AttendanceOverridePayload
+except (ImportError, ValueError):
+    try:
+        from routers.management import override_student_attendance, AttendanceOverridePayload
+    except (ImportError, ValueError):
+        from management import override_student_attendance, AttendanceOverridePayload
+
+@router.post("/override")
+def attendance_override_alias(
+    payload: AttendanceOverridePayload,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Direct alias for attendance override endpoint.
+    """
+    return override_student_attendance(payload=payload, request=request, db=db, current_user=current_user)

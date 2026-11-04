@@ -25,10 +25,16 @@ export default function StudentEnrollment() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
 
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C', 'D']);
+  const [isCustomSection, setIsCustomSection] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -60,11 +66,58 @@ export default function StudentEnrollment() {
           if (Array.isArray(data.sections) && data.sections.length > 0) {
             setAvailableSections(data.sections);
           }
+          if (data.branch_programs && typeof data.branch_programs === 'object') {
+            setBranchPrograms(data.branch_programs);
+          }
         }
       })
       .catch(() => {});
   }, []);
-  
+
+  // Dynamically adapt valid semesters to student's enrolled course (e.g. BBA -> 1-6, MBBS -> 1-10, MBA -> 1-4)
+  React.useEffect(() => {
+    if (!formData.branch) return;
+    const bp = branchPrograms[formData.branch];
+    let sems: number[] = [];
+    if (bp && Array.isArray(bp.semesters) && bp.semesters.length > 0) {
+      sems = bp.semesters;
+    } else {
+      const lower = formData.branch.toLowerCase();
+      if (lower.includes('mbbs') || lower.includes('b.arch') || lower.includes('ballb') || lower.includes('5 year')) {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      } else if (lower.includes('bba') || lower.includes('bca') || lower.includes('b.sc') || lower.includes('b.com') || lower.includes('diploma')) {
+        sems = [1, 2, 3, 4, 5, 6];
+      } else if (lower.includes('mba') || lower.includes('m.tech') || lower.includes('mca') || lower.includes('m.sc') || lower.includes('m.com')) {
+        sems = [1, 2, 3, 4];
+      } else {
+        sems = [1, 2, 3, 4, 5, 6, 7, 8];
+      }
+    }
+    setAvailableSemesters(sems);
+    if (!sems.includes(Number(formData.semester))) {
+      setFormData(prev => ({ ...prev, semester: String(sems[0] || 1) }));
+    }
+
+    // Dynamically adapt sections to student's enrolled course
+    let secs: string[] = ['A', 'B', 'C'];
+    if (bp && Array.isArray(bp.sections) && bp.sections.length > 0) {
+      secs = bp.sections;
+    } else {
+      const lower = formData.branch.toLowerCase();
+      if (lower.includes('cse') || lower.includes('computer science') || lower.includes('information technology')) {
+        secs = ['A', 'B', 'C', 'D'];
+      } else if (lower.includes('mbbs') || lower.includes('medicine')) {
+        secs = ['A'];
+      } else if (lower.includes('mech') || lower.includes('civil') || lower.includes('mba') || lower.includes('diploma')) {
+        secs = ['A', 'B'];
+      }
+    }
+    setAvailableSections(secs);
+    if (!isCustomSection && !secs.includes(formData.section)) {
+      setFormData(prev => ({ ...prev, section: secs[0] || 'A' }));
+    }
+  }, [formData.branch, branchPrograms, isCustomSection]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [streamActive, setStreamActive] = useState(false);
@@ -115,6 +168,33 @@ export default function StudentEnrollment() {
     startCamera();
   };
 
+  const handleSendOtp = async () => {
+    if (!formData.email || !formData.email.includes('@')) {
+      alert("Please enter a valid official email address first.");
+      return;
+    }
+    try {
+      setIsSendingOtp(true);
+      setOtpMessage(null);
+      const res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email.trim(), purpose: 'registration' })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to send OTP.");
+      }
+      setOtpSent(true);
+      if (data.otp) setOtp(data.otp);
+      setOtpMessage(data.message || `Verification code sent to ${formData.email}. Valid for 10 minutes.`);
+    } catch (err: any) {
+      alert(err.message || "Failed to send OTP.");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capturedImage) {
@@ -126,6 +206,12 @@ export default function StudentEnrollment() {
     setStatus('idle');
     setErrorMessage(null);
     setIsDuplicate(false);
+
+    if (formData.email?.trim() && !otp.trim()) {
+      setErrorMessage("Please request and enter the 6-digit email verification code (OTP) sent to your inbox.");
+      setIsSubmitting(false);
+      return;
+    }
 
     if (formData.password && formData.password !== formData.confirmPassword) {
       setErrorMessage("Passwords do not match. Please verify.");
@@ -144,6 +230,7 @@ export default function StudentEnrollment() {
       form.append('semester', formData.semester);
       form.append('section', formData.section);
       if (formData.email?.trim()) form.append('email', formData.email.trim().toLowerCase());
+      if (otp.trim()) form.append('otp', otp.trim());
       if (formData.password?.trim()) form.append('password', formData.password.trim());
       form.append('selfie', blob, 'selfie.jpg');
 
@@ -370,24 +457,48 @@ export default function StudentEnrollment() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Section
-                  </label>
-                  <AppleSelect
-                    value={formData.section}
-                    onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
-                    options={availableSections.map((sec) => ({
-                      value: sec,
-                      label: `Section ${sec}`,
-                      badge: `Sec ${sec}`
-                    }))}
-                  />
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-xs font-semibold text-stone-600">
+                      Section
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !isCustomSection;
+                        setIsCustomSection(next);
+                        if (next) setFormData(prev => ({ ...prev, section: '' }));
+                        else setFormData(prev => ({ ...prev, section: availableSections[0] || 'A' }));
+                      }}
+                      className="text-[11px] font-semibold text-stone-500 hover:text-stone-900 transition"
+                    >
+                      {isCustomSection ? '← Choose from List' : '+ Custom Section'}
+                    </button>
+                  </div>
+                  {isCustomSection ? (
+                    <input
+                      type="text"
+                      placeholder="e.g. D, E, F or Batch 1"
+                      value={formData.section}
+                      onChange={(e) => setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase() }))}
+                      className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-semibold focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                    />
+                  ) : (
+                    <AppleSelect
+                      value={formData.section}
+                      onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
+                      options={availableSections.map((sec) => ({
+                        value: sec,
+                        label: `Section ${sec}`,
+                        badge: `Sec ${sec}`
+                      }))}
+                    />
+                  )}
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-stone-600 mb-2">
-                  Institutional Email (Optional)
+                  Official Student Email * (OTP Verification Required)
                 </label>
                 <input
                   type="email"
@@ -397,8 +508,37 @@ export default function StudentEnrollment() {
                   placeholder="e.g. student@university.edu"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition mb-2"
                 />
+                <div className="flex items-center gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={isSendingOtp || !formData.email}
+                    className="px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold transition"
+                  >
+                    {isSendingOtp ? 'Sending OTP...' : otpSent ? 'Resend OTP' : 'Send Verification OTP'}
+                  </button>
+                  {otpSent && <span className="text-[11px] text-emerald-600 font-medium">OTP Sent to inbox!</span>}
+                </div>
+                {otpMessage && (
+                  <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded-xl border border-emerald-200 mb-2">
+                    {otpMessage}
+                  </p>
+                )}
+                <div className="p-3 rounded-2xl bg-stone-100/70 border border-stone-200/70">
+                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                    Enter 6-Digit Email OTP Code <span className="text-emerald-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="e.g. 123456"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.trim())}
+                    className="w-full px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-900 text-xs font-mono tracking-widest text-center font-bold placeholder-stone-300 focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

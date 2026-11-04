@@ -575,9 +575,9 @@ export default function AdminSettingsPage() {
             {/* Purge Demo Data Box */}
             <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3 flex flex-col justify-between">
               <div className="space-y-1.5">
-                <span className="text-xs font-bold text-stone-900 block">🧹 Clean / Purge Demo Data</span>
+                <span className="text-xs font-bold text-stone-900 block">🧹 Clean / Purge Demo Records</span>
                 <p className="text-[11px] text-stone-500 leading-relaxed">
-                  Deletes all pre-seeded dummy students, mock attendance logs, grievances, and test sessions. Retains the Master Admin account and prepares the platform for real university students.
+                  Deletes all pre-seeded sample students, demo attendance logs, grievances, and test sessions. Retains the Master Admin account and prepares the platform for university students.
                 </p>
               </div>
               <button
@@ -647,7 +647,7 @@ export default function AdminSettingsPage() {
             <div>
               <h3 className="text-base font-bold text-stone-900">Confirm Demo Data Wipe</h3>
               <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-                This will delete all dummy student records and attendance logs. Real faculty and administrator accounts will be preserved.
+                This will delete all sample student records and attendance logs. Faculty and administrator accounts will be preserved.
               </p>
             </div>
             <form onSubmit={handleWipeDemoData} className="space-y-4 text-xs">

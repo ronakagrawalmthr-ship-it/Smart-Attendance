@@ -47,7 +47,8 @@ export default function DefaultersPage() {
               name: d.name,
               branch: d.branch || 'Academic Department',
               section: d.section || 'A',
-              phone: d.phone || '',
+              phone: d.phone || d.parent_contact || 'None',
+              parent_email: d.parent_email || 'None',
               attendance_pct: pct,
               status: pct < 65 ? 'Severe (<65%)' : 'At Risk (65-75%)'
             };
@@ -157,6 +158,10 @@ export default function DefaultersPage() {
   };
 
   const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "") => {
+    if (!phone || phone === 'None') {
+      alert(`Parent contact is not registered (None) for ${name} (${roll}).`);
+      return;
+    }
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
       setNotificationSent(`No valid guardian phone number on record for ${name} (${roll}).`);

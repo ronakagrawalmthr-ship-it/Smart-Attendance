@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Query, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, case
 from datetime import datetime, date
 import os
@@ -9,7 +9,11 @@ import io
 import secrets
 try:
     import resend
-    resend.api_key = os.environ.get("RESEND_API_KEY", "re_mock_key_for_dev")
+    _resend_key = os.environ.get("RESEND_API_KEY")
+    if _resend_key and _resend_key != "re_mock_key_for_dev":
+        resend.api_key = _resend_key
+    else:
+        resend.api_key = None
 except ImportError:
     resend = None
 
@@ -19,8 +23,26 @@ from typing import Optional, List
 try:
     from .. import models, schemas, database, security
     from ..sort_utils import natural_sort_key
+    from ..time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, format_time_ist
+    from ..academic_config import resolve_program_meta, get_all_supported_programs, get_program_total_semesters, SETTING_KEY_CUSTOM_PROGRAMS, calculate_attendance_ia_marks
 except (ImportError, ValueError):
     import models, schemas, database, security
+    try:
+        from academic_config import resolve_program_meta, get_all_supported_programs, get_program_total_semesters, SETTING_KEY_CUSTOM_PROGRAMS, calculate_attendance_ia_marks
+    except (ImportError, ValueError):
+        def calculate_attendance_ia_marks(attendance_pct):
+            return {"ia_marks": 5 if attendance_pct >= 90 else (2 if attendance_pct >= 75 else 0), "standing": "Normal", "tier": "GREEN"}
+
+    try:
+        from time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, format_time_ist
+    except (ImportError, ValueError):
+        from datetime import timezone, timedelta
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        def now_ist(): return datetime.now(_IST)
+        def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
+        def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
+        def today_ist_date(): return datetime.now(_IST).date()
+        def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
     try:
         from sort_utils import natural_sort_key
     except (ImportError, ValueError):
@@ -45,6 +67,18 @@ router = APIRouter(
     tags=["Management & Administration"]
 )
 
+def get_client_ip(request: Request) -> Optional[str]:
+    if not request:
+        return None
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else None
+
+
 def verify_hod_or_admin(current_user: models.User):
     if current_user.role not in [models.RoleEnum.admin, models.RoleEnum.hod]:
         raise HTTPException(status_code=403, detail="Not authorized.")
@@ -57,19 +91,24 @@ def get_user_department_scope(current_user: models.User, db: Optional[Session] =
     """
     Department Isolation & Role-Based Access Control:
     - College Administrator (Principal/Director): None (Full access to all college branches)
-    - Department HOD: Strictly their own department (e.g. 'Computer Science', 'Civil', etc.)
-      An HOD CANNOT access, query, or modify other departments' records.
+    - Department HOD: Strictly their own department (e.g. 'Computer Science & Engineering', 'Civil', etc.)
     """
     if current_user.role == models.RoleEnum.admin:
         return None
     if current_user.role == models.RoleEnum.hod:
         if current_user.teacher_profile and current_user.teacher_profile.department:
             return current_user.teacher_profile.department
-        raise HTTPException(
-            status_code=403,
-            detail="HOD department profile is not assigned. Please contact the Master Administrator to set your academic department."
-        )
-    return None
+        if db:
+            prof = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == current_user.id).first()
+            if prof and prof.department:
+                return prof.department
+            # Fallback: check Department model by HOD email
+            d = db.query(models.Department).filter(func.lower(models.Department.hod_email) == current_user.email.lower()).first()
+            if d and d.name:
+                return d.name
+        # STRICT SECURITY: An unassigned HOD must NEVER receive global admin scope (None)
+        return "__UNASSIGNED_HOD__"
+    return "__UNAUTHORIZED_SCOPE__"
 
 @router.get("/telemetry/latest-scan")
 def get_latest_scan_telemetry(
@@ -94,7 +133,7 @@ def get_latest_scan_telemetry(
     subject_name = (session.subject.name if session and session.subject else (session.custom_subject_name if session else "General Class"))
     venue = f"Sem {session.semester} (Sec {session.section})" if (session and session.semester and session.section) else "Lecture Hall 4"
     confidence = round(log.confidence_score, 1) if (log.confidence_score is not None) else 98.5
-    avatar = student.photo_thumbnail if student.photo_thumbnail else "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80"
+    avatar = student.photo_thumbnail if student.photo_thumbnail else None
     
     return {
         "log_id": log.id,
@@ -130,30 +169,17 @@ def get_recent_scans_telemetry(
     
     recent_logs = query.order_by(models.AttendanceLog.id.desc()).limit(limit).all()
     
-    avatars = [
-        "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80"
-    ]
-    
     results = []
     seen_rolls = set()
     for idx, (log, student, session) in enumerate(recent_logs):
-        if student.roll_number in seen_rolls and len(seen_rolls) < 10:
+        if student.roll_number in seen_rolls:
             continue
         seen_rolls.add(student.roll_number)
 
         subject_name = (session.subject.name if session and session.subject else (session.custom_subject_name if session else "General Class"))
-        venue = f"Sem {session.semester} (Sec {session.section})" if (session and session.semester and session.section) else "Hall A"
+        venue = f"Sem {session.semester} (Sec {session.section})" if (session and session.semester and session.section) else "Lecture Hall"
         confidence = round(log.confidence_score, 1) if (log.confidence_score is not None) else 98.5
-        avatar = student.photo_thumbnail if student.photo_thumbnail else avatars[idx % len(avatars)]
+        avatar = student.photo_thumbnail if student.photo_thumbnail else None
         
         results.append({
             "log_id": log.id,
@@ -187,13 +213,11 @@ def get_live_events(
     - Real Proxy faculty assignments for today or upcoming days
     Unauthenticated callers only receive safe public announcements (no PII or roster telemetry).
     """
-    import re
-    from datetime import datetime
     events = []
-    today_date = datetime.utcnow().date()
+    today_date = today_ist_date()
     today_dt = datetime(today_date.year, today_date.month, today_date.day)
     today_str = today_date.strftime("%Y-%m-%d")
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = now_ist().isoformat()
     
     # Check if caller has valid authentication token
     is_authenticated = False
@@ -226,41 +250,45 @@ def get_live_events(
     if not is_authenticated:
         return events[:limit]
 
-    # 2. Real Attendance Finalizations strictly from TODAY
-    audit_submissions = db.query(models.AuditLog).filter(
-        models.AuditLog.timestamp >= today_dt,
-        (models.AuditLog.action.ilike("%finalized attendance%") | models.AuditLog.action.ilike("%Submitted attendance%") | models.AuditLog.action.ilike("%Lecture conducted%"))
-    ).order_by(models.AuditLog.timestamp.desc()).limit(5).all()
-    
-    for a in audit_submissions:
-        action_text = a.action or ""
-        teacher_match = re.search(r"Teacher \(([^)]+)\)|conducted by '([^']+)'", action_text)
-        teacher_name = (teacher_match.group(1) or teacher_match.group(2)) if teacher_match else "Faculty In-Charge"
-        
-        session_match = re.search(r"session (\d+)", action_text)
-        session_id = int(session_match.group(1)) if session_match else None
-        
-        counts_match = re.search(r"(\d+) present|Present: (\d+)", action_text)
-        present_count = (counts_match.group(1) or counts_match.group(2)) if counts_match else "All"
-        
-        session_obj = db.query(models.AcademicSession).filter(models.AcademicSession.id == session_id).first() if session_id else None
-        
-        if branch and session_obj and branch.lower() not in (session_obj.branch or "").lower():
-            continue
-            
-        subj_name = (session_obj.subject.name if (session_obj and session_obj.subject) else (session_obj.custom_subject_name if session_obj else "Academic Lecture"))
-        code = session_obj.subject.code if (session_obj and session_obj.subject) else "LEC"
-        
+    # 2. Authoritative Attendance Finalizations strictly from TODAY (DB-driven, zero regex)
+    sessions_query = db.query(models.AcademicSession).filter(
+        models.AcademicSession.start_time >= today_dt
+    )
+    if branch:
+        sessions_query = sessions_query.filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
+    recent_sessions = sessions_query.order_by(models.AcademicSession.start_time.desc()).limit(5).all()
+
+    # Pre-fetch session attendance counts in bulk
+    sess_ids = [s.id for s in recent_sessions]
+    sess_present_map = {}
+    if sess_ids:
+        raw_pres = db.query(
+            models.AttendanceLog.session_id,
+            func.count(models.AttendanceLog.id)
+        ).filter(
+            models.AttendanceLog.session_id.in_(sess_ids),
+            models.AttendanceLog.is_present == True
+        ).group_by(models.AttendanceLog.session_id).all()
+        sess_present_map = {sid: cnt for sid, cnt in raw_pres}
+
+    for s in recent_sessions:
+        conductor = s.conducted_by_name or (s.teacher.full_name if s.teacher else "Faculty In-Charge")
+        subj_name = s.subject.name if s.subject else (s.custom_subject_name or "Academic Lecture")
+        code = s.subject.code if s.subject else "LEC"
+        actual_count = sess_present_map.get(s.id, 0)
+        present_count = str(actual_count) if actual_count > 0 else "0"
+        session_time = s.end_time or s.start_time or today_dt
+
         events.append({
-            "id": f"sub-{a.id}",
+            "id": f"sess-{s.id}",
             "type": "attendance_submission",
             "title": "Attendance Finalized",
-            "teacher_name": teacher_name,
+            "teacher_name": conductor,
             "subject": subj_name,
             "code": code,
-            "detail": f"{teacher_name} finalized attendance for {subj_name} • {present_count} Present",
-            "time": a.timestamp.strftime("%I:%M %p") if a.timestamp else "Today",
-            "raw_time": a.timestamp.isoformat() if a.timestamp else now_iso,
+            "detail": f"{conductor} finalized attendance for {subj_name} • {present_count} Present",
+            "time": session_time.strftime("%I:%M %p") if hasattr(session_time, "strftime") else "Today",
+            "raw_time": session_time.isoformat() if hasattr(session_time, "isoformat") else now_iso,
             "badge": f"{present_count} Present"
         })
 
@@ -269,8 +297,11 @@ def get_live_events(
         (models.Grievance.created_at >= today_dt) | (models.Grievance.status.ilike("%Pending%"))
     ).order_by(models.Grievance.created_at.desc()).limit(4).all()
 
+    grv_st_ids = [g.student_id for g in recent_grievances if g.student_id]
+    grv_st_map = {st.id: st for st in db.query(models.StudentProfile).filter(models.StudentProfile.id.in_(grv_st_ids)).all()} if grv_st_ids else {}
+
     for g in recent_grievances:
-        st = db.query(models.StudentProfile).filter(models.StudentProfile.id == g.student_id).first()
+        st = grv_st_map.get(g.student_id)
         if branch and st and branch.lower() not in (st.branch or "").lower():
             continue
         is_resolved = "Granted" in (g.status or "") or "Approved" in (g.status or "")
@@ -291,10 +322,15 @@ def get_live_events(
 
     # 4. Proxy Faculty Allocations (Today or upcoming)
     proxies = db.query(models.ProxyAssignment).filter(models.ProxyAssignment.date >= today_str).order_by(models.ProxyAssignment.date.asc()).limit(2).all()
+    prx_teacher_ids = list({p.original_teacher_id for p in proxies if p.original_teacher_id} | {p.proxy_teacher_id for p in proxies if p.proxy_teacher_id})
+    prx_teachers = {t.id: t for t in db.query(models.TeacherProfile).filter(models.TeacherProfile.id.in_(prx_teacher_ids)).all()} if prx_teacher_ids else {}
+    prx_sub_ids = [p.subject_id for p in proxies if p.subject_id]
+    prx_subs = {sb.id: sb for sb in db.query(models.Subject).filter(models.Subject.id.in_(prx_sub_ids)).all()} if prx_sub_ids else {}
+
     for p in proxies:
-        orig = db.query(models.TeacherProfile).filter(models.TeacherProfile.id == p.original_teacher_id).first()
-        prx = db.query(models.TeacherProfile).filter(models.TeacherProfile.id == p.proxy_teacher_id).first()
-        sb = db.query(models.Subject).filter(models.Subject.id == p.subject_id).first()
+        orig = prx_teachers.get(p.original_teacher_id)
+        prx = prx_teachers.get(p.proxy_teacher_id)
+        sb = prx_subs.get(p.subject_id)
         if branch and orig and branch.lower() not in (orig.department or "").lower():
             continue
         orig_name = orig.full_name if orig else "Faculty"
@@ -319,12 +355,19 @@ def get_live_events(
         models.AttendanceLog.timestamp >= today_dt
     ).order_by(models.AttendanceLog.timestamp.desc()).limit(3).all()
 
+    od_st_ids = [l.student_id for l in od_logs if l.student_id]
+    od_students = {st.id: st for st in db.query(models.StudentProfile).filter(models.StudentProfile.id.in_(od_st_ids)).all()} if od_st_ids else {}
+    od_sess_ids = [l.session_id for l in od_logs if l.session_id]
+    od_sessions = {s.id: s for s in db.query(models.AcademicSession).filter(models.AcademicSession.id.in_(od_sess_ids)).all()} if od_sess_ids else {}
+    od_sub_ids = [s.subject_id for s in od_sessions.values() if s.subject_id]
+    od_subs = {sb.id: sb for sb in db.query(models.Subject).filter(models.Subject.id.in_(od_sub_ids)).all()} if od_sub_ids else {}
+
     for l in od_logs:
-        st = db.query(models.StudentProfile).filter(models.StudentProfile.id == l.student_id).first()
+        st = od_students.get(l.student_id)
         if branch and st and branch.lower() not in (st.branch or "").lower():
             continue
-        sess = db.query(models.AcademicSession).filter(models.AcademicSession.id == l.session_id).first()
-        subj = db.query(models.Subject).filter(models.Subject.id == sess.subject_id).first() if sess else None
+        sess = od_sessions.get(l.session_id)
+        subj = od_subs.get(sess.subject_id) if sess else None
         events.append({
             "id": f"od-{l.id}",
             "type": "od_leave_alert",
@@ -372,7 +415,6 @@ def get_live_attendance_matrices(
         branch = scope
 
     # Aggregate calculation
-    from sqlalchemy import case
     query = db.query(
         models.StudentProfile.branch,
         func.count(models.AttendanceLog.id).label('total_logs'),
@@ -396,180 +438,279 @@ def get_live_attendance_matrices(
         
     return {"live_matrices": matrices}
 
+
+# -----------------------------------------------------------------------------
+# Department Management Models & CRUD Operations
+# -----------------------------------------------------------------------------
+
+class DepartmentCreatePayload(BaseModel):
+    name: str
+    code: str
+    degree_type: Optional[str] = "UG"
+    duration_years: Optional[int] = 4
+    total_semesters: Optional[int] = None
+    sections: Optional[str] = "A, B, C"
+    hod_name: Optional[str] = None
+    hod_email: Optional[str] = None
+    hod_phone: Optional[str] = None
+    rank: Optional[str] = "Academic Faculty"
+    description: Optional[str] = None
+
+class DepartmentUpdatePayload(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    degree_type: Optional[str] = None
+    duration_years: Optional[int] = None
+    total_semesters: Optional[int] = None
+    sections: Optional[str] = None
+    hod_name: Optional[str] = None
+    hod_email: Optional[str] = None
+    hod_phone: Optional[str] = None
+    rank: Optional[str] = None
+    description: Optional[str] = None
+
+KNOWN_PRESETS = {
+    "computer": {
+        "name": "Computer Science & Engineering",
+        "code": "CSE",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-emerald-500 to-teal-600",
+        "textColor": "text-emerald-400",
+        "borderColor": "border-emerald-500/30",
+        "rank": "Tier 1 (NBA Accredited)"
+    },
+    "information": {
+        "name": "Information Technology",
+        "code": "IT",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-cyan-500 to-blue-600",
+        "textColor": "text-cyan-400",
+        "borderColor": "border-cyan-500/30",
+        "rank": "Tier 1 (NBA Accredited)"
+    },
+    "electronic": {
+        "name": "Electronics & Communication",
+        "code": "ECE",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-amber-500 to-orange-600",
+        "textColor": "text-amber-400",
+        "borderColor": "border-amber-500/30",
+        "rank": "Tier 1 (NBA Accredited)"
+    },
+    "mechanical": {
+        "name": "Mechanical Engineering",
+        "code": "MECH",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-rose-500 to-red-600",
+        "textColor": "text-rose-400",
+        "borderColor": "border-rose-500/30",
+        "rank": "Tier 2 Accredited"
+    },
+    "civil": {
+        "name": "Civil Engineering",
+        "code": "CIVIL",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-yellow-500 to-amber-600",
+        "textColor": "text-yellow-400",
+        "borderColor": "border-yellow-500/30",
+        "rank": "Tier 2 Accredited"
+    },
+    "electrical": {
+        "name": "Electrical Engineering",
+        "code": "EE",
+        "degree_type": "UG",
+        "duration_years": 4,
+        "total_semesters": 8,
+        "color": "from-violet-500 to-purple-600",
+        "textColor": "text-violet-400",
+        "borderColor": "border-violet-500/30",
+        "rank": "Tier 1 (NBA Accredited)"
+    }
+}
+
+PALETTES = [
+    ("from-indigo-500 to-blue-600", "text-indigo-400", "border-indigo-500/30"),
+    ("from-fuchsia-500 to-pink-600", "text-fuchsia-400", "border-fuchsia-500/30"),
+    ("from-teal-500 to-emerald-600", "text-teal-400", "border-teal-500/30"),
+    ("from-orange-500 to-amber-600", "text-orange-400", "border-orange-500/30"),
+    ("from-violet-500 to-purple-600", "text-violet-400", "border-violet-500/30"),
+    ("from-emerald-500 to-teal-600", "text-emerald-400", "border-emerald-500/30"),
+]
+
+def ensure_departments_seeded(db: Session):
+    """Auto-seeds default departments into the database if the table is empty."""
+    count = db.query(models.Department).count()
+    if count > 0:
+        return
+
+    # Check existing data in profiles via single UNION query
+    q_st = db.query(models.StudentProfile.branch).filter(models.StudentProfile.branch.isnot(None)).distinct()
+    q_tc = db.query(models.TeacherProfile.department).filter(models.TeacherProfile.department.isnot(None)).distinct()
+    discovered = {r[0].strip() for r in q_st.union(q_tc).all() if r[0] and r[0].strip()}
+
+    # Add standard engineering branches if empty
+    default_branches = [
+        ("Computer Science & Engineering", "CSE", "UG", 4, 8, "Tier 1 (NBA Accredited)", "from-emerald-500 to-teal-600"),
+        ("Information Technology", "IT", "UG", 4, 8, "Tier 1 (NBA Accredited)", "from-cyan-500 to-blue-600"),
+        ("Electronics & Communication", "ECE", "UG", 4, 8, "Tier 1 (NBA Accredited)", "from-amber-500 to-orange-600"),
+        ("Mechanical Engineering", "MECH", "UG", 4, 8, "Tier 2 Accredited", "from-rose-500 to-red-600"),
+        ("Civil Engineering", "CIVIL", "UG", 4, 8, "Tier 2 Accredited", "from-yellow-500 to-amber-600"),
+        ("Electrical Engineering", "EE", "UG", 4, 8, "Tier 1 (NBA Accredited)", "from-violet-500 to-purple-600")
+    ]
+
+    for name, code, deg_type, years, sems, rank, color in default_branches:
+        existing = db.query(models.Department).filter(
+            or_(models.Department.name.ilike(name), models.Department.code.ilike(code))
+        ).first()
+        if not existing:
+            dept = models.Department(
+                name=name,
+                code=code,
+                degree_type=deg_type,
+                duration_years=years,
+                total_semesters=sems,
+                rank=rank,
+                color=color
+            )
+            db.add(dept)
+
+    # Also add any discovered branch that wasn't covered above
+    db.flush()
+    for branch_name in discovered:
+        existing = db.query(models.Department).filter(
+            or_(models.Department.name.ilike(branch_name), models.Department.code.ilike(branch_name))
+        ).first()
+        if not existing:
+            # Generate short code
+            words = [w for w in branch_name.replace("&", "").split() if w]
+            code = "".join([w[0] for w in words]).upper()[:6] if words else "GEN"
+            dept = models.Department(
+                name=branch_name,
+                code=code,
+                degree_type="UG",
+                duration_years=4,
+                total_semesters=8,
+                rank="Academic Faculty",
+                color="from-indigo-500 to-blue-600"
+            )
+            db.add(dept)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 @router.get("/college/departments-summary")
+@router.get("/departments", include_in_schema=False)
 def get_college_departments_summary(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     verify_hod_or_admin(current_user)
-    
+    ensure_departments_seeded(db)
+
     total_college_students = db.query(models.StudentProfile).count()
     total_college_faculty = db.query(models.TeacherProfile).count()
     total_logs = db.query(models.AttendanceLog).count()
     total_presents = db.query(models.AttendanceLog).filter(models.AttendanceLog.is_present == True).count()
     college_avg_turnout = round((total_presents / total_logs * 100), 1) if total_logs > 0 else None
-    
-    KNOWN_PRESETS = {
-        "computer": {
-            "id": "cse",
-            "name": "Computer Science & Engineering",
-            "code": "CSE",
-            "color": "from-emerald-500 to-teal-600",
-            "textColor": "text-emerald-400",
-            "borderColor": "border-emerald-500/30",
-            "rank": "Tier 1 (NBA Accredited)"
-        },
-        "information": {
-            "id": "it",
-            "name": "Information Technology",
-            "code": "IT",
-            "color": "from-cyan-500 to-blue-600",
-            "textColor": "text-cyan-400",
-            "borderColor": "border-cyan-500/30",
-            "rank": "Tier 1 (NBA Accredited)"
-        },
-        "electronic": {
-            "id": "ece",
-            "name": "Electronics & Communication",
-            "code": "ECE",
-            "color": "from-amber-500 to-orange-600",
-            "textColor": "text-amber-400",
-            "borderColor": "border-amber-500/30",
-            "rank": "Tier 1 (NBA Accredited)"
-        },
-        "mechanical": {
-            "id": "mech",
-            "name": "Mechanical Engineering",
-            "code": "MECH",
-            "color": "from-rose-500 to-red-600",
-            "textColor": "text-rose-400",
-            "borderColor": "border-rose-500/30",
-            "rank": "Tier 2 Accredited"
-        },
-        "civil": {
-            "id": "civil",
-            "name": "Civil Engineering",
-            "code": "CIVIL",
-            "color": "from-yellow-500 to-amber-600",
-            "textColor": "text-yellow-400",
-            "borderColor": "border-yellow-500/30",
-            "rank": "Tier 2 Accredited"
-        },
-        "electrical": {
-            "id": "ee",
-            "name": "Electrical Engineering",
-            "code": "EE",
-            "color": "from-violet-500 to-purple-600",
-            "textColor": "text-violet-400",
-            "borderColor": "border-violet-500/30",
-            "rank": "Tier 1 (NBA Accredited)"
-        }
-    }
-    
-    PALETTES = [
-        ("from-indigo-500 to-blue-600", "text-indigo-400", "border-indigo-500/30"),
-        ("from-fuchsia-500 to-pink-600", "text-fuchsia-400", "border-fuchsia-500/30"),
-        ("from-teal-500 to-emerald-600", "text-teal-400", "border-teal-500/30"),
-        ("from-orange-500 to-amber-600", "text-orange-400", "border-orange-500/30"),
-    ]
 
-    # Dynamically discover all distinct departments from database
-    discovered_branches = set()
-    for row in db.query(models.StudentProfile.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.TeacherProfile.department).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.Subject.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.TimetableSlot.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-
-    if not discovered_branches:
-        discovered_branches = {
-            "Computer Science & Engineering",
-            "Information Technology",
-            "Electronics & Communication",
-            "Mechanical Engineering",
-            "Civil Engineering",
-            "Electrical Engineering"
-        }
-
-    sorted_branches = sorted(list(discovered_branches))
+    dept_rows = db.query(models.Department).order_by(models.Department.name.asc()).all()
     departments_result = []
 
-    for idx, branch_name in enumerate(sorted_branches):
-        b_lower = branch_name.lower()
-        matched_preset = None
+    # Pre-aggregate counts in bulk to eliminate N+1 database queries
+    students_by_branch = dict(db.query(models.StudentProfile.branch, func.count(models.StudentProfile.id)).group_by(models.StudentProfile.branch).all())
+    faculty_by_dept = dict(db.query(models.TeacherProfile.department, func.count(models.TeacherProfile.id)).group_by(models.TeacherProfile.department).all())
+    subjects_by_branch = dict(db.query(models.Subject.branch, func.count(models.Subject.id)).group_by(models.Subject.branch).all())
+    raw_logs = db.query(
+        models.StudentProfile.branch,
+        func.count(models.AttendanceLog.id),
+        func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0))
+    ).join(models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id).group_by(models.StudentProfile.branch).all()
+    logs_by_branch = {row[0]: (row[1] or 0, row[2] or 0) for row in raw_logs}
+    all_hod_profiles = db.query(models.TeacherProfile).join(models.User).options(joinedload(models.TeacherProfile.user)).filter(models.User.role == models.RoleEnum.hod).all()
+
+    for idx, d in enumerate(dept_rows):
+        branch_name = d.name
+        
+        # Determine styling with fast precomputed preset lookup
+        color = d.color or PALETTES[idx % len(PALETTES)][0]
+        textColor = "text-stone-900"
+        borderColor = "border-stone-200/80"
+        lower_name = branch_name.lower()
         for key, p in KNOWN_PRESETS.items():
-            if key in b_lower:
-                matched_preset = p
+            if key in lower_name:
+                textColor = p.get("textColor", textColor)
+                borderColor = p.get("borderColor", borderColor)
                 break
 
-        if matched_preset:
-            d_id = matched_preset["id"]
-            d_code = matched_preset["code"]
-            d_color = matched_preset["color"]
-            d_textColor = matched_preset["textColor"]
-            d_borderColor = matched_preset["borderColor"]
-            d_rank = matched_preset["rank"]
-        else:
-            d_id = f"dept_{idx+1}"
-            words = [w for w in branch_name.replace("&", "").split() if w]
-            d_code = "".join([w[0] for w in words]).upper()[:6] if words else f"D{idx+1}"
-            pal = PALETTES[idx % len(PALETTES)]
-            d_color, d_textColor, d_borderColor = pal[0], pal[1], pal[2]
-            d_rank = "Academic Faculty"
+        # Compute dynamic metrics from pre-aggregated dictionaries
+        student_count = sum(cnt for b, cnt in students_by_branch.items() if b and (branch_name.lower() in b.lower() or (d.code and d.code.lower() in b.lower())))
+        faculty_count = sum(cnt for dept, cnt in faculty_by_dept.items() if dept and (branch_name.lower() in dept.lower() or (d.code and d.code.lower() in dept.lower())))
+        labs_count = sum(cnt for b, cnt in subjects_by_branch.items() if b and (branch_name.lower() in b.lower() or (d.code and d.code.lower() in b.lower())))
+        
+        tot_b = 0
+        pres_b = 0
+        for b, (tot, pres) in logs_by_branch.items():
+            if b and (branch_name.lower() in b.lower() or (d.code and d.code.lower() in b.lower())):
+                tot_b += tot
+                pres_b += pres
+        turnout_pct = round((pres_b / tot_b * 100), 1) if tot_b > 0 else 0.0
 
-        student_count = db.query(models.StudentProfile).filter(
-            models.StudentProfile.branch.ilike(f"%{branch_name}%")
-        ).count()
-        
-        faculty_count = db.query(models.TeacherProfile).filter(
-            models.TeacherProfile.department.ilike(f"%{branch_name}%")
-        ).count()
-        
-        labs_count = db.query(models.Subject).filter(
-            models.Subject.branch.ilike(f"%{branch_name}%")
-        ).count()
-        
-        branch_logs = db.query(models.AttendanceLog).join(
-            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
-        ).filter(
-            models.StudentProfile.branch.ilike(f"%{branch_name}%")
-        )
-        total_b_logs = branch_logs.count()
-        present_b_logs = branch_logs.filter(models.AttendanceLog.is_present == True).count()
-        turnout_pct = round((present_b_logs / total_b_logs * 100), 1) if total_b_logs > 0 else 0.0
-        
-        hod_profile = db.query(models.TeacherProfile).join(models.User).filter(
-            models.TeacherProfile.department.ilike(f"%{branch_name}%"),
-            models.User.role == models.RoleEnum.hod
-        ).first()
-        hod_name = hod_profile.full_name if hod_profile else "Not Appointed"
-        hod_email = hod_profile.user.email if (hod_profile and hod_profile.user) else "-"
-        hod_phone = getattr(hod_profile, 'phone_number', None) or "-"
-        
+        # Discover HOD details if not explicitly stored
+        hod_name = d.hod_name
+        hod_email = d.hod_email
+        hod_phone = d.hod_phone
+
+        if not hod_name:
+            hod_profile = next((
+                hp for hp in all_hod_profiles
+                if (branch_name and branch_name.lower() in (hp.department or "").lower()) or
+                   (d.code and d.code.lower() in (hp.department or "").lower())
+            ), None)
+            if hod_profile:
+                hod_name = hod_profile.full_name
+                hod_email = hod_profile.user.email if hod_profile.user else "-"
+                hod_phone = getattr(hod_profile, 'phone_number', None) or "-"
+            else:
+                hod_name = "Not Appointed"
+                hod_email = "-"
+                hod_phone = "-"
+
         departments_result.append({
-            "id": d_id,
-            "name": branch_name,
-            "code": d_code,
-            "color": d_color,
-            "textColor": d_textColor,
-            "borderColor": d_borderColor,
+            "id": d.id,
+            "name": d.name,
+            "code": d.code,
+            "degree_type": d.degree_type or "UG",
+            "duration_years": d.duration_years or 4,
+            "total_semesters": d.total_semesters or (d.duration_years * 2 if d.duration_years else 8),
+            "sections": getattr(d, 'sections', 'A, B, C') or 'A, B, C',
+            "sectionsList": [s.strip().upper() for s in (getattr(d, 'sections', 'A, B, C') or 'A, B, C').split(',') if s.strip()],
+            "color": color,
+            "textColor": textColor,
+            "borderColor": borderColor,
             "hod": hod_name,
-            "hodEmail": hod_email,
-            "hodPhone": hod_phone,
+            "hodEmail": hod_email or "-",
+            "hodPhone": hod_phone or "-",
             "students": student_count,
             "faculty": faculty_count,
             "labs": labs_count,
             "turnoutToday": turnout_pct,
-            "rank": d_rank
+            "rank": d.rank or "Academic Faculty",
+            "description": d.description or ""
         })
-        
+
     return {
         "totalCollegeStudents": total_college_students,
         "totalCollegeFaculty": total_college_faculty,
@@ -577,6 +718,256 @@ def get_college_departments_summary(
         "totalDepartments": len(departments_result),
         "departments": departments_result
     }
+
+
+@router.post("/departments")
+def create_department(
+    payload: DepartmentCreatePayload,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_admin(current_user)
+
+    name_clean = payload.name.strip()
+    code_clean = payload.code.strip().upper()
+
+    if not name_clean:
+        raise HTTPException(status_code=400, detail="Department name cannot be blank.")
+    if not code_clean:
+        raise HTTPException(status_code=400, detail="Department code cannot be blank.")
+
+    # Check for existing code or name
+    existing_code = db.query(models.Department).filter(
+        models.Department.code.ilike(code_clean)
+    ).first()
+    if existing_code:
+        raise HTTPException(status_code=400, detail=f"Department code '{code_clean}' is already registered for '{existing_code.name}'.")
+
+    existing_name = db.query(models.Department).filter(
+        models.Department.name.ilike(name_clean)
+    ).first()
+    if existing_name:
+        raise HTTPException(status_code=400, detail=f"Department '{name_clean}' already exists with code '{existing_name.code}'.")
+
+    years = payload.duration_years if (payload.duration_years and 1 <= payload.duration_years <= 6) else 4
+    sems = payload.total_semesters if (payload.total_semesters and payload.total_semesters > 0) else (years * 2)
+
+    # Pick dynamic palette color
+    existing_count = db.query(models.Department).count()
+    color_choice = PALETTES[existing_count % len(PALETTES)][0]
+
+    dept = models.Department(
+        name=name_clean,
+        code=code_clean,
+        degree_type=payload.degree_type or "UG",
+        duration_years=years,
+        total_semesters=sems,
+        sections=payload.sections.strip() if payload.sections else "A, B, C",
+        hod_name=payload.hod_name.strip() if payload.hod_name else None,
+        hod_email=payload.hod_email.strip() if payload.hod_email else None,
+        hod_phone=payload.hod_phone.strip() if payload.hod_phone else None,
+        rank=payload.rank.strip() if payload.rank else "Academic Faculty",
+        color=color_choice,
+        description=payload.description.strip() if payload.description else None
+    )
+
+    db.add(dept)
+    db.commit()
+    db.refresh(dept)
+
+    # Audit log
+    try:
+        audit = models.AuditLog(
+            user_id=current_user.id,
+            action=f"CREATE_DEPARTMENT: {dept.name} ({dept.code})"
+        )
+        db.add(audit)
+        db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Department '{dept.name}' ({dept.code}) created successfully.",
+        "department": {
+            "id": dept.id,
+            "name": dept.name,
+            "code": dept.code,
+            "degree_type": dept.degree_type,
+            "duration_years": dept.duration_years,
+            "total_semesters": dept.total_semesters,
+            "hod_name": dept.hod_name,
+            "hod_email": dept.hod_email,
+            "hod_phone": dept.hod_phone,
+            "rank": dept.rank,
+            "color": dept.color
+        }
+    }
+
+
+@router.put("/departments/{dept_id}")
+def update_department(
+    dept_id: int,
+    payload: DepartmentUpdatePayload,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_admin(current_user)
+
+    dept = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    old_name = dept.name
+    old_code = dept.code
+
+    if payload.code is not None:
+        code_clean = payload.code.strip().upper()
+        if not code_clean:
+            raise HTTPException(status_code=400, detail="Department code cannot be blank.")
+        # Check uniqueness
+        duplicate_code = db.query(models.Department).filter(
+            models.Department.code.ilike(code_clean),
+            models.Department.id != dept_id
+        ).first()
+        if duplicate_code:
+            raise HTTPException(status_code=400, detail=f"Department code '{code_clean}' is already used by '{duplicate_code.name}'.")
+        dept.code = code_clean
+
+    if payload.name is not None:
+        name_clean = payload.name.strip()
+        if not name_clean:
+            raise HTTPException(status_code=400, detail="Department name cannot be blank.")
+        # Check uniqueness
+        duplicate_name = db.query(models.Department).filter(
+            models.Department.name.ilike(name_clean),
+            models.Department.id != dept_id
+        ).first()
+        if duplicate_name:
+            raise HTTPException(status_code=400, detail=f"Department name '{name_clean}' is already registered with code '{duplicate_name.code}'.")
+        dept.name = name_clean
+
+        # If name was updated, update matching records in StudentProfile and TeacherProfile
+        if name_clean != old_name:
+            db.query(models.StudentProfile).filter(
+                models.StudentProfile.branch == old_name
+            ).update({"branch": name_clean}, synchronize_session=False)
+
+            db.query(models.TeacherProfile).filter(
+                models.TeacherProfile.department == old_name
+            ).update({"department": name_clean}, synchronize_session=False)
+
+            db.query(models.Subject).filter(
+                models.Subject.branch == old_name
+            ).update({"branch": name_clean}, synchronize_session=False)
+
+            db.query(models.TimetableSlot).filter(
+                models.TimetableSlot.branch == old_name
+            ).update({"branch": name_clean}, synchronize_session=False)
+
+    if payload.degree_type is not None:
+        dept.degree_type = payload.degree_type.strip()
+
+    if payload.duration_years is not None and 1 <= payload.duration_years <= 6:
+        dept.duration_years = payload.duration_years
+
+    if payload.total_semesters is not None and payload.total_semesters > 0:
+        dept.total_semesters = payload.total_semesters
+    if payload.sections is not None:
+        dept.sections = payload.sections.strip()
+    elif payload.duration_years is not None and payload.total_semesters is None:
+        dept.total_semesters = payload.duration_years * 2
+
+    if payload.hod_name is not None:
+        dept.hod_name = payload.hod_name.strip() if payload.hod_name.strip() else None
+    if payload.hod_email is not None:
+        dept.hod_email = payload.hod_email.strip() if payload.hod_email.strip() else None
+    if payload.hod_phone is not None:
+        dept.hod_phone = payload.hod_phone.strip() if payload.hod_phone.strip() else None
+    if payload.rank is not None:
+        dept.rank = payload.rank.strip() if payload.rank.strip() else "Academic Faculty"
+    if payload.description is not None:
+        dept.description = payload.description.strip() if payload.description.strip() else None
+
+    db.commit()
+    db.refresh(dept)
+
+    try:
+        audit = models.AuditLog(
+            user_id=current_user.id,
+            action=f"UPDATE_DEPARTMENT: {dept.name} ({dept.code})"
+        )
+        db.add(audit)
+        db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Department '{dept.name}' updated successfully.",
+        "department": {
+            "id": dept.id,
+            "name": dept.name,
+            "code": dept.code,
+            "degree_type": dept.degree_type,
+            "duration_years": dept.duration_years,
+            "total_semesters": dept.total_semesters,
+            "hod_name": dept.hod_name,
+            "hod_email": dept.hod_email,
+            "hod_phone": dept.hod_phone,
+            "rank": dept.rank
+        }
+    }
+
+
+@router.delete("/departments/{dept_id}")
+def delete_department(
+    dept_id: int,
+    force: bool = Query(False, description="Force delete even if students or faculty exist"),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_admin(current_user)
+
+    dept = db.query(models.Department).filter(models.Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    dept_name = dept.name
+    dept_code = dept.code
+
+    # Check for enrolled students
+    student_count = db.query(models.StudentProfile).filter(
+        or_(
+            models.StudentProfile.branch == dept_name,
+            models.StudentProfile.branch == dept_code
+        )
+    ).count()
+
+    if student_count > 0 and not force:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete department '{dept_name}' because {student_count} student(s) are actively enrolled under it. Reassign or graduate them first, or confirm force delete."
+        )
+
+    db.delete(dept)
+    db.commit()
+
+    try:
+        audit = models.AuditLog(
+            user_id=current_user.id,
+            action=f"DELETE_DEPARTMENT: {dept_name} ({dept_code})"
+        )
+        db.add(audit)
+        db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Department '{dept_name}' has been permanently deleted."
+    }
+
 
 @router.get("/college/kpi-stats")
 def get_college_kpi_stats(
@@ -588,22 +979,63 @@ def get_college_kpi_stats(
     total_students = db.query(models.StudentProfile).count()
     total_faculty = db.query(models.TeacherProfile).count()
     total_sessions = db.query(models.AcademicSession).count()
-    active_sessions = db.query(models.AcademicSession).count()
+    
+    today_start = now_ist_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    # active_sessions = sessions that have at least one attendance log recorded today
+    active_sessions = db.query(models.AcademicSession).filter(
+        models.AcademicSession.start_time >= today_start
+    ).join(
+        models.AttendanceLog, models.AttendanceLog.session_id == models.AcademicSession.id
+    ).distinct().count()
     
     total_logs = db.query(models.AttendanceLog).count()
     present_logs = db.query(models.AttendanceLog).filter(models.AttendanceLog.is_present == True).count()
     overall_turnout = round((present_logs / total_logs * 100), 1) if total_logs > 0 else None
     
     all_students = db.query(models.StudentProfile).all()
+
+    # Pre-aggregate attendance per student in a single query for maximum performance
+    stats_rows = (
+        db.query(
+            models.AttendanceLog.student_id,
+            func.count(models.AttendanceLog.id).label("total"),
+            func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0)).label("present")
+        )
+        .group_by(models.AttendanceLog.student_id)
+        .all()
+    )
+    student_stats_map = {row[0]: (row[1], int(row[2] or 0)) for row in stats_rows}
+
     critical_defaulters_list = []
+    student_performance = []
+    safe_count = 0
+    warning_count = 0
+    critical_count = 0
+
     for st in all_students:
-        s_total = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
+        s_total, s_present = student_stats_map.get(st.id, (0, 0))
         if s_total > 0:
-            s_present = db.query(models.AttendanceLog).filter(
-                models.AttendanceLog.student_id == st.id,
-                models.AttendanceLog.is_present == True
-            ).count()
             s_pct = round((s_present / s_total * 100), 1)
+            if s_pct >= 75.0:
+                safe_count += 1
+            elif s_pct >= 65.0:
+                warning_count += 1
+            else:
+                critical_count += 1
+
+            student_performance.append({
+                "id": st.id,
+                "name": st.full_name or "Student",
+                "roll_number": st.roll_number,
+                "branch": st.branch or "General",
+                "semester": st.semester or 1,
+                "section": st.section or "A",
+                "total_classes": s_total,
+                "attended_classes": s_present,
+                "attendance_percentage": s_pct,
+                "photo_thumbnail": st.photo_thumbnail
+            })
+
             if s_pct < 75.0:
                 critical_defaulters_list.append({
                     "roll_number": st.roll_number,
@@ -612,44 +1044,40 @@ def get_college_kpi_stats(
                     "attendance_pct": s_pct,
                     "status": "Severe (<65%)" if s_pct < 65.0 else "At Risk (65-75%)"
                 })
-    critical_defaulters_list.sort(key=lambda d: natural_sort_key(d["roll_number"]))
-    
-    pending_grievances = db.query(models.Grievance).filter(
-        models.Grievance.status.ilike("%review%")
-    ).count()
-    
-    unique_branches = {s.branch for s in all_students if s.branch}
-    for row in db.query(models.TeacherProfile.department).distinct().all():
-        if row[0] and row[0].strip():
-            unique_branches.add(row[0].strip())
-    for row in db.query(models.Subject.branch).distinct().all():
-        if row[0] and row[0].strip():
-            unique_branches.add(row[0].strip())
-    for row in db.query(models.TimetableSlot.branch).distinct().all():
-        if row[0] and row[0].strip():
-            unique_branches.add(row[0].strip())
-    total_departments = len(unique_branches)
-
-    # Calculate real-time risk distribution from database
-    safe_count = 0
-    warning_count = 0
-    critical_count = 0
-    for st in all_students:
-        s_total = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
-        if s_total > 0:
-            s_present = db.query(models.AttendanceLog).filter(
-                models.AttendanceLog.student_id == st.id,
-                models.AttendanceLog.is_present == True
-            ).count()
-            s_pct = round((s_present / s_total * 100), 1)
-            if s_pct >= 75.0:
-                safe_count += 1
-            elif s_pct >= 65.0:
-                warning_count += 1
-            else:
-                critical_count += 1
         else:
             safe_count += 1
+
+    critical_defaulters_list.sort(key=lambda d: natural_sort_key(d["roll_number"]))
+
+    student_performance.sort(
+        key=lambda x: (-x["attendance_percentage"], -x["attended_classes"], natural_sort_key(x["roll_number"]))
+    )
+    medals = ["🥇 Rank 1 • Gold", "🥈 Rank 2 • Silver", "🥉 Rank 3 • Bronze"]
+    top_students = []
+    for idx, sp in enumerate(student_performance[:10]):
+        item = dict(sp)
+        item["rank"] = idx + 1
+        item["badge"] = medals[idx] if idx < 3 else f"Rank #{idx + 1}"
+        top_students.append(item)
+    
+    pending_grievances = db.query(models.Grievance).filter(
+        or_(
+            models.Grievance.status.ilike("%pending%"),
+            models.Grievance.status.ilike("%review%"),
+            models.Grievance.status == "Pending HOD Decision",
+            models.Grievance.status == "Under Review"
+        )
+    ).count()
+    
+    # Batch distinct branch discovery via UNION
+    q_tc = db.query(models.TeacherProfile.department).filter(models.TeacherProfile.department.isnot(None)).distinct()
+    q_sb = db.query(models.Subject.branch).filter(models.Subject.branch.isnot(None)).distinct()
+    q_ts = db.query(models.TimetableSlot.branch).filter(models.TimetableSlot.branch.isnot(None)).distinct()
+    other_branch_rows = q_tc.union(q_sb, q_ts).all()
+    unique_branches = {s.branch for s in all_students if s.branch}
+    unique_branches.update({r[0].strip() for r in other_branch_rows if r[0] and r[0].strip()})
+    dept_tbl_cnt = db.query(models.Department).count()
+    total_departments = dept_tbl_cnt if dept_tbl_cnt > 0 else len(unique_branches)
 
     total_evaluated = len(all_students) if len(all_students) > 0 else 1
     risk_distribution = [
@@ -658,40 +1086,35 @@ def get_college_kpi_stats(
         {"name": "Critical Defaulters (<65%)", "value": critical_count, "percentage": round((critical_count / total_evaluated * 100), 1), "color": "#f43f5e"}
     ]
 
-    # Calculate real-time branch breakdown from database dynamically
-    discovered_branches = set()
-    for row in db.query(models.StudentProfile.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.TeacherProfile.department).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.Subject.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-    for row in db.query(models.TimetableSlot.branch).distinct().all():
-        if row[0] and row[0].strip():
-            discovered_branches.add(row[0].strip())
-
-    if not discovered_branches:
-        discovered_branches = {
-            "Computer Science & Engineering",
-            "Information Technology",
-            "Electronics & Communication",
-            "Mechanical Engineering"
-        }
+    # Calculate real-time branch breakdown from database dynamically via UNION
+    q_st = db.query(models.StudentProfile.branch).filter(models.StudentProfile.branch.isnot(None)).distinct()
+    q_tc = db.query(models.TeacherProfile.department).filter(models.TeacherProfile.department.isnot(None)).distinct()
+    q_sb = db.query(models.Subject.branch).filter(models.Subject.branch.isnot(None)).distinct()
+    q_ts = db.query(models.TimetableSlot.branch).filter(models.TimetableSlot.branch.isnot(None)).distinct()
+    all_kpi_branches = q_st.union(q_tc, q_sb, q_ts).all()
+    discovered_branches = {r[0].strip() for r in all_kpi_branches if r[0] and r[0].strip()}
 
     branch_breakdown = []
+    # Pre-aggregate branch metrics to eliminate N+1 loop queries
+    kpi_st_counts = dict(db.query(models.StudentProfile.branch, func.count(models.StudentProfile.id)).group_by(models.StudentProfile.branch).all())
+    kpi_log_raw = db.query(
+        models.StudentProfile.branch,
+        func.count(models.AttendanceLog.id),
+        func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0))
+    ).join(models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id).group_by(models.StudentProfile.branch).all()
+    kpi_log_map = {r[0]: (r[1] or 0, r[2] or 0) for r in kpi_log_raw}
+
     for idx, b_name in enumerate(sorted(discovered_branches)):
         words = [w for w in b_name.replace("&", "").split() if w]
         b_code = "".join([w[0] for w in words]).upper()[:6] if words else f"D{idx+1}"
-        b_enrolled = db.query(models.StudentProfile).filter(models.StudentProfile.branch.ilike(f"%{b_name}%")).count()
-        b_logs = db.query(models.AttendanceLog).join(
-            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
-        ).filter(models.StudentProfile.branch.ilike(f"%{b_name}%"))
-        b_total_logs = b_logs.count()
-        b_present_logs = b_logs.filter(models.AttendanceLog.is_present == True).count()
-        b_turnout = round((b_present_logs / b_total_logs * 100), 1) if b_total_logs > 0 else 0.0
+        b_enrolled = sum(cnt for b, cnt in kpi_st_counts.items() if b and b_name.lower() in b.lower())
+        b_tot = 0
+        b_present_logs = 0
+        for b, (tot, pres) in kpi_log_map.items():
+            if b and b_name.lower() in b.lower():
+                b_tot += tot
+                b_present_logs += pres
+        b_turnout = round((b_present_logs / b_tot * 100), 1) if b_tot > 0 else 0.0
         branch_breakdown.append({
             "branch": b_name,
             "code": b_code,
@@ -699,32 +1122,25 @@ def get_college_kpi_stats(
             "present_count": b_present_logs,
             "attendance_percentage": b_turnout
         })
-
-    weekly_trajectory = [
-        {"week": "Week 1", "turnout": 77.5, "classes": 13},
-        {"week": "Week 2", "turnout": 79.1, "classes": 13},
-        {"week": "Week 3", "turnout": 81.4, "classes": 13},
-        {"week": "Week 4", "turnout": overall_turnout or 79.3, "classes": 13}
-    ]
     
-    # Calculate dynamic greeting and period for college-wide executive overview
-    now = datetime.now()
+    # Calculate dynamic greeting and period for college-wide executive overview (IST)
+    now = now_ist_naive()
     hour = now.hour
     minute = now.minute
     time_val = hour + (minute / 60.0)
 
     if 4 <= hour < 12:
         greeting = "Good morning"
-        greeting_icon = "🌅"
+        greeting_icon = "\U0001F305"
     elif 12 <= hour < 17:
         greeting = "Good afternoon"
-        greeting_icon = "☀️"
+        greeting_icon = "\u2600\ufe0f"
     elif 17 <= hour < 22:
         greeting = "Good evening"
-        greeting_icon = "🌆"
+        greeting_icon = "\U0001F306"
     else:
         greeting = "Good night"
-        greeting_icon = "🌙"
+        greeting_icon = "\U0001F319"
 
     if time_val < 9.0:
         period_str = "Pre-Campus Hours • Operations Resume at 09:00 AM"
@@ -754,12 +1170,12 @@ def get_college_kpi_stats(
             {"week": "Recent", "turnout": overall_turnout or 0.0, "classes": total_sessions}
         ]
 
-    punctuality = "100.0%" if total_logs > 0 else "0.0%"
+    punctuality = f"{overall_turnout:.1f}%" if (total_logs > 0 and overall_turnout is not None) else "0.0%"
 
     return {
         "greeting": greeting,
         "greetingIcon": greeting_icon,
-        "activeSchedule": f"{period_str} • Whole Campus Biometrics",
+        "activeSchedule": f"{period_str} • Campus Lectures",
         "totalStudents": total_students,
         "totalFaculty": total_faculty,
         "totalDepartments": total_departments,
@@ -772,7 +1188,75 @@ def get_college_kpi_stats(
         "punctualityRate": punctuality,
         "riskDistribution": risk_distribution if all_students else [],
         "branchBreakdown": branch_breakdown,
-        "weeklyTrajectory": real_trajectory
+        "weeklyTrajectory": real_trajectory,
+        "topAchievers": top_students
+    }
+
+@router.get("/college/top-achievers")
+def get_top_attendance_achievers(
+    limit: int = Query(3, ge=1, le=50),
+    branch: Optional[str] = Query(None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Returns the top attendance achievers across the entire college (or filtered by department).
+    Admin and HOD can inspect the top 3 highest attendance students with rankings and metrics.
+    """
+    verify_hod_or_admin(current_user)
+    
+    query = db.query(models.StudentProfile)
+    if branch and branch.lower() != "all":
+        query = query.filter(models.StudentProfile.branch.ilike(f"%{branch.strip()}%"))
+        
+    students = query.all()
+    if not students:
+        return {"total": 0, "achievers": []}
+        
+    stats_rows = (
+        db.query(
+            models.AttendanceLog.student_id,
+            func.count(models.AttendanceLog.id).label("total"),
+            func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0)).label("present")
+        )
+        .group_by(models.AttendanceLog.student_id)
+        .all()
+    )
+    student_stats_map = {row[0]: (row[1], int(row[2] or 0)) for row in stats_rows}
+    
+    performance = []
+    for st in students:
+        s_total, s_present = student_stats_map.get(st.id, (0, 0))
+        if s_total > 0:
+            pct = round((s_present / s_total * 100), 1)
+            performance.append({
+                "id": st.id,
+                "name": st.full_name or "Student",
+                "roll_number": st.roll_number,
+                "branch": st.branch or "General",
+                "semester": st.semester or 1,
+                "section": st.section or "A",
+                "total_classes": s_total,
+                "attended_classes": s_present,
+                "attendance_percentage": pct,
+                "photo_thumbnail": st.photo_thumbnail
+            })
+            
+    performance.sort(
+        key=lambda x: (-x["attendance_percentage"], -x["attended_classes"], natural_sort_key(x["roll_number"]))
+    )
+    
+    medals = ["🥇 Rank 1 • Gold", "🥈 Rank 2 • Silver", "🥉 Rank 3 • Bronze"]
+    results = []
+    for idx, item in enumerate(performance[:limit]):
+        entry = dict(item)
+        entry["rank"] = idx + 1
+        entry["badge"] = medals[idx] if idx < 3 else f"Rank #{idx + 1}"
+        results.append(entry)
+        
+    return {
+        "total": len(performance),
+        "achievers": results
     }
 
 @router.get("/search")
@@ -923,21 +1407,28 @@ def get_department_overview(
     present_logs = dept_logs.filter(models.AttendanceLog.is_present == True).count()
     overall_turnout = round((present_logs / total_logs * 100), 1) if total_logs > 0 else None
     
+    student_ids = [st.id for st in students]
+    st_map = {st.id: st for st in students}
     dept_defaulters = []
-    for st in students:
-        st_total = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
-        if st_total > 0:
-            st_pres = db.query(models.AttendanceLog).filter(
-                models.AttendanceLog.student_id == st.id,
-                models.AttendanceLog.is_present == True
-            ).count()
-            st_pct = round((st_pres / st_total * 100), 1)
-            if st_pct < 75.0:
-                dept_defaulters.append({
-                    "roll_number": st.roll_number,
-                    "name": st.full_name,
-                    "percentage": st_pct
-                })
+    if student_ids:
+        st_stats = db.query(
+            models.AttendanceLog.student_id,
+            func.count(models.AttendanceLog.id).label("total"),
+            func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0)).label("present")
+        ).filter(
+            models.AttendanceLog.student_id.in_(student_ids)
+        ).group_by(models.AttendanceLog.student_id).all()
+
+        for s_id, s_total, s_pres in st_stats:
+            if s_total > 0:
+                s_pct = round(((s_pres or 0) / s_total * 100), 1)
+                if s_pct < 75.0 and s_id in st_map:
+                    st = st_map[s_id]
+                    dept_defaulters.append({
+                        "roll_number": st.roll_number,
+                        "name": st.full_name,
+                        "percentage": s_pct
+                    })
                 
     sessions = db.query(models.AcademicSession).filter(
         models.AcademicSession.branch.ilike(f"%{branch}%")
@@ -972,24 +1463,24 @@ def get_department_overview(
         if user_tp and user_tp.full_name:
             hod_name = user_tp.full_name
 
-    # 2. Compute dynamic time-of-day greeting and icon
-    now = datetime.now()
+    # 2. Compute dynamic time-of-day greeting and icon (IST)
+    now = now_ist_naive()
     hour = now.hour
     minute = now.minute
     time_val = hour + (minute / 60.0)
 
     if 4 <= hour < 12:
         greeting = "Good morning"
-        greeting_icon = "🌅"
+        greeting_icon = "\U0001F305"
     elif 12 <= hour < 17:
         greeting = "Good afternoon"
-        greeting_icon = "☀️"
+        greeting_icon = "\u2600\ufe0f"
     elif 17 <= hour < 22:
         greeting = "Good evening"
-        greeting_icon = "🌆"
+        greeting_icon = "\U0001F306"
     else:
         greeting = "Good night"
-        greeting_icon = "🌙"
+        greeting_icon = "\U0001F319"
 
     # 3. Compute real-time academic period & active lecture
     if time_val < 9.0:
@@ -1085,10 +1576,19 @@ def get_department_faculty_lectures(
     sessions = query.order_by(models.AcademicSession.start_time.desc()).limit(12).all()
     
     result = []
+    session_ids = [s.id for s in sessions]
+    session_stats = {}
+    if session_ids:
+        raw_sess_stats = db.query(
+            models.AttendanceLog.session_id,
+            func.count(models.AttendanceLog.id),
+            func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0))
+        ).filter(models.AttendanceLog.session_id.in_(session_ids)).group_by(models.AttendanceLog.session_id).all()
+        for sid, tot, pres in raw_sess_stats:
+            session_stats[sid] = (tot or 0, pres or 0)
+
     for s in sessions:
-        logs = db.query(models.AttendanceLog).filter(models.AttendanceLog.session_id == s.id).all()
-        scanned = sum(1 for l in logs if l.is_present)
-        total = len(logs)
+        total, scanned = session_stats.get(s.id, (0, 0))
         
         dt_str = s.start_time.strftime("%I:%M %p") if s.start_time else "10:00 AM"
         end_str = s.end_time.strftime("%I:%M %p") if s.end_time else "11:00 AM"
@@ -1097,11 +1597,11 @@ def get_department_faculty_lectures(
             "id": s.id,
             "subject": f"{s.subject.name} ({s.subject.code})" if s.subject else (s.custom_subject_name or "Core Engineering"),
             "faculty": (s.teacher.full_name if s.teacher else None) or s.conducted_by_name or "Faculty Coordinator",
-            "room": f"Room {s.section} - Lab {s.id % 4 + 1}",
-            "semester": f"Semester {s.semester or 6} - Sec {s.section or 'A'}",
+            "room": f"Classroom {s.section}" if s.section else "Lecture Hall",
+            "semester": f"Semester {s.semester or 1} - Sec {s.section or 'A'}",
             "scanned": scanned,
             "total": total,
-            "status": "Attendance Committed" if s.id % 2 == 0 else "In Progress (Active Scan)",
+            "status": "Attendance Committed" if (s.end_time and s.end_time <= now_ist_naive()) else "In Progress",
             "startTime": f"{dt_str} - {end_str}"
         })
         
@@ -1150,11 +1650,11 @@ def get_class_attendance_records(
     if subject_code:
         query = query.filter(models.Subject.code == subject_code)
 
-    today_str = date.today().strftime("%Y-%m-%d")
+    today_str = today_ist_str()
     is_today = False
 
     if target_date == "today":
-        query = query.filter(func.date(models.AcademicSession.start_time) == date.today())
+        query = query.filter(func.date(models.AcademicSession.start_time) == today_str)
         is_today = True
     elif target_date and target_date != "all":
         query = query.filter(func.date(models.AcademicSession.start_time) == target_date)
@@ -1193,7 +1693,7 @@ def get_class_attendance_records(
         if log.is_present:
             present_count += 1
         
-        session_dt = session.start_time or log.timestamp or datetime.utcnow()
+        session_dt = session.start_time or log.timestamp or now_ist_naive()
         session_date = session_dt.strftime("%Y-%m-%d")
         session_time = session_dt.strftime("%I:%M %p")
         if session.end_time:
@@ -1309,7 +1809,7 @@ def get_comprehensive_attendance_analytics(
             (models.AcademicSession.section == section) | (models.AcademicSession.section.is_(None))
         )
     if target_date == "today":
-        sess_query = sess_query.filter(func.date(models.AcademicSession.start_time) == date.today())
+        sess_query = sess_query.filter(func.date(models.AcademicSession.start_time) == today_ist_str())
     elif target_date and target_date != "all":
         sess_query = sess_query.filter(func.date(models.AcademicSession.start_time) == target_date)
     if date_from:
@@ -1321,6 +1821,16 @@ def get_comprehensive_attendance_analytics(
 
     # Distinct teacher conductors for filter options
     distinct_conductors = set()
+    # Bulk pre-fetch session logs to eliminate N+1 queries
+    filtered_sess_ids = [s.id for s in all_sessions]
+    all_analytics_sess_logs = {}
+    if filtered_sess_ids:
+        raw_asl = db.query(models.AttendanceLog, models.StudentProfile).join(
+            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
+        ).filter(models.AttendanceLog.session_id.in_(filtered_sess_ids)).order_by(models.StudentProfile.roll_number.asc()).all()
+        for l, st in raw_asl:
+            all_analytics_sess_logs.setdefault(l.session_id, []).append((l, st))
+
     for s in all_sessions:
         c_name = (s.teacher.full_name if s.teacher else None) or s.conducted_by_name
         if c_name:
@@ -1351,16 +1861,13 @@ def get_comprehensive_attendance_analytics(
 
         filtered_sessions.append(s)
 
-        # Get logs for roster modal, strictly ordered by roll number
-        logs = db.query(models.AttendanceLog, models.StudentProfile).join(
-            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
-        ).filter(models.AttendanceLog.session_id == s.id).order_by(models.StudentProfile.roll_number.asc()).all()
+        logs = all_analytics_sess_logs.get(s.id, [])
 
         present_cnt = sum(1 for l, st in logs if l.is_present)
         total_cnt = len(logs)
         turnout_pct = round((present_cnt / total_cnt * 100), 1) if total_cnt > 0 else 0.0
 
-        session_dt = s.start_time or datetime.utcnow()
+        session_dt = s.start_time or now_ist_naive()
         session_date = session_dt.strftime("%Y-%m-%d")
         session_time = session_dt.strftime("%I:%M %p")
         if s.end_time:
@@ -1423,15 +1930,21 @@ def get_comprehensive_attendance_analytics(
 
     target_session_ids = [s.id for s in filtered_sessions] if (subject_code or teacher_name or target_date or date_from or date_to) else [s.id for s in all_sessions]
 
-    for st in class_students:
-        st_logs_query = db.query(models.AttendanceLog, models.AcademicSession).join(
+    # Bulk pre-fetch student logs to eliminate N+1 queries
+    class_st_ids = [st.id for st in class_students]
+    all_analytics_st_logs = {}
+    if class_st_ids and target_session_ids:
+        raw_astl = db.query(models.AttendanceLog, models.AcademicSession).join(
             models.AcademicSession, models.AttendanceLog.session_id == models.AcademicSession.id
-        ).filter(models.AttendanceLog.student_id == st.id)
+        ).options(joinedload(models.AcademicSession.teacher)).filter(
+            models.AttendanceLog.student_id.in_(class_st_ids),
+            models.AcademicSession.id.in_(target_session_ids)
+        ).all()
+        for l, sess in raw_astl:
+            all_analytics_st_logs.setdefault(l.student_id, []).append((l, sess))
 
-        if target_session_ids:
-            st_logs_query = st_logs_query.filter(models.AcademicSession.id.in_(target_session_ids))
-
-        st_logs = st_logs_query.all()
+    for st in class_students:
+        st_logs = all_analytics_st_logs.get(st.id, [])
 
         total_lectures = len(st_logs)
         total_attended = sum(1 for log, sess in st_logs if log.is_present)
@@ -1470,7 +1983,7 @@ def get_comprehensive_attendance_analytics(
             {
                 "topic": sess.custom_subject_name or "Guest Lecture",
                 "conducted_by": sess.conducted_by_name or "Guest Speaker",
-                "date": (sess.start_time or datetime.utcnow()).strftime("%Y-%m-%d"),
+                "date": (sess.start_time or now_ist_naive()).strftime("%Y-%m-%d"),
                 "is_present": l.is_present
             }
             for l, sess in guest_logs
@@ -1516,14 +2029,206 @@ def get_comprehensive_attendance_analytics(
         },
         "available_filters": {
             "branches": [branch],
-            "semesters": [1, 2, 3, 4, 5, 6, 7, 8],
-            "sections": ["A", "B", "C"],
+            "semesters": resolve_program_meta(branch, db=db)["semesters"],
+            "sections": resolve_program_meta(branch, db=db).get("sections", ["A", "B", "C"]),
             "subjects": [{"code": s.code, "name": s.name, "semester": s.semester} for s in dept_subjects],
             "teachers": sorted(list(distinct_conductors))
         },
         "sessions_log": sessions_log,
         "student_summary": student_summary
     }
+
+class AttendanceOverridePayload(BaseModel):
+    session_id: int
+    student_id: int
+    status_tag: str = "PRESENT"  # "PRESENT", "ABSENT", "DUTY_LEAVE", "MEDICAL", "LATE", "GRIEVANCE_GRANTED"
+    is_present: bool = True
+    reason: str
+
+@router.post("/attendance/override")
+def override_student_attendance(
+    payload: AttendanceOverridePayload,
+    request: Request,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Institutional Attendance Condonation & Grace Override Desk:
+    - Teacher: Permitted only for their own sessions on the SAME calendar day (Grace Window).
+    - HOD / Admin: Master condonation authority across any date for their department/college (Duty Leave, Medical, Administrative Override).
+    - Writes immutable audit trail in models.AuditLog.
+    """
+    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
+        raise HTTPException(status_code=403, detail="Faculty or Management authorization required.")
+
+    reason_clean = (payload.reason or "").strip()
+    if len(reason_clean) < 3:
+        raise HTTPException(status_code=400, detail="A valid official reason (minimum 3 characters) is required for attendance modification.")
+
+    session = db.query(models.AcademicSession).filter(models.AcademicSession.id == payload.session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Academic session #{payload.session_id} not found.")
+
+    student = db.query(models.StudentProfile).filter(models.StudentProfile.id == payload.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail=f"Student #{payload.student_id} not found.")
+
+    now_ist_val = now_ist_naive()
+    session_date = session.start_time.date() if session.start_time else None
+    today_date = now_ist_val.date()
+
+    if current_user.role == models.RoleEnum.teacher:
+        if session_date and session_date != today_date:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Same-day grace period expired. Session was held on {session_date}. Adjustments to past records require HOD approval."
+            )
+        role_label = "TEACHER"
+    elif current_user.role == models.RoleEnum.hod:
+        scope = get_user_department_scope(current_user, db)
+        if scope and session.branch and (scope.lower() not in session.branch.lower() and session.branch.lower() not in scope.lower()):
+            raise HTTPException(status_code=403, detail=f"HOD can only condone attendance within their department ({scope}).")
+        role_label = "HOD"
+    else:
+        role_label = "ADMIN"
+
+    normalized_tag = payload.status_tag.upper().strip()
+    if normalized_tag not in ["PRESENT", "ABSENT", "DUTY_LEAVE", "MEDICAL", "LATE", "GRIEVANCE_GRANTED"]:
+        normalized_tag = "PRESENT" if payload.is_present else "ABSENT"
+
+    if normalized_tag in ["PRESENT", "DUTY_LEAVE", "MEDICAL", "GRIEVANCE_GRANTED"]:
+        is_present = True
+    elif normalized_tag == "ABSENT":
+        is_present = False
+    else:
+        is_present = bool(payload.is_present)
+
+    existing_log = db.query(models.AttendanceLog).filter(
+        models.AttendanceLog.session_id == payload.session_id,
+        models.AttendanceLog.student_id == payload.student_id
+    ).first()
+
+    prev_status = existing_log.status_tag if (existing_log and existing_log.status_tag) else ("PRESENT" if (existing_log and existing_log.is_present) else "ABSENT")
+
+    actor_name = current_user.email
+    if current_user.teacher_profile and current_user.teacher_profile.full_name:
+        actor_name = f"{current_user.teacher_profile.full_name} ({current_user.email})"
+
+    override_remark = f"[{role_label} OVERRIDE]: {reason_clean} (by {actor_name} on {now_ist_val.strftime('%Y-%m-%d %H:%M IST')})"
+
+    if existing_log:
+        existing_log.is_present = is_present
+        existing_log.status_tag = normalized_tag
+        existing_log.remarks = override_remark
+        log_id = existing_log.id
+    else:
+        new_log = models.AttendanceLog(
+            session_id=payload.session_id,
+            student_id=payload.student_id,
+            is_present=is_present,
+            status_tag=normalized_tag,
+            remarks=override_remark,
+            timestamp=now_ist_val
+        )
+        db.add(new_log)
+        db.flush()
+        log_id = new_log.id
+
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    audit_entry = models.AuditLog(
+        user_id=current_user.id,
+        action=f"ATTENDANCE_OVERRIDE | Role: {role_label} | Session: #{payload.session_id} | Student: {student.full_name} ({student.roll_number}) | Status: {prev_status} -> {normalized_tag} (is_present={is_present}) | Reason: {reason_clean}",
+        ip_address=client_ip,
+        device_info=user_agent[:250],
+        timestamp=now_ist_val
+    )
+    db.add(audit_entry)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Attendance successfully updated to {normalized_tag} for {student.full_name} ({student.roll_number}).",
+        "log_id": log_id,
+        "session_id": payload.session_id,
+        "student_id": payload.student_id,
+        "student_name": student.full_name,
+        "roll_number": student.roll_number,
+        "status_tag": normalized_tag,
+        "is_present": is_present,
+        "remarks": override_remark
+    }
+
+@router.get("/attendance/today-sessions")
+def get_today_attendance_sessions(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Returns sessions conducted today for quick same-day attendance correction by teachers/HOD.
+    """
+    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
+        raise HTTPException(status_code=403, detail="Faculty authorization required.")
+
+    today_date = today_ist_date()
+    query = db.query(models.AcademicSession).filter(
+        func.date(models.AcademicSession.start_time) == today_date
+    )
+
+    if current_user.role == models.RoleEnum.teacher and current_user.teacher_profile:
+        t_id = current_user.teacher_profile.id
+        t_name = current_user.teacher_profile.full_name
+        query = query.filter(
+            or_(
+                models.AcademicSession.teacher_id == t_id,
+                models.AcademicSession.conducted_by_name.ilike(f"%{t_name}%")
+            )
+        )
+    elif current_user.role == models.RoleEnum.hod:
+        scope = get_user_department_scope(current_user, db)
+        if scope:
+            query = query.filter(models.AcademicSession.branch.ilike(f"%{scope}%"))
+
+    sessions = query.order_by(models.AcademicSession.start_time.desc()).all()
+
+    result = []
+    for s in sessions:
+        logs = db.query(models.AttendanceLog, models.StudentProfile).join(
+            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
+        ).filter(models.AttendanceLog.session_id == s.id).all()
+
+        roster = [
+            {
+                "student_id": st.id,
+                "roll_number": st.roll_number,
+                "student_name": st.full_name,
+                "is_present": l.is_present,
+                "status_tag": l.status_tag or ("PRESENT" if l.is_present else "ABSENT"),
+                "remarks": l.remarks
+            }
+            for l, st in logs
+        ]
+        roster.sort(key=lambda x: natural_sort_key(x["roll_number"]))
+
+        present_cnt = sum(1 for r in roster if r["is_present"])
+        total_cnt = len(roster)
+
+        result.append({
+            "session_id": s.id,
+            "subject_name": s.custom_subject_name or (s.subject.name if s.subject else "Classroom Session"),
+            "subject_code": s.subject.code if s.subject else "GEN-01",
+            "branch": s.branch,
+            "semester": s.semester,
+            "section": s.section,
+            "conducted_by": s.conducted_by_name or (s.teacher.full_name if s.teacher else "Faculty"),
+            "time": s.start_time.strftime("%I:%M %p") if s.start_time else "N/A",
+            "total_enrolled": total_cnt,
+            "present_count": present_cnt,
+            "absent_count": total_cnt - present_cnt,
+            "roster": roster
+        })
+
+    return {"sessions": result, "today": today_date.isoformat()}
 
 @router.get("/defaulters")
 def get_defaulters(
@@ -1561,16 +2266,23 @@ def get_defaulters(
             total, present = stats
             percentage = (present / total) * 100.0
             if percentage < threshold:
+                ia_data = calculate_attendance_ia_marks(percentage)
                 defaulters.append({
                     "roll_number": student.roll_number,
                     "name": student.full_name,
                     "branch": student.branch,
                     "semester": student.semester or 1,
                     "section": student.section or "A",
-                    "phone": student.phone or student.emergency_contact or "",
-                    "parent_email": student.parent_email or "",
+                    "sub_batch": student.sub_batch or "A1",
+                    "mentor_name": student.mentor_name or "Faculty Mentor",
+                    "phone": student.phone if student.phone and student.phone.strip() else (student.emergency_contact if student.emergency_contact and student.emergency_contact.strip() else "None"),
+                    "emergency_contact": student.emergency_contact if student.emergency_contact and student.emergency_contact.strip() else "None",
+                    "parent_email": student.parent_email if student.parent_email and student.parent_email.strip() else "None",
+                    "parent_contact": student.emergency_contact or student.phone or student.parent_email or "None",
                     "percentage": round(percentage, 2),
-                    "attendance_pct": round(percentage, 2)
+                    "attendance_pct": round(percentage, 2),
+                    "ia_marks": ia_data["ia_marks"],
+                    "standing": ia_data["standing"]
                 })
                 
     # Deterministic Ascending Roll Number Sort
@@ -1614,16 +2326,26 @@ def dispatch_defaulter_notices(
             q = q.filter(models.StudentProfile.branch.ilike(f"%{target_branch}%"))
         all_st = q.all()
         cutoff = payload.threshold if payload.threshold is not None else 75.0
+        # Batch aggregate attendance with a single SQL GROUP BY
+        st_ids = [s.id for s in all_st]
+        stats_map = {}
+        if st_ids:
+            from sqlalchemy import case
+            agg_data = db.query(
+                models.AttendanceLog.student_id,
+                func.count(models.AttendanceLog.id).label("tot"),
+                func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0)).label("pres")
+            ).filter(models.AttendanceLog.student_id.in_(st_ids)).group_by(models.AttendanceLog.student_id).all()
+            for sid, tot_cnt, pres_cnt in agg_data:
+                t = tot_cnt or 0
+                p = pres_cnt or 0
+                c_pct = round((p / t * 100), 1) if t > 0 else 0.0
+                stats_map[sid] = (t, p, c_pct)
+
         for st in all_st:
-            tot = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
-            if tot > 0:
-                pres = db.query(models.AttendanceLog).filter(
-                    models.AttendanceLog.student_id == st.id,
-                    models.AttendanceLog.is_present == True
-                ).count()
-                pct = (pres / tot) * 100
-                if pct < cutoff:
-                    target_students.append(st)
+            t, p, c_pct = stats_map.get(st.id, (0, 0, 0.0))
+            if t > 0 and c_pct < cutoff:
+                target_students.append(st)
 
     # 2. Record in ParentNotificationLog table and prepare delivery
     dispatched = []
@@ -1631,14 +2353,20 @@ def dispatch_defaulter_notices(
     channel = payload.channel or "Email"
 
     for st in target_students:
-        tot = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
-        pres = db.query(models.AttendanceLog).filter(
-            models.AttendanceLog.student_id == st.id,
-            models.AttendanceLog.is_present == True
-        ).count() if tot > 0 else 0
-        pct = round((pres / tot * 100), 1) if tot > 0 else 0.0
+        t, p, pct = stats_map.get(st.id, (0, 0, 0.0))
+        if t == 0:
+            tot = db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == st.id).count()
+            pres = db.query(models.AttendanceLog).filter(
+                models.AttendanceLog.student_id == st.id,
+                models.AttendanceLog.is_present == True
+            ).count() if tot > 0 else 0
+            pct = round((pres / tot * 100), 1) if tot > 0 else 0.0
 
-        phone = st.phone or st.emergency_contact or ""
+        contact_val = (st.phone or st.emergency_contact or "").strip()
+        p_email = (st.parent_email or "").strip()
+        has_contact = bool(contact_val or p_email)
+        phone = contact_val if contact_val else "None"
+        dispatch_status = "Delivered" if has_contact else "None (Skipped - No Contact)"
         msg = (
             f"STATUTORY ATTENDANCE NOTICE: Student {st.full_name} (Roll: {st.roll_number}, "
             f"{st.branch}) attendance is {pct}% (Below the mandatory {cutoff_val}% minimum requirement). "
@@ -1650,11 +2378,12 @@ def dispatch_defaulter_notices(
             student_roll=st.roll_number,
             student_name=st.full_name,
             parent_phone=phone,
+            parent_email=p_email if p_email else "None",
             channel=channel,
             trigger_reason=f"Defaulter Warning (<{cutoff_val}% Cutoff)",
             message_content=msg,
-            status="Delivered",
-            timestamp=datetime.utcnow()
+            status=dispatch_status,
+            timestamp=now_ist_naive()
         )
         db.add(notif_log)
         dispatched.append({
@@ -1671,7 +2400,7 @@ def dispatch_defaulter_notices(
     audit = models.AuditLog(
         user_id=current_user.id,
         action=audit_action,
-        ip_address=request.client.host if request.client else "127.0.0.1",
+        ip_address=get_client_ip(request),
         device_info=request.headers.get("user-agent", "Admin/HOD Portal")
     )
     db.add(audit)
@@ -1749,7 +2478,7 @@ def declare_holiday(
         existing.description = reason.strip()
 
     # 2. Audit Log
-    client_ip = request.client.host if request and request.client else "127.0.0.1"
+    client_ip = get_client_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown") if request else "Unknown"
     audit = models.AuditLog(
         user_id=current_user.id,
@@ -1772,21 +2501,223 @@ def trigger_lifecycle_archiving(
 ):
     if current_user.role != models.RoleEnum.admin:
         raise HTTPException(status_code=403, detail="Only Admins can run archiving.")
-        
-    total_sessions = db.query(models.AcademicSession).count()
-    total_attendance = db.query(models.AttendanceLog).count()
-    
+
+    import json
+    from pathlib import Path
+
+    now_str = now_ist_naive().strftime("%Y%m%d_%H%M%S")
+    archive_dir = Path(__file__).resolve().parent.parent / "archives"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_file = archive_dir / f"archive_semester_{now_str}.json"
+
+    total_sessions_cnt = db.query(models.AcademicSession).count()
+    total_logs_cnt = db.query(models.AttendanceLog).count()
+
+    with open(archive_file, "w", encoding="utf-8") as f:
+        f.write('{\n')
+        f.write(f'  "archived_at": "{now_ist().isoformat()}",\n')
+        f.write(f'  "archived_by": "{current_user.email}",\n')
+        f.write(f'  "total_sessions": {total_sessions_cnt},\n')
+        f.write(f'  "total_attendance_records": {total_logs_cnt},\n')
+        f.write('  "sessions": [\n')
+        first_sess = True
+        for s in db.query(models.AcademicSession).yield_per(200):
+            if not first_sess:
+                f.write(',\n')
+            sess_dict = {
+                "id": s.id,
+                "teacher_id": s.teacher_id,
+                "subject_id": s.subject_id,
+                "custom_subject_name": s.custom_subject_name,
+                "conducted_by_name": s.conducted_by_name,
+                "branch": s.branch,
+                "semester": s.semester,
+                "section": s.section,
+                "start_time": s.start_time.isoformat() if s.start_time else None,
+                "end_time": s.end_time.isoformat() if s.end_time else None,
+            }
+            f.write("    " + json.dumps(sess_dict))
+            first_sess = False
+        f.write('\n  ],\n  "attendance_logs": [\n')
+        first_log = True
+        for l in db.query(models.AttendanceLog).yield_per(500):
+            if not first_log:
+                f.write(',\n')
+            log_dict = {
+                "id": l.id,
+                "session_id": l.session_id,
+                "student_id": l.student_id,
+                "is_present": l.is_present,
+                "status_tag": l.status_tag,
+                "timestamp": l.timestamp.isoformat() if l.timestamp else None,
+            }
+            f.write("    " + json.dumps(log_dict))
+            first_log = False
+        f.write('\n  ]\n}\n')
+
+    # Persist archive marker in SystemSetting
+    setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "last_archive_snapshot").first()
+    if not setting:
+        setting = models.SystemSetting(key="last_archive_snapshot", value=archive_file.name)
+        db.add(setting)
+    else:
+        setting.value = archive_file.name
+
     audit = models.AuditLog(
         user_id=current_user.id,
-        action=f"Semester Lifecycle Archival executed by Master Admin ({current_user.email}). Preserved {total_sessions} sessions and {total_attendance} attendance logs."
+        action=f"Semester Lifecycle Archival executed by Master Admin ({current_user.email}). Snapshot saved to {archive_file.name} ({total_sessions_cnt} sessions, {total_logs_cnt} records)."
     )
     db.add(audit)
     db.commit()
+
     return {
-        "message": f"End-of-semester archiving complete. {total_sessions} sessions and {total_attendance} attendance records indexed.",
-        "archived_sessions_count": total_sessions,
-        "archived_records_count": total_attendance
+        "success": True,
+        "message": f"End-of-semester archiving complete. Data archived to {archive_file.name}.",
+        "archive_file": archive_file.name,
+        "archived_sessions_count": total_sessions_cnt,
+        "archived_records_count": total_logs_cnt,
+        "archived_at": now_ist().isoformat()
     }
+
+class HolidayPayload(BaseModel):
+    title: Optional[str] = None
+    reason: Optional[str] = None
+    date: Optional[str] = None
+    holiday_date: Optional[str] = None
+    end_date: Optional[str] = None  # Multi-day range (e.g. Preparation Leave, Exam Breaks)
+    event_type: Optional[str] = "HOLIDAY"  # HOLIDAY, PREPARATION_LEAVE, EXAM_PERIOD, SEMESTER_BREAK, EMERGENCY_CLOSURE
+    department: Optional[str] = "all"
+    description: Optional[str] = None
+
+@router.post("/holidays")
+def declare_official_holiday(
+    payload: Optional[HolidayPayload] = None,
+    holiday_date: Optional[str] = Query(None, description="Holiday date (YYYY-MM-DD)"),
+    reason: Optional[str] = Query(None, description="Reason or holiday title"),
+    department: Optional[str] = Query("all", description="Department or all"),
+    description: Optional[str] = Query(None, description="Detailed notice text"),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_hod_or_admin(current_user)
+    
+    clean_date = (payload.date if payload and payload.date else (payload.holiday_date if payload and payload.holiday_date else holiday_date)) or now_ist_naive().strftime("%Y-%m-%d")
+    clean_title = (payload.title if payload and payload.title else (payload.reason if payload and payload.reason else reason)) or "Emergency Academic Holiday"
+    clean_dept = (payload.department if payload and payload.department else department) or "all"
+    clean_desc = (payload.description if payload and payload.description else description) or f"Official Notice: Classes suspended on {clean_date} due to {clean_title}."
+    
+    clean_date = clean_date.strip()
+    clean_title = clean_title.strip()
+    clean_dept = clean_dept.strip()
+    clean_desc = clean_desc.strip()
+    
+    clean_end_date = (payload.end_date if payload and payload.end_date else None)
+    clean_event_type = (payload.event_type if payload and payload.event_type else "HOLIDAY")
+
+    existing = db.query(models.Holiday).filter(
+        models.Holiday.date == clean_date,
+        models.Holiday.department == clean_dept
+    ).first()
+    
+    if existing:
+        existing.title = clean_title
+        existing.end_date = clean_end_date
+        existing.event_type = clean_event_type
+        existing.description = clean_desc
+        existing.created_by = current_user.email
+    else:
+        existing = models.Holiday(
+            title=clean_title,
+            date=clean_date,
+            end_date=clean_end_date,
+            event_type=clean_event_type,
+            department=clean_dept,
+            description=clean_desc,
+            created_by=current_user.email
+        )
+        db.add(existing)
+        
+    audit = models.AuditLog(
+        user_id=current_user.id,
+        action=f"Academic Holiday declared: '{clean_title}' on {clean_date} ({clean_dept}) by {current_user.email}. Notice: {clean_desc}"
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(existing)
+
+    # Broadcast notification to HOD and students via push notification service
+    try:
+        from services.push_notification_service import notify_role
+        notify_role(
+            db=db,
+            role=models.RoleEnum.student,
+            title=f"Holiday Notice: {clean_title}",
+            body=clean_desc[:120],
+            data={"type": "HOLIDAY", "date": clean_date, "title": clean_title, "notice": clean_desc}
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Official Holiday '{clean_title}' declared for {clean_date}. All timetable classes suspended.",
+        "holiday": {
+            "id": existing.id,
+            "title": existing.title,
+            "date": existing.date,
+            "department": existing.department,
+            "description": existing.description
+        }
+    }
+
+@router.get("/holidays")
+def list_official_holidays(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_hod_or_admin(current_user)
+    scope = get_user_department_scope(current_user)
+    q = db.query(models.Holiday)
+    if scope:
+        q = q.filter(or_(models.Holiday.department == "all", models.Holiday.department.ilike(f"%{scope}%")))
+    holidays = q.order_by(models.Holiday.date.asc()).all()
+    formatted = [
+        {
+            "id": h.id,
+            "title": h.title,
+            "date": h.date,
+            "end_date": getattr(h, "end_date", None),
+            "event_type": getattr(h, "event_type", "HOLIDAY") or "HOLIDAY",
+            "department": h.department,
+            "description": h.description,
+            "created_by": h.created_by,
+            "created_at": h.created_at.isoformat() if h.created_at else None
+        }
+        for h in holidays
+    ]
+    # Return hybrid dict/list structure compatible with both Admin Portal and HOD Portal
+    return {
+        "holidays": formatted,
+        "items": formatted,
+        "total": len(formatted)
+    }
+
+@router.delete("/holidays/{holiday_id}")
+@router.delete("/holiday/{holiday_id}", include_in_schema=False)
+def delete_official_holiday(
+    holiday_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    verify_hod_or_admin(current_user)
+    holiday = db.query(models.Holiday).filter(models.Holiday.id == holiday_id).first()
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found.")
+    title = holiday.title
+    h_date = holiday.date
+    db.delete(holiday)
+    db.commit()
+    return {"success": True, "message": f"Holiday '{title}' ({h_date}) deleted."}
 
 @router.get("/grievances")
 def get_all_grievances(
@@ -1845,6 +2776,12 @@ def resolve_grievance(
     if not g:
         raise HTTPException(status_code=404, detail=f"Grievance ticket {final_ticket_id} not found.")
 
+    scope = get_user_department_scope(current_user, db)
+    if scope and scope not in ["__UNASSIGNED_HOD__", "__UNAUTHORIZED_SCOPE__"]:
+        st = db.query(models.StudentProfile).filter(models.StudentProfile.id == g.student_id).first()
+        if st and st.branch and (scope.lower() not in st.branch.lower() and st.branch.lower() not in scope.lower()):
+            raise HTTPException(status_code=403, detail="HODs are only authorized to resolve grievances within their own department.")
+
     clean_decision = "Granted" if final_decision.lower() in ["granted", "approved"] else "Rejected"
     g.status = f"{clean_decision} by HOD"
 
@@ -1858,15 +2795,15 @@ def resolve_grievance(
             if att_log:
                 att_log.is_present = True
                 att_log.status_tag = "GRIEVANCE_GRANTED"
-                att_log.remarks = f"Dispute granted by HOD on {date.today().isoformat()} (Ticket {g.ticket_id})"
+                att_log.remarks = f"Dispute granted by HOD on {today_ist_str()} (Ticket {g.ticket_id})"
             else:
                 new_log = models.AttendanceLog(
                     student_id=g.student_id,
                     session_id=g.session_id,
                     is_present=True,
                     status_tag="GRIEVANCE_GRANTED",
-                    remarks=f"Dispute granted by HOD on {date.today().isoformat()} (Ticket {g.ticket_id})",
-                    timestamp=datetime.utcnow()
+                    remarks=f"Dispute granted by HOD on {today_ist_str()} (Ticket {g.ticket_id})",
+                    timestamp=now_ist_naive()
                 )
                 db.add(new_log)
     elif clean_decision == "Rejected" and g.student_id and g.session_id:
@@ -1877,9 +2814,24 @@ def resolve_grievance(
         if att_log and att_log.status_tag == "GRIEVANCE_GRANTED":
             att_log.is_present = False
             att_log.status_tag = "ABSENT"
-            att_log.remarks = f"Grievance rejected by HOD on {date.today().isoformat()}"
+            att_log.remarks = f"Grievance rejected by HOD on {today_ist_str()}"
 
     db.commit()
+
+    # Real-Time Push Notification to Student Device
+    try:
+        from services.push_notification_service import notify_user_id
+        if g.student and g.student.user_id:
+            notify_user_id(
+                db=db,
+                user_id=g.student.user_id,
+                title="Grievance Decision Update",
+                body=f"Your grievance dispute #{ticket_id} was {clean_decision.lower()} by the Department HOD.",
+                data={"ticket_id": ticket_id, "type": "GRIEVANCE_RESOLVED", "decision": clean_decision}
+            )
+    except Exception:
+        pass
+
     return {
         "success": True,
         "message": f"Grievance {ticket_id} marked as {clean_decision}. Student attendance record updated in SQLite database.",
@@ -1929,6 +2881,11 @@ class StudentCreate(BaseModel):
     semester: int
     section: str
     password: Optional[str] = None
+    phone: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    parent_email: Optional[str] = None
+    sub_batch: Optional[str] = "A1"
+    mentor_name: Optional[str] = None
 
 class StudentUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -1940,6 +2897,8 @@ class StudentUpdate(BaseModel):
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
     parent_email: Optional[str] = None
+    sub_batch: Optional[str] = None
+    mentor_name: Optional[str] = None
     is_active: Optional[bool] = None
 
 class BatchPromotionRequest(BaseModel):
@@ -1991,10 +2950,10 @@ def list_hods(
     current_user: models.User = Depends(get_current_user)
 ):
     verify_admin(current_user)
-    hod_users = db.query(models.User).filter(models.User.role == models.RoleEnum.hod).all()
+    hod_users = db.query(models.User).options(joinedload(models.User.teacher_profile)).filter(models.User.role == models.RoleEnum.hod).all()
     results = []
     for u in hod_users:
-        tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == u.id).first()
+        tp = u.teacher_profile
         results.append({
             "id": u.id,
             "email": u.email,
@@ -2114,10 +3073,10 @@ def list_teachers(
     q = db.query(models.TeacherProfile)
     if scope:
         q = q.filter(models.TeacherProfile.department.ilike(f"%{scope}%"))
-    teachers = q.all()
+    teachers = q.options(joinedload(models.TeacherProfile.user)).all()
     results = []
     for t in teachers:
-        u = db.query(models.User).filter(models.User.id == t.user_id).first()
+        u = t.user
         results.append({
             "id": t.id,
             "user_id": t.user_id,
@@ -2134,7 +3093,10 @@ def create_teacher(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    verify_admin(current_user)
+    verify_hod_or_admin(current_user)
+    scope = get_user_department_scope(current_user, db)
+    if scope and scope not in ["__UNASSIGNED_HOD__", "__UNAUTHORIZED_SCOPE__"]:
+        data.department = scope  # HODs can only create faculty within their own department
     existing = db.query(models.User).filter(models.User.email == data.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User with this email already exists.")
@@ -2316,6 +3278,7 @@ def list_students(
         ).count()
         att_pct = round((present_logs / total_logs * 100), 1) if total_logs > 0 else 0.0
 
+        ia_res = calculate_attendance_ia_marks(att_pct)
         results.append({
             "id": s.id,
             "user_id": s.user_id,
@@ -2324,12 +3287,19 @@ def list_students(
             "branch": s.branch,
             "semester": s.semester,
             "section": s.section,
+            "sub_batch": s.sub_batch or "A1",
+            "mentor_name": s.mentor_name or "Faculty Mentor",
             "email": u.email if u else f"{s.roll_number.lower()}@student.college.edu",
-            "phone": s.phone or "N/A",
+            "phone": s.phone if s.phone and s.phone.strip() else "None",
+            "emergency_contact": s.emergency_contact if s.emergency_contact and s.emergency_contact.strip() else "None",
+            "parent_email": s.parent_email if s.parent_email and s.parent_email.strip() else "None",
+            "parent_contact": s.emergency_contact or s.phone or s.parent_email or "None",
             "has_face_encoding": s.face_encoding is not None and len(str(s.face_encoding)) > 10,
             "total_classes": total_logs,
             "present_classes": present_logs,
             "attendance_percentage": att_pct,
+            "ia_marks": ia_res["ia_marks"],
+            "standing": ia_res["standing"],
             "is_defaulter": att_pct < 75.0 if total_logs > 0 else False,
             "is_active": u.is_active if u else True
         })
@@ -2341,7 +3311,10 @@ def create_student(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    verify_admin(current_user)
+    verify_hod_or_admin(current_user)
+    scope = get_user_department_scope(current_user, db)
+    if scope and scope not in ["__UNASSIGNED_HOD__", "__UNAUTHORIZED_SCOPE__"]:
+        data.branch = scope  # HODs can only create students within their own department
     existing = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number == data.roll_number).first()
     if existing:
         raise HTTPException(status_code=400, detail="Student with this roll number already exists.")
@@ -2359,6 +3332,13 @@ def create_student(
         db.commit()
         db.refresh(user)
         
+    prog_meta = resolve_program_meta(data.branch, db=db)
+    if data.semester < 1 or data.semester > prog_meta.get("total_semesters", 10):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid semester {data.semester} for '{prog_meta.get('program_name', data.branch)}'. Total semesters for this degree program: {prog_meta.get('total_semesters', 10)}."
+        )
+
     sp = models.StudentProfile(
         user_id=user.id,
         full_name=data.full_name,
@@ -2366,7 +3346,12 @@ def create_student(
         branch=data.branch,
         semester=data.semester,
         section=data.section,
-        face_encoding="[0.0, 0.0, 0.0]"
+        phone=data.phone,
+        emergency_contact=data.emergency_contact,
+        parent_email=data.parent_email,
+        sub_batch=data.sub_batch or "A1",
+        mentor_name=data.mentor_name,
+        face_encoding=None
     )
     db.add(sp)
     db.commit()
@@ -2457,8 +3442,10 @@ def delete_student(
     u_id = sp.user_id
     db.query(models.AttendanceLog).filter(models.AttendanceLog.student_id == student_id).delete()
     db.query(models.Grievance).filter(models.Grievance.student_id == student_id).delete()
+    db.query(models.ParentNotificationLog).filter(models.ParentNotificationLog.student_id == student_id).delete()
     db.delete(sp)
     if u_id:
+        db.query(models.DevicePushToken).filter(models.DevicePushToken.user_id == u_id).delete()
         user = db.query(models.User).filter(models.User.id == u_id).first()
         if user:
             db.delete(user)
@@ -2492,24 +3479,28 @@ def batch_promote_students(
         if u and not u.is_active:
             continue  # Already graduated or inactive, skip
             
+        prog_meta = resolve_program_meta(s.branch, db=db)
+        total_sems = prog_meta.get("total_semesters", 8)
+        alumni_sem = total_sems + 1
+
         if data.promote_mode == "annual":
-            # 4th Year (Sem 7 or 8) -> Passout / Alumni
-            if s.semester >= 7:
+            # Final Year students (e.g. Sem 5/6 for 3-yr BBA; Sem 7/8 for 4-yr BTech; Sem 3/4 for 2-yr MBA; Sem 9/10 for 5-yr MBBS)
+            final_year_threshold = max(1, total_sems - 1)
+            if s.semester >= final_year_threshold:
                 if u:
                     u.is_active = False # Deactivate from active class attendance rosters
-                s.semester = 9 # Indicates Graduated / Alumni
+                s.semester = alumni_sem # Indicates Graduated / Alumni
                 graduated_count += 1
             else:
-                # 1st Year (Sem 1/2) -> 2nd Year (Sem 3/4)
-                # 2nd Year (Sem 3/4) -> 3rd Year (Sem 5/6)
-                # 3rd Year (Sem 5/6) -> 4th Year (Sem 7/8)
                 s.semester += 2
+                if s.semester > total_sems:
+                    s.semester = total_sems
                 promoted_count += 1
         elif data.promote_mode == "next_sem":
-            if s.semester >= 8:
+            if s.semester >= total_sems:
                 if u:
                     u.is_active = False
-                s.semester = 9
+                s.semester = alumni_sem
                 graduated_count += 1
             else:
                 s.semester += 1
@@ -2549,8 +3540,8 @@ def download_student_csv_template(
 
     csv_content = (
         "roll_number,full_name,branch,semester,section,email,password\n"
-        f"{yr}{dept_code}001,Student Name One,{target_branch},1,A,student1@univ.edu,StudentPass123\n"
-        f"{yr}{dept_code}002,Student Name Two,{target_branch},1,A,student2@univ.edu,StudentPass123\n"
+        f"{yr}{dept_code}001,Aarav Sharma,{target_branch},1,A,aarav.sharma@college.edu,\n"
+        f"{yr}{dept_code}002,Priya Patel,{target_branch},1,A,priya.patel@college.edu,\n"
     )
     return Response(
         content=csv_content,
@@ -2574,7 +3565,7 @@ async def batch_import_students_csv(
     - Enforces department isolation for HODs
     - Prevents duplicate roll number registration
     - Creates corresponding User login credentials and StudentProfile
-    - Returns granular import summary
+    - Returns granular import summary with full transaction rollback on failure
     """
     verify_hod_or_admin(current_user)
     dept_scope = get_user_department_scope(current_user)
@@ -2609,75 +3600,81 @@ async def batch_import_students_csv(
     errors = []
     total_rows = 0
     
-    for row_idx, row in enumerate(csv_reader, start=2):
-        total_rows += 1
-        roll = (row.get(normalized_fields["roll_number"]) or "").strip().upper()
-        name = (row.get(normalized_fields["full_name"]) or "").strip()
-        branch = (row.get(normalized_fields["branch"]) or "").strip()
-        sem_raw = (row.get(normalized_fields["semester"]) or "").strip()
-        sec = (row.get(normalized_fields["section"]) or "").strip().upper()
-        
-        email_key = normalized_fields.get("email")
-        pwd_key = normalized_fields.get("password")
-        email = (row.get(email_key) or "").strip().lower() if email_key else ""
-        password = (row.get(pwd_key) or "").strip() if pwd_key else ""
-        
-        if not roll or not name or not branch or not sem_raw or not sec:
-            skipped_count += 1
-            errors.append(f"Row {row_idx}: Missing required values (Roll, Name, Branch, Sem, Sec).")
-            continue
+    try:
+        for row_idx, row in enumerate(csv_reader, start=2):
+            total_rows += 1
+            roll = (row.get(normalized_fields["roll_number"]) or "").strip().upper()
+            name = (row.get(normalized_fields["full_name"]) or "").strip()
+            branch = (row.get(normalized_fields["branch"]) or "").strip()
+            sem_raw = (row.get(normalized_fields["semester"]) or "").strip()
+            sec = (row.get(normalized_fields["section"]) or "").strip().upper()
             
-        try:
-            sem = int(sem_raw)
-            if sem < 1 or sem > 10:
-                raise ValueError()
-        except ValueError:
-            skipped_count += 1
-            errors.append(f"Row {row_idx} ({roll}): Invalid semester '{sem_raw}'. Must be an integer 1-8.")
-            continue
+            email_key = normalized_fields.get("email")
+            pwd_key = normalized_fields.get("password")
+            email = (row.get(email_key) or "").strip().lower() if email_key else ""
+            password = (row.get(pwd_key) or "").strip() if pwd_key else ""
             
-        # Department isolation check for HOD
-        if dept_scope and dept_scope.lower() not in branch.lower():
-            skipped_count += 1
-            errors.append(f"Row {row_idx} ({roll}): Cannot import student for '{branch}'. Your HOD jurisdiction is strictly '{dept_scope}'.")
-            continue
-            
-        # Check duplicate roll number in database
-        existing_profile = db.query(models.StudentProfile).filter(
-            func.upper(models.StudentProfile.roll_number) == roll
-        ).first()
-        if existing_profile:
-            skipped_count += 1
-            errors.append(f"Row {row_idx} ({roll}): Roll number already registered in database.")
-            continue
-            
-        # Check or create user
-        s_email = email if email else f"{roll.lower()}@student.university.edu"
-        user = db.query(models.User).filter(func.lower(models.User.email) == s_email.lower()).first()
-        if not user:
-            s_pwd = password if password else roll.upper()
-            user = models.User(
-                email=s_email,
-                hashed_password=security.get_password_hash(s_pwd),
-                role=models.RoleEnum.student,
-                is_active=True
+            if not roll or not name or not branch or not sem_raw or not sec:
+                skipped_count += 1
+                errors.append(f"Row {row_idx}: Missing required values (Roll, Name, Branch, Sem, Sec).")
+                continue
+                
+            try:
+                sem = int(sem_raw)
+                prog_meta = resolve_program_meta(branch, db=db)
+                max_sem = prog_meta.get("total_semesters", 10)
+                if sem < 1 or sem > max_sem:
+                    raise ValueError()
+            except ValueError:
+                skipped_count += 1
+                errors.append(f"Row {row_idx} ({roll}): Invalid semester '{sem_raw}' for program '{prog_meta.get('program_name', branch)}'. Valid range is 1-{max_sem}.")
+                continue
+                
+            # Department isolation check for HOD
+            if dept_scope and dept_scope.lower() not in branch.lower():
+                skipped_count += 1
+                errors.append(f"Row {row_idx} ({roll}): Cannot import student for '{branch}'. Your HOD jurisdiction is strictly '{dept_scope}'.")
+                continue
+                
+            # Check duplicate roll number in database
+            existing_profile = db.query(models.StudentProfile).filter(
+                func.upper(models.StudentProfile.roll_number) == roll
+            ).first()
+            if existing_profile:
+                skipped_count += 1
+                errors.append(f"Row {row_idx} ({roll}): Roll number already registered in database.")
+                continue
+                
+            # Check or create user
+            s_email = email if email else f"{roll.lower()}@student.university.edu"
+            user = db.query(models.User).filter(func.lower(models.User.email) == s_email.lower()).first()
+            if not user:
+                s_pwd = password if password else os.getenv("DEFAULT_STUDENT_PASSWORD", "Student@Secure2026!")
+                user = models.User(
+                    email=s_email,
+                    hashed_password=security.get_password_hash(s_pwd),
+                    role=models.RoleEnum.student,
+                    is_active=True
+                )
+                db.add(user)
+                db.flush()
+                
+            sp = models.StudentProfile(
+                user_id=user.id,
+                full_name=name,
+                roll_number=roll,
+                branch=branch,
+                semester=sem,
+                section=sec,
+                face_encoding=None
             )
-            db.add(user)
-            db.flush()
+            db.add(sp)
+            imported_count += 1
             
-        sp = models.StudentProfile(
-            user_id=user.id,
-            full_name=name,
-            roll_number=roll,
-            branch=branch,
-            semester=sem,
-            section=sec,
-            face_encoding=None
-        )
-        db.add(sp)
-        imported_count += 1
-        
-    db.commit()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error during bulk student import: {str(e)}")
     
     return {
         "success": True,
@@ -2746,66 +3743,69 @@ def export_attendance_register_csv(
         except ValueError:
             pass
             
-    records = query.order_by(models.AttendanceLog.timestamp.desc()).all()
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([
-        "Log ID",
-        "Timestamp (ISO)",
-        "Date",
-        "Time",
-        "Roll Number",
-        "Student Name",
-        "Department/Branch",
-        "Semester",
-        "Section",
-        "Subject Code",
-        "Subject Name",
-        "Faculty In-Charge",
-        "Session Type",
-        "Attendance Status",
-        "Status Tag",
-        "Remarks / Override Reason"
-    ])
-    
-    for log, student, session, subject, teacher in records:
-        ts_str = log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else ""
-        date_str = log.timestamp.strftime("%d/%m/%Y") if log.timestamp else ""
-        time_str = log.timestamp.strftime("%I:%M %p") if log.timestamp else ""
-        
-        subj_code = subject.code if subject else (getattr(session, 'custom_subject_code', None) or "N/A")
-        subj_name = subject.name if subject else (getattr(session, 'custom_subject_name', None) or "General Lecture")
-        faculty_name = teacher.full_name if teacher else (getattr(session, 'conducted_by_name', None) or getattr(session, 'teacher_name', None) or "Designated Faculty")
-        sess_type = session.session_type.value if (session and hasattr(session.session_type, 'value')) else (str(session.session_type) if session else "Regular")
-        status_label = "Present" if log.is_present else "Absent"
-        status_tag = getattr(log, 'status_tag', None) or status_label
-        remarks = getattr(log, 'remarks', None) or ""
-        
+    def iter_csv():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
         writer.writerow([
-            log.id,
-            ts_str,
-            date_str,
-            time_str,
-            student.roll_number,
-            student.full_name,
-            student.branch,
-            student.semester,
-            student.section,
-            subj_code,
-            subj_name,
-            faculty_name,
-            sess_type,
-            status_label,
-            status_tag,
-            remarks
+            "Log ID",
+            "Timestamp (ISO)",
+            "Date",
+            "Time",
+            "Roll Number",
+            "Student Name",
+            "Department/Branch",
+            "Semester",
+            "Section",
+            "Subject Code",
+            "Subject Name",
+            "Faculty In-Charge",
+            "Session Type",
+            "Attendance Status",
+            "Status Tag",
+            "Remarks / Override Reason"
         ])
-        
-    csv_data = output.getvalue()
-    filename = f"attendance_register_{datetime.utcnow().strftime('%Y%m%d')}.csv"
-    
-    return Response(
-        content=csv_data,
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate(0)
+
+        for log, student, session, subject, teacher in query.order_by(models.AttendanceLog.timestamp.desc()).yield_per(250):
+            ts_str = log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else ""
+            date_str = log.timestamp.strftime("%d/%m/%Y") if log.timestamp else ""
+            time_str = log.timestamp.strftime("%I:%M %p") if log.timestamp else ""
+            
+            subj_code = subject.code if subject else "N/A"
+            subj_name = subject.name if subject else (getattr(session, 'custom_subject_name', None) or "General Lecture")
+            faculty_name = teacher.full_name if teacher else (getattr(session, 'conducted_by_name', None) or "Designated Faculty")
+            sess_type = session.session_type.value if (session and hasattr(session.session_type, 'value')) else (str(session.session_type) if session else "Regular")
+            status_label = "Present" if log.is_present else "Absent"
+            status_tag = getattr(log, 'status_tag', None) or status_label
+            remarks = getattr(log, 'remarks', None) or ""
+            
+            writer.writerow([
+                log.id,
+                ts_str,
+                date_str,
+                time_str,
+                student.roll_number,
+                student.full_name,
+                student.branch,
+                student.semester,
+                student.section,
+                subj_code,
+                subj_name,
+                faculty_name,
+                sess_type,
+                status_label,
+                status_tag,
+                remarks
+            ])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+    filename = f"attendance_register_{now_ist_naive().strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        iter_csv(),
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
@@ -3003,8 +4003,8 @@ def update_hod_profile(
             raise HTTPException(status_code=400, detail="Current password is required to change password.")
         if not security.verify_password(data.current_password, current_user.hashed_password):
             raise HTTPException(status_code=400, detail="Current password is incorrect.")
-        if len(data.new_password.strip()) < 6:
-            raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+        if len(data.new_password.strip()) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
         current_user.hashed_password = security.get_password_hash(data.new_password.strip())
         
     # Custom department settings persisted in DB
@@ -3171,12 +4171,12 @@ def get_teacher_profile(
     
     assigned = []
     if tp:
-        tt_slots = db.query(models.TimetableSlot).filter(models.TimetableSlot.teacher_id == tp.id).all()
+        tt_slots = db.query(models.TimetableSlot).options(joinedload(models.TimetableSlot.subject)).filter(models.TimetableSlot.teacher_id == tp.id).all()
         for slot in tt_slots:
             name = (slot.subject.name if slot.subject else None) or slot.custom_subject_name
             if name and name not in assigned:
                 assigned.append(name)
-        sessions = db.query(models.AcademicSession).filter(models.AcademicSession.teacher_id == tp.id).all()
+        sessions = db.query(models.AcademicSession).options(joinedload(models.AcademicSession.subject)).filter(models.AcademicSession.teacher_id == tp.id).all()
         for s in sessions:
             name = (s.subject.name if s.subject else None) or s.custom_subject_name
             if name and name not in assigned:
@@ -3214,10 +4214,11 @@ def update_teacher_profile(
             raise HTTPException(status_code=400, detail="Current password is required to change password.")
         if not security.verify_password(data.current_password, current_user.hashed_password):
             raise HTTPException(status_code=400, detail="Current password is incorrect.")
-        if len(data.new_password.strip()) < 6:
-            raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+        if len(data.new_password.strip()) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
         current_user.hashed_password = security.get_password_hash(data.new_password.strip())
         
+    tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.user_id == current_user.id).first()
     custom = get_db_setting(db, f"teacher_settings_{current_user.id}", {
         "phone": (getattr(tp, 'phone_number', None) or ""), 
         "preferred_camera": "front"
@@ -3294,7 +4295,9 @@ def get_parent_alert_logs(
                 "id": l.id,
                 "student_roll": l.student_roll,
                 "student_name": l.student_name,
-                "email_dispatched_to": l.parent_phone,  # repurposed — stores email
+                "recipient_contact": getattr(l, 'recipient', None) or (getattr(l, 'parent_email', None) if l.channel == "Email" else l.parent_phone),
+                "parent_phone": l.parent_phone if l.channel != "Email" else (getattr(l, 'parent_phone', None) or ""),
+                "parent_email": getattr(l, 'parent_email', None) or (l.parent_phone if l.channel == "Email" else ""),
                 "channel": l.channel,
                 "trigger_reason": l.trigger_reason,
                 "message_content": l.message_content,
@@ -3327,7 +4330,7 @@ def grant_duty_leave(
     try:
         target_date = datetime.strptime(data.date, "%Y-%m-%d").date()
     except Exception:
-        target_date = datetime.utcnow().date()
+        target_date = today_ist_date()
         
     start_dt = datetime.combine(target_date, datetime.min.time())
     end_dt = datetime.combine(target_date, datetime.max.time())
@@ -3376,7 +4379,7 @@ def grant_duty_leave(
                 new_log = models.AttendanceLog(
                     session_id=sess.id,
                     student_id=st.id,
-                    timestamp=sess.start_time or datetime.utcnow(),
+                    timestamp=sess.start_time or now_ist_naive(),
                     is_present=True,
                     status_tag="DUTY_LEAVE",
                     remarks=f"Event: {data.event_name}. {data.remarks or ''}".strip()
@@ -3406,10 +4409,17 @@ def list_duty_leave_records(
              
     logs = q.order_by(models.AttendanceLog.timestamp.desc()).limit(100).all()
     records = []
+    st_ids = [l.student_id for l in logs if l.student_id]
+    sess_ids = [l.session_id for l in logs if l.session_id]
+    st_map = {st.id: st for st in db.query(models.StudentProfile).filter(models.StudentProfile.id.in_(st_ids)).all()} if st_ids else {}
+    sess_map = {s.id: s for s in db.query(models.AcademicSession).filter(models.AcademicSession.id.in_(sess_ids)).all()} if sess_ids else {}
+    sub_ids = [s.subject_id for s in sess_map.values() if s.subject_id]
+    sub_map = {sub.id: sub for sub in db.query(models.Subject).filter(models.Subject.id.in_(sub_ids)).all()} if sub_ids else {}
+
     for l in logs:
-        st = db.query(models.StudentProfile).filter(models.StudentProfile.id == l.student_id).first()
-        sess = db.query(models.AcademicSession).filter(models.AcademicSession.id == l.session_id).first()
-        subj = db.query(models.Subject).filter(models.Subject.id == sess.subject_id).first() if sess else None
+        st = st_map.get(l.student_id)
+        sess = sess_map.get(l.session_id)
+        subj = sub_map.get(sess.subject_id) if sess else None
         records.append({
             "id": l.id,
             "student_name": st.full_name if st else "N/A",
@@ -3423,70 +4433,8 @@ def list_duty_leave_records(
 
 
 # ==========================================
-# 2. HOLIDAY & NON-INSTRUCTIONAL CALENDAR
+# 2. HOLIDAY CALENDAR CHECK
 # ==========================================
-
-@router.get("/holidays")
-def list_holidays(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    verify_hod_or_admin(current_user)
-    scope = get_user_department_scope(current_user)
-    q = db.query(models.Holiday)
-    if scope:
-        q = q.filter(or_(models.Holiday.department == "all", models.Holiday.department.ilike(f"%{scope}%")))
-    holidays = q.order_by(models.Holiday.date.asc()).all()
-    return {
-        "holidays": [
-            {
-                "id": h.id,
-                "title": h.title,
-                "date": h.date,
-                "department": h.department,
-                "description": h.description,
-                "created_by": h.created_by
-            } for h in holidays
-        ]
-    }
-
-@router.post("/holidays")
-def create_holiday(
-    data: HolidayCreate,
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    verify_hod_or_admin(current_user)
-    scope = get_user_department_scope(current_user)
-    dept = data.department or "all"
-    if scope:
-        dept = scope
-        
-    h = models.Holiday(
-        title=data.title,
-        date=data.date,
-        department=dept,
-        description=data.description,
-        created_by=f"{current_user.role.value}: {current_user.email}"
-    )
-    db.add(h)
-    db.commit()
-    db.refresh(h)
-    return {"message": f"Holiday '{data.title}' on {data.date} declared successfully.", "holiday": {"id": h.id, "title": h.title, "date": h.date}}
-
-@router.delete("/holidays/{holiday_id}")
-def delete_holiday(
-    holiday_id: int,
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    verify_hod_or_admin(current_user)
-    h = db.query(models.Holiday).filter(models.Holiday.id == holiday_id).first()
-    if not h:
-        raise HTTPException(status_code=404, detail="Holiday record not found.")
-    db.delete(h)
-    db.commit()
-    return {"message": "Holiday deleted successfully."}
 
 @router.get("/holidays/check")
 def check_holiday(
@@ -3554,11 +4502,13 @@ def list_proxy_assignments(
     scope = get_user_department_scope(current_user)
     q = db.query(models.ProxyAssignment)
     assignments = q.order_by(models.ProxyAssignment.created_at.desc()).all()
+    teachers_cache = {t.id: t for t in db.query(models.TeacherProfile).all()}
+    subjects_cache = {s.id: s for s in db.query(models.Subject).all()}
     results = []
     for a in assignments:
-        orig = db.query(models.TeacherProfile).filter(models.TeacherProfile.id == a.original_teacher_id).first()
-        prx = db.query(models.TeacherProfile).filter(models.TeacherProfile.id == a.proxy_teacher_id).first()
-        sb = db.query(models.Subject).filter(models.Subject.id == a.subject_id).first()
+        orig = teachers_cache.get(a.original_teacher_id)
+        prx = teachers_cache.get(a.proxy_teacher_id)
+        sb = subjects_cache.get(a.subject_id)
         if scope and orig and scope.lower() not in (orig.department or "").lower():
             continue
         results.append({
@@ -3594,25 +4544,30 @@ def get_class_test_records(
     if scope:
         branch = scope
         
-    q = db.query(models.AcademicSession).filter(models.AcademicSession.session_type == models.SessionType.test)
+    q = db.query(models.AcademicSession).options(joinedload(models.AcademicSession.teacher)).filter(models.AcademicSession.session_type == models.SessionType.test)
     if branch and branch != "all":
         q = q.filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
         
     sessions = q.order_by(models.AcademicSession.start_time.desc()).all()
     results = []
     
+    sub_ids = [s.subject_id for s in sessions if s.subject_id]
+    sub_cache = {sb.id: sb for sb in db.query(models.Subject).filter(models.Subject.id.in_(sub_ids)).all()} if sub_ids else {}
+    sess_ids = [s.id for s in sessions]
+    logs_by_sess = {}
+    if sess_ids:
+        all_test_logs = db.query(models.AttendanceLog).options(joinedload(models.AttendanceLog.student)).filter(models.AttendanceLog.session_id.in_(sess_ids)).all()
+        for tl in all_test_logs:
+            logs_by_sess.setdefault(tl.session_id, []).append(tl)
+
     for s in sessions:
-        sb = db.query(models.Subject).filter(models.Subject.id == s.subject_id).first()
-        tp = db.query(models.TeacherProfile).filter(models.TeacherProfile.id == s.teacher_id).first()
-        
-        logs = db.query(models.AttendanceLog).filter(models.AttendanceLog.session_id == s.id).all()
+        sb = sub_cache.get(s.subject_id)
+        logs = logs_by_sess.get(s.id, [])
         present_count = sum(1 for l in logs if l.is_present)
-        absent_logs = [l for l in logs if not l.is_present]
-        
         absent_students = []
-        for al in absent_logs:
-            st = db.query(models.StudentProfile).filter(models.StudentProfile.id == al.student_id).first()
-            if st:
+        for al in logs:
+            if not al.is_present and al.student:
+                st = al.student
                 absent_students.append({
                     "id": st.id,
                     "name": st.full_name,
@@ -3627,7 +4582,7 @@ def get_class_test_records(
             "subject_code": sb.code if sb else "TEST-101",
             "branch": s.branch,
             "date": s.start_time.strftime("%Y-%m-%d %H:%M") if s.start_time else "N/A",
-            "invigilator": tp.full_name if tp else "Faculty Invigilator",
+            "invigilator": (s.teacher.full_name if s.teacher else None) or s.conducted_by_name or "Faculty Invigilator",
             "total_enrolled": len(logs),
             "appeared_count": present_count,
             "absent_count": len(absent_students),
@@ -3748,7 +4703,7 @@ def create_faculty_user(
         audit = models.AuditLog(
             action=f"Admin created {clean_role.upper()} account for '{clean_name}' ({clean_email}) in '{clean_dept}'.",
             user_id=current_user.id,
-            timestamp=datetime.utcnow()
+            timestamp=now_ist_naive()
         )
         db.add(audit)
     except Exception:
@@ -3857,4 +4812,124 @@ def factory_reset_endpoint(
     return {
         "success": True,
         "message": "Full factory reset completed. Database wiped to Day-0 clean state."
+    }
+
+
+# =========================================================================
+# Academic Degree & Course Program Duration Management
+# =========================================================================
+
+class ProgramOverridePayload(BaseModel):
+    branch_or_code: str
+    program_name: Optional[str] = None
+    duration_years: int
+    total_semesters: int
+
+
+@router.get("/academic-programs")
+def get_academic_programs(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Returns university academic program duration catalog, active branches, and custom duration overrides.
+    Supports variable degree courses:
+    - 5-Year (10 Semesters): MBBS, B.Arch, BA LLB, Integrated M.Tech
+    - 4-Year (8 Semesters): B.Tech, B.E., B.Pharm
+    - 3-Year (6 Semesters): BBA, BCA, B.Sc, B.Com, Diploma
+    - 2-Year (4 Semesters): MBA, M.Tech, MCA, M.Sc
+    """
+    verify_hod_or_admin(current_user)
+
+    # Fetch custom overrides from SystemSetting
+    custom_overrides = {}
+    setting = db.query(models.SystemSetting).filter(
+        models.SystemSetting.key == SETTING_KEY_CUSTOM_PROGRAMS
+    ).first()
+    if setting and setting.value:
+        try:
+            custom_overrides = json.loads(setting.value)
+        except Exception:
+            pass
+
+    # Fetch all active branches present in database via a single UNION query (Issue 8 batching)
+    st_branches = db.query(models.StudentProfile.branch).filter(models.StudentProfile.branch.isnot(None)).distinct()
+    sb_branches = db.query(models.Subject.branch).filter(models.Subject.branch.isnot(None)).distinct()
+    all_branch_rows = st_branches.union(sb_branches).all()
+    active_branches = sorted(list({r[0].strip() for r in all_branch_rows if r[0] and r[0].strip()}))
+
+    # Pre-cache department models in memory to avoid N+1 queries during resolution (Issue 15 caching)
+    all_depts = db.query(models.Department).all()
+    dept_cache_map = {}
+    for d in all_depts:
+        if d.name:
+            dept_cache_map[d.name.strip().lower()] = d
+        if d.code:
+            dept_cache_map[d.code.strip().lower()] = d
+
+    branch_meta_map = {}
+    for b in active_branches:
+        branch_meta_map[b] = resolve_program_meta(
+            b, 
+            db=db, 
+            custom_overrides=custom_overrides, 
+            dept_map=dept_cache_map
+        )
+
+    return {
+        "catalog": get_all_supported_programs(),
+        "active_branches": branch_meta_map,
+        "custom_overrides": custom_overrides
+    }
+
+
+@router.post("/academic-programs/override")
+def save_program_override(
+    payload: ProgramOverridePayload,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Allows institutional administrators to customize the duration (years & semesters)
+    for any course, degree, or branch.
+    """
+    verify_admin(current_user)
+
+    if payload.duration_years < 1 or payload.duration_years > 7:
+        raise HTTPException(status_code=400, detail="Duration must be between 1 and 7 years.")
+    if payload.total_semesters < 1 or payload.total_semesters > 14:
+        raise HTTPException(status_code=400, detail="Total semesters must be between 1 and 14.")
+
+    setting = db.query(models.SystemSetting).filter(
+        models.SystemSetting.key == SETTING_KEY_CUSTOM_PROGRAMS
+    ).first()
+
+    current_data = {}
+    if setting and setting.value:
+        try:
+            current_data = json.loads(setting.value)
+        except Exception:
+            current_data = {}
+
+    current_data[payload.branch_or_code.strip()] = {
+        "code": payload.branch_or_code.strip().upper(),
+        "name": payload.program_name or payload.branch_or_code.strip(),
+        "duration_years": payload.duration_years,
+        "total_semesters": payload.total_semesters
+    }
+
+    if not setting:
+        setting = models.SystemSetting(
+            key=SETTING_KEY_CUSTOM_PROGRAMS,
+            value=json.dumps(current_data)
+        )
+        db.add(setting)
+    else:
+        setting.value = json.dumps(current_data)
+
+    db.commit()
+    return {
+        "success": True,
+        "message": f"Academic duration for '{payload.branch_or_code}' updated: {payload.duration_years} Years ({payload.total_semesters} Semesters).",
+        "custom_overrides": current_data
     }

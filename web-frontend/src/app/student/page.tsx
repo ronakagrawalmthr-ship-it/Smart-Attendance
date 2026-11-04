@@ -140,7 +140,7 @@ export default function StudentPortal() {
             rel="noopener noreferrer"
             className="text-xs font-bold text-stone-900 bg-white border border-stone-200 px-3.5 py-2 rounded-2xl shadow-sm hover:bg-stone-50 transition"
           >
-            Launch Standalone Student Portal (:3002) ↗
+            Launch Standalone Student Portal  ↗
           </a>
         </div>
 
