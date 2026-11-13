@@ -28,7 +28,7 @@ def seed_database_defaults():
             "is_setup_completed": is_completed,
             "institution_name": "Apex Institute of Technology & Engineering",
             "admin_name": "Director of Academic Affairs",
-            "admin_email": "admin@college.edu"
+            "admin_email": "spideronak@gmail.com"
         }
         for key, val in settings_map.items():
             row = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
@@ -37,18 +37,18 @@ def seed_database_defaults():
         db.commit()
 
         # 2. Master Admin Account
-        admin_pwd = os.getenv("DEFAULT_ADMIN_PASSWORD", "Admin@Secure2026!")
-        admin = db.query(models.User).filter(models.User.email == "admin@college.edu").first()
+        admin_pwd = os.getenv("DEFAULT_ADMIN_PASSWORD", "jarvis@1234")
+        admin = db.query(models.User).filter(models.User.email == "spideronak@gmail.com").first()
         if not admin:
             admin = models.User(
-                email="admin@college.edu",
+                email="spideronak@gmail.com",
                 hashed_password=security.get_password_hash(admin_pwd),
                 role=models.RoleEnum.admin,
                 is_active=True
             )
             db.add(admin)
             db.commit()
-            print(" [SEED] Master Admin created: admin@college.edu")
+            print(" [SEED] Master Admin created: spideronak@gmail.com")
 
         # 3. HOD (Head of Department) Account
         hod_pwd = os.getenv("DEFAULT_HOD_PASSWORD", "Hod@Secure2026!")
