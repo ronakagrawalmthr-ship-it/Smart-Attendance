@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SpotlightSearch from '@/components/SpotlightSearch';
-import { API_BASE_URL, getAdminPortalUrl, getStudentPortalUrl, getHodPortalUrl } from '@/lib/api';
+import { API_BASE_URL, authFetch, getAdminPortalUrl, getStudentPortalUrl, getHodPortalUrl } from '@/lib/api';
 
 export default function Home() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -51,11 +51,11 @@ export default function Home() {
     setStudentUrl(getStudentPortalUrl());
     setHodUrl(getHodPortalUrl());
 
-    fetch(`${API_BASE_URL}/`)
+    authFetch(`${API_BASE_URL}/`)
       .then(res => res.ok ? setBackendStatus('online') : setBackendStatus('offline'))
       .catch(() => setBackendStatus('offline'));
 
-    fetch(`${API_BASE_URL}/setup/status`)
+    authFetch(`${API_BASE_URL}/setup/status`)
       .then(res => res.json())
       .then(data => {
         if (data?.institution_name) {
@@ -64,7 +64,7 @@ export default function Home() {
       })
       .catch(() => {});
 
-    fetch(`${API_BASE_URL}/management/college/kpi-stats`)
+    authFetch(`${API_BASE_URL}/management/college/kpi-stats`)
       .then(res => res.json())
       .then(data => {
         if (data) {

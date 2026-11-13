@@ -1,6 +1,6 @@
 'use client';
 
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, authFetch } from '@/lib/api';
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
@@ -180,7 +180,7 @@ export default function AppleDeluxeShell({
 
     const fetchLiveEvents = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/management/telemetry/live-events`);
+        const res = await authFetch(`${API_BASE_URL}/management/telemetry/live-events`);
         if (res.ok) {
           const events: CampusAlert[] = await res.json();
           if (Array.isArray(events) && events.length > 0) {

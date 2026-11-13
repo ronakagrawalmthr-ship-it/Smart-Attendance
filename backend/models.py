@@ -241,6 +241,7 @@ class TimetableSlot(Base):
     custom_teacher_name = Column(String, nullable=True)
     room_number = Column(String, default="LH-101")
     session_type = Column(String, default="lecture") # lecture, practical, tutorial
+    sub_batch = Column(String, default="All")        # "All" or specific Lab batch: "A1", "A2", "A3"
     created_at = Column(DateTime, default=now_ist_naive)
 
     subject = relationship("Subject")

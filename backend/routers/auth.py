@@ -587,8 +587,8 @@ def verify_otp_and_set_password(
     clean_email = payload.email.strip().lower()
     clean_otp = payload.otp.strip()
 
-    if len(payload.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
 
     # 1. Look up valid unverified OTP
     otp_record = db.query(models.EmailVerificationOTP).filter(

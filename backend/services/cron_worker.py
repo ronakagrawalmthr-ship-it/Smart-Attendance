@@ -214,13 +214,22 @@ def run_midnight_attendance_audit(db: Session, force: bool = False) -> Dict[str,
 
     # 1. Distributed Singleton Check: Prevent multiple workers from running audit on the same day
     if not force:
-        lock_record = db.query(models.SystemSetting).filter(
-            models.SystemSetting.key == "last_midnight_audit_date"
-        ).first()
+        try:
+            # Acquire row lock when supported (Postgres) to prevent concurrent duplicate runs
+            lock_q = db.query(models.SystemSetting).filter(
+                models.SystemSetting.key == "last_midnight_audit_date"
+            )
+            if getattr(db.bind.dialect, "name", "") != "sqlite":
+                lock_q = lock_q.with_for_update()
+            lock_record = lock_q.first()
+        except Exception:
+            lock_record = db.query(models.SystemSetting).filter(
+                models.SystemSetting.key == "last_midnight_audit_date"
+            ).first()
         if lock_record and lock_record.value == today_str:
             return {
                 "status": "skipped",
-                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S IST"),
                 "message": f"Nightly audit already executed for {today_str}. Skipping to prevent duplicate processing."
             }
 
@@ -230,7 +239,15 @@ def run_midnight_attendance_audit(db: Session, force: bool = False) -> Dict[str,
             db.add(lock_record)
         else:
             lock_record.value = today_str
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            return {
+                "status": "skipped",
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S IST"),
+                "message": f"Nightly audit lock contention detected for {today_str}. Skipping duplicate run."
+            }
 
     inst_setting = db.query(models.SystemSetting).filter(
         models.SystemSetting.key == "institution_name"
@@ -381,7 +398,7 @@ def run_midnight_attendance_audit(db: Session, force: bool = False) -> Dict[str,
 
     return {
         "status": "success",
-        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S IST"),
         "total_students_audited": len(students),
         "unconducted_sessions_flagged": missed_sessions_count,
         "defaulters_identified": len(defaulters_flagged),

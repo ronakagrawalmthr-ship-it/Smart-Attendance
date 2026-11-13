@@ -99,6 +99,9 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
+  if (!headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
+  }
 
   let finalUrl = url;
   if (!finalUrl.startsWith('http')) {

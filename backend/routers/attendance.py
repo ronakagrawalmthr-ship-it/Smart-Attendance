@@ -63,6 +63,23 @@ except (ImportError, ValueError):
     import security
 from .auth import get_current_user
 
+def get_session_roster_query(session: models.AcademicSession, db: Session):
+    """Build student roster query scoped to session branch/semester/section/sub-batch."""
+    q = db.query(models.StudentProfile).filter(models.StudentProfile.branch == session.branch)
+    if session.semester:
+        q = q.filter(models.StudentProfile.semester == session.semester)
+    if session.section:
+        q = q.filter(
+            (models.StudentProfile.section == session.section) | (models.StudentProfile.section == None)
+        )
+    sub_batch = (getattr(session, "sub_batch", None) or "All").strip()
+    if sub_batch and sub_batch.lower() != "all":
+        q = q.filter(models.StudentProfile.sub_batch.ilike(sub_batch))
+    return q
+
+def get_total_expected_for_session(session: models.AcademicSession, db: Session) -> int:
+    return get_session_roster_query(session, db).count()
+
 def safe_dispatch_ws_task(coro):
     """Schedules a WebSocket broadcast background coroutine with safe error boundary."""
     import asyncio
@@ -123,21 +140,52 @@ def get_or_create_session_from_slot(
     slot = db.query(models.TimetableSlot).filter(models.TimetableSlot.id == session_id).first()
     if slot:
         today_start = datetime.combine(today_ist_date(), dt_time.min)
-        session = db.query(models.AcademicSession).filter(
-            models.AcademicSession.subject_id == slot.subject_id,
-            models.AcademicSession.section == slot.section,
+        slot_sub_batch = (getattr(slot, "sub_batch", None) or "All").strip() or "All"
+        existing_q = db.query(models.AcademicSession).filter(
             models.AcademicSession.branch == slot.branch,
+            models.AcademicSession.section == slot.section,
+            models.AcademicSession.semester == slot.semester,
             models.AcademicSession.start_time >= today_start
-        ).first()
+        )
+        if slot.subject_id is not None:
+            existing_q = existing_q.filter(models.AcademicSession.subject_id == slot.subject_id)
+        else:
+            existing_q = existing_q.filter(models.AcademicSession.subject_id == None)
+            if slot.custom_subject_name:
+                existing_q = existing_q.filter(models.AcademicSession.custom_subject_name == slot.custom_subject_name)
+        if slot_sub_batch and slot_sub_batch.lower() != "all":
+            existing_q = existing_q.filter(models.AcademicSession.sub_batch == slot_sub_batch)
+        session = existing_q.order_by(models.AcademicSession.id.desc()).first()
         if not session:
-            teacher_prof_id = slot.teacher_id or (current_user.teacher_profile.id if (current_user and getattr(current_user, 'teacher_profile', None)) else None)
+            teacher_prof_id = slot.teacher_id or (
+                current_user.teacher_profile.id if (current_user and getattr(current_user, 'teacher_profile', None)) else None
+            )
+            sess_type_raw = (getattr(slot, "session_type", None) or "lecture").lower()
+            try:
+                sess_type = models.SessionType(sess_type_raw)
+            except Exception:
+                sess_type = models.SessionType.lecture
+            duration_mins = int(getattr(slot, "duration_minutes", None) or 60)
+            credit_weight = int(getattr(slot, "credit_weight", None) or 1)
+            now = now_ist_naive()
+            conductor = getattr(slot, "custom_teacher_name", None)
+            if not conductor and getattr(slot, "teacher", None):
+                conductor = getattr(slot.teacher, "full_name", None)
             session = models.AcademicSession(
                 teacher_id=teacher_prof_id,
                 subject_id=slot.subject_id,
+                session_type=sess_type,
+                start_time=now,
+                end_time=now + timedelta(minutes=duration_mins),
+                duration_minutes=duration_mins,
+                credit_weight=credit_weight,
                 branch=slot.branch,
                 semester=slot.semester,
                 section=slot.section,
-                start_time=now_ist_naive()
+                sub_batch=slot_sub_batch,
+                conducted_by_name=conductor,
+                custom_subject_name=getattr(slot, "custom_subject_name", None),
+                notes=f"Auto-created from timetable slot {slot.id}" + (f" ({slot.room_number})" if getattr(slot, 'room_number', None) else "")
             )
             db.add(session)
             db.commit()
@@ -182,12 +230,8 @@ async def process_classroom_scan(
     if not is_owner and not is_proxy:
         raise HTTPException(status_code=403, detail="Not authorized to take attendance for this session.")
         
-    # Get all students registered for this branch/semester/section, strictly sorted by roll number
-    students_query = db.query(models.StudentProfile).filter(
-        models.StudentProfile.branch == session.branch,
-        # session.section could be None if it's the whole branch
-        (models.StudentProfile.section == session.section) | (session.section == None)
-    ).order_by(models.StudentProfile.roll_number.asc()).all()
+    # Get all students registered for this session (branch/semester/section/sub-batch), strictly sorted by roll number
+    students_query = get_session_roster_query(session, db).order_by(models.StudentProfile.roll_number.asc()).all()
     students = sorted(students_query, key=lambda s: natural_sort_key(s.roll_number))
     
     # Build dictionary of known vectors
@@ -290,10 +334,8 @@ async def verify_single_student_walkup(
             "liveness": liveness_result
         }
 
-    # 2. Get registered students
-    students = db.query(models.StudentProfile).filter(
-        models.StudentProfile.branch == session.branch
-    ).all()
+    # 2. Get registered students scoped to the active session
+    students = get_session_roster_query(session, db).all()
 
     known_vectors = {}
     student_map = {}
@@ -303,7 +345,7 @@ async def verify_single_student_walkup(
                 raw_json = security.decrypt_biometric_vector(student.face_encoding)
                 if raw_json:
                     known_vectors[student.roll_number] = json.loads(raw_json)
-                student_map[student.roll_number] = student
+                    student_map[student.roll_number] = student
             except Exception:
                 pass
 
@@ -851,6 +893,7 @@ class QRSessionInitRequest(BaseModel):
     semester: int
     section: str = "A"
     session_type: str = "lecture"
+    sub_batch: Optional[str] = "All"
     conducted_by_name: Optional[str] = None
     custom_subject_name: Optional[str] = None
     notes: Optional[str] = None
@@ -975,6 +1018,7 @@ def init_dynamic_qr_session(
         branch=data.branch,
         semester=data.semester,
         section=data.section.upper(),
+        sub_batch=(data.sub_batch or "All").strip() or "All",
         conducted_by_name=conductor,
         custom_subject_name=subj_name,
         notes=data.notes or "Live Dynamic QR Broadcast Active"
@@ -985,11 +1029,7 @@ def init_dynamic_qr_session(
 
     token = generate_dynamic_qr_jwt(session)
 
-    total_expected = db.query(models.StudentProfile).filter(
-        models.StudentProfile.branch == session.branch,
-        models.StudentProfile.semester == session.semester,
-        models.StudentProfile.section == session.section
-    ).count()
+    total_expected = get_total_expected_for_session(session, db)
 
     return {
         "success": True,
@@ -1046,11 +1086,7 @@ def rotate_dynamic_qr_token(
         } for log, sp in present_logs[:15]
     ]
 
-    total_expected = db.query(models.StudentProfile).filter(
-        models.StudentProfile.branch == session.branch,
-        models.StudentProfile.semester == session.semester,
-        models.StudentProfile.section == session.section
-    ).count()
+    total_expected = get_total_expected_for_session(session, db)
 
     return {
         "success": True,
@@ -1129,6 +1165,16 @@ def verify_and_mark_qr_attendance(
             status_code=400,
             detail=f"Branch mismatch: This lecture belongs to {session.branch}, but your department is {student.branch}."
         )
+
+    # D. Check Sub-batch (Lab/Practical partition)
+    sess_sub = (getattr(session, "sub_batch", None) or "All").strip()
+    if sess_sub and sess_sub.lower() != "all":
+        stu_sub = (getattr(student, "sub_batch", None) or "").strip()
+        if not stu_sub or stu_sub.lower() != sess_sub.lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sub-batch mismatch: This session is for {sess_sub}, but you belong to {stu_sub or 'unassigned batch'}."
+            )
 
     subj_name = session.custom_subject_name or (session.subject.name if session.subject else "Classroom Lecture")
     conductor = session.conducted_by_name or (session.teacher.full_name if session.teacher else "Faculty")
@@ -1241,11 +1287,7 @@ def get_qr_live_status(
         models.AttendanceLog.is_present == True
     ).order_by(models.AttendanceLog.id.desc()).all()
 
-    total_expected = db.query(models.StudentProfile).filter(
-        models.StudentProfile.branch == session.branch,
-        models.StudentProfile.semester == session.semester,
-        models.StudentProfile.section == session.section
-    ).count()
+    total_expected = get_total_expected_for_session(session, db)
 
     recent_checkins = [
         {

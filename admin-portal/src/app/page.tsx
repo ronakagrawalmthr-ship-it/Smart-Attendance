@@ -118,6 +118,7 @@ export default function AdminLogin() {
                 <input
                   type="email"
                   required
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@college.edu or dean@univ.ac.in"
@@ -140,6 +141,7 @@ export default function AdminLogin() {
                 <input
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your master password"

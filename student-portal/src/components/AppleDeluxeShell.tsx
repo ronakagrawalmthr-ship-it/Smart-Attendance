@@ -191,9 +191,7 @@ export default function AppleDeluxeShell({
 
       const token = localStorage.getItem('student_token');
       if (token) {
-        fetch(`${API_BASE_URL}/portal/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        authFetch(`${API_BASE_URL}/portal/profile`)
           .then(res => res.ok ? res.json() : null)
           .then(data => {
             if (data?.full_name) {

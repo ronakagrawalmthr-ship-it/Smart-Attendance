@@ -103,6 +103,10 @@ export async function apiClient<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  if (!headers['ngrok-skip-browser-warning']) {
+    headers['ngrok-skip-browser-warning'] = 'true';
+  }
+
   let finalUrl = endpoint.startsWith('http') ? endpoint : `${getApiBaseUrl()}${endpoint}`;
   if (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('vercel.app')) {
     finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`);
@@ -132,6 +136,9 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   const headers = new Headers(options.headers || {});
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (!headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
   }
 
   let finalUrl = url;

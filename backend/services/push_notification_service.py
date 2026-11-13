@@ -75,14 +75,14 @@ def notify_user_id(
     body: str,
     data: Optional[Dict[str, Any]] = None,
     sound: str = "default"
-) -> int:
+) -> Dict[str, Any]:
     """
     Finds all active push tokens for a specific user and sends the push notification.
-    Returns the number of devices targeted.
+    Returns delivery summary dict for consistent caller handling.
     """
     tokens = db.query(models.DevicePushToken).filter(models.DevicePushToken.user_id == user_id).all()
     if not tokens:
-        return 0
+        return {"success": True, "devices_targeted": 0, "sent_count": 0, "error": None}
 
     messages = [
         {

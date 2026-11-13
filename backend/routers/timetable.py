@@ -64,7 +64,8 @@ class SlotCreateRequest(BaseModel):
     teacher_id: Optional[int] = None
     custom_teacher_name: Optional[str] = None
     room_number: str = "LH-101"
-    session_type: str = "lecture" 
+    session_type: str = "lecture"
+    sub_batch: Optional[str] = "All" 
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'model'
@@ -136,6 +137,7 @@ def get_weekly_timetable(
             "teacher_name": teacher_name,
             "room_number": s.room_number,
             "session_type": s.session_type,
+            "sub_batch": getattr(s, "sub_batch", None) or "All",
             "duration_minutes": getattr(s, "duration_minutes", None) or 60,
             "credit_weight": getattr(s, "credit_weight", None) or 1
         }
@@ -226,6 +228,7 @@ def get_today_timetable(
             "teacher_name": teacher_name,
             "room_number": s.room_number,
             "session_type": s.session_type,
+            "sub_batch": getattr(s, "sub_batch", None) or "All",
             "is_ongoing": is_ongoing,
             "is_past": is_past,
             "is_upcoming": is_upcoming
@@ -294,7 +297,8 @@ def create_or_update_slot(
         teacher_id=payload.teacher_id,
         custom_teacher_name=payload.custom_teacher_name,
         room_number=payload.room_number,
-        session_type=payload.session_type
+        session_type=payload.session_type,
+        sub_batch=(payload.sub_batch or "All").strip() or "All"
     )
     db.add(slot)
     db.commit()
@@ -343,6 +347,7 @@ def update_existing_slot(
     slot.custom_teacher_name = payload.custom_teacher_name
     slot.room_number = payload.room_number
     slot.session_type = payload.session_type
+    slot.sub_batch = (payload.sub_batch or "All").strip() or "All"
 
     db.commit()
     db.refresh(slot)
@@ -446,6 +451,7 @@ async def upload_bulk_timetable_csv(
         room = (row.get("room_number") or "LH-101").strip()
         sess_type = (row.get("session_type") or "lecture").strip().lower()
         slot_idx = int(row.get("slot_index") or (imported_count + 1))
+        sub_batch = (row.get("sub_batch") or "All").strip() or "All"
 
         # Check for subject match in DB
         matched_sub = db.query(models.Subject).filter(models.Subject.name.ilike(f"%{subj_name}%")).first()
@@ -462,7 +468,8 @@ async def upload_bulk_timetable_csv(
             custom_subject_name=subj_name,
             custom_teacher_name=teacher_name,
             room_number=room,
-            session_type=sess_type
+            session_type=sess_type,
+            sub_batch=sub_batch
         )
         db.add(slot)
         imported_count += 1
