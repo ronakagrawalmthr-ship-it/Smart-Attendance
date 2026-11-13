@@ -39,7 +39,7 @@ export default function StudentHome() {
       const data = await res.json();
       if (data.user?.role !== 'student') {
         throw new Error(
-          `This account (${data.user?.email}) is registered with role '${data.user?.role?.toUpperCase()}'. To access the Student Portal, please sign in with your Student Roll Number or visit the Admin Portal (Port 3001).`
+          `This account (${data.user?.email}) is registered with role '${data.user?.role?.toUpperCase()}'. To access the Student Portal, please sign in with your Student Roll Number or visit the Admin Portal.`
         );
       }
 

@@ -31,9 +31,9 @@ export default function Home() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [institutionName, setInstitutionName] = useState<string>('');
-  const [adminUrl, setAdminUrl] = useState('http://localhost:3001');
-  const [studentUrl, setStudentUrl] = useState('http://localhost:3002');
-  const [hodUrl, setHodUrl] = useState('http://localhost:3003');
+  const [adminUrl, setAdminUrl] = useState(getAdminPortalUrl());
+  const [studentUrl, setStudentUrl] = useState(getStudentPortalUrl());
+  const [hodUrl, setHodUrl] = useState(getHodPortalUrl());
   const [liveKpi, setLiveKpi] = useState<{
     students: number;
     faculty: number;
@@ -395,9 +395,9 @@ export default function Home() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full sm:w-auto py-3 px-4 rounded-2xl font-semibold text-xs flex items-center justify-center space-x-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200/80 transition shadow-sm whitespace-nowrap"
-                      title="Launch standalone port in new window"
+                      title="Launch standalone portal in new window"
                     >
-                      <span>Direct Port</span>
+                      <span>Open Portal</span>
                       <ExternalLink className="h-3.5 w-3.5 text-stone-500" />
                     </a>
                   )}

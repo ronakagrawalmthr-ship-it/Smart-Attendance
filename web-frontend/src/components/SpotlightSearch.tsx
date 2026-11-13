@@ -35,9 +35,9 @@ interface SpotlightSearchProps {
 
 const getFallbackGateways = (): SpotlightResult[] => [
   { type: 'page', title: 'Teacher Attendance Terminal', subtitle: 'Live webcam face detection & session marking', url: '/teacher', category: 'University Gateways' },
-  { type: 'page', title: 'Student Academic Portal', subtitle: 'Attendance %, subject thresholds & grievances (:3002)', url: getPortalUrl(3002), category: 'University Gateways' },
-  { type: 'page', title: 'HOD Department Console', subtitle: 'Departmental rosters, class attendance & analytics (:3003)', url: getPortalUrl(3003), category: 'University Gateways' },
-  { type: 'page', title: 'College Administrator Portal', subtitle: 'Institutional governance, campus directory & audit reports (:3001)', url: getPortalUrl(3001), category: 'University Gateways' },
+  { type: 'page', title: 'Student Academic Portal', subtitle: 'Attendance %, subject thresholds & grievances', url: getPortalUrl(3002), category: 'University Gateways' },
+  { type: 'page', title: 'HOD Department Console', subtitle: 'Departmental rosters, class attendance & analytics', url: getPortalUrl(3003), category: 'University Gateways' },
+  { type: 'page', title: 'College Administrator Portal', subtitle: 'Institutional governance, campus directory & audit reports', url: getPortalUrl(3001), category: 'University Gateways' },
   { type: 'page', title: 'Biometric Face Enrollment', subtitle: 'Face biometric enrollment & photo capture', url: '/register', category: 'University Gateways' },
   { type: 'page', title: 'System Settings & Diagnostics', subtitle: 'Camera configuration, network health & security', url: '/settings', category: 'University Gateways' },
   { type: 'page', title: 'Defaulters Roster (<75%)', subtitle: 'Attendance shortage notices & critical defaulters', url: getPortalUrl(3001, '/defaulters'), category: 'Executive Control' },

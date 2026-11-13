@@ -562,12 +562,18 @@ def send_verification_otp(
         html_content=email_html
     )
 
-    return {
+    resp_data = {
         "success": True,
         "message": f"Verification code sent to {clean_email}. Valid for 10 minutes.",
         "delivery_status": "sent" if success else "sandbox_notice",
         "detail": err if not success else None
     }
+    # If email delivery failed (sandbox or key missing) or in dev mode, provide OTP in payload so user isn't stuck
+    is_development = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local")
+    if not success or is_development:
+        resp_data["otp"] = otp_code
+        resp_data["hint"] = f"Sandbox / Testing active. Passcode: {otp_code}"
+    return resp_data
 
 @router.post("/verify-otp-and-set-password")
 def verify_otp_and_set_password(

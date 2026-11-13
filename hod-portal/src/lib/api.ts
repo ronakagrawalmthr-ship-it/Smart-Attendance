@@ -1,25 +1,70 @@
 // API Client for HOD Portal
+export const VERCEL_PORTAL_URLS: Record<number, string> = {
+  3000: 'https://web-frontend-five-gray.vercel.app',
+  3001: 'https://admin-portal-eta-lilac.vercel.app',
+  3002: 'https://student-portal-one-ruby.vercel.app',
+  3003: 'https://hod-portal.vercel.app',
+};
+
 export function getApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const host = window.location.hostname;
     const protocol = window.location.protocol || 'http:';
-    if (host !== 'localhost' && host !== '127.0.0.1') {
+    if (host !== 'localhost' && host !== '127.0.0.1' && !host.includes('vercel.app')) {
       return `${protocol}//${host}:8000`;
     }
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return 'http://localhost:8000';
 }
 
 export const API_BASE_URL = 
-  (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('vercel.app')
     ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
-    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+    : 'http://localhost:8000');
 
 export function getPortalUrl(port: number, path: string = ''): string {
+  // If explicitly configured in environment
+  if (port === 3000 && process.env.NEXT_PUBLIC_WEB_URL) return `${process.env.NEXT_PUBLIC_WEB_URL}${path}`;
+  if (port === 3001 && process.env.NEXT_PUBLIC_ADMIN_URL) return `${process.env.NEXT_PUBLIC_ADMIN_URL}${path}`;
+  if (port === 3002 && process.env.NEXT_PUBLIC_STUDENT_URL) return `${process.env.NEXT_PUBLIC_STUDENT_URL}${path}`;
+  if (port === 3003 && process.env.NEXT_PUBLIC_HOD_URL) return `${process.env.NEXT_PUBLIC_HOD_URL}${path}`;
+
   if (typeof window !== 'undefined' && window.location?.hostname) {
-    const protocol = window.location.protocol || 'http:';
     const host = window.location.hostname;
-    return `${protocol}//${host}:${port}${path}`;
+    // On Vercel or cloud deployments, route to live Vercel portal domains
+    if (host.includes('vercel.app') || (host !== 'localhost' && host !== '127.0.0.1' && !host.startsWith('192.168.') && !host.startsWith('10.') && !host.startsWith('172.'))) {
+      if (VERCEL_PORTAL_URLS[port]) {
+        return `${VERCEL_PORTAL_URLS[port]}${path}`;
+      }
+      if (port === 8000) {
+        return `${getApiBaseUrl()}${path}`;
+      }
+    }
+
+    if (process.env.NEXT_PUBLIC_USE_LOCAL_PORTALS === 'true') {
+      const protocol = window.location.protocol || 'http:';
+      return `${protocol}//${host}:${port}${path}`;
+    }
+
+    if (VERCEL_PORTAL_URLS[port]) {
+      return `${VERCEL_PORTAL_URLS[port]}${path}`;
+    }
+    if (port === 8000) {
+      return `${getApiBaseUrl()}${path}`;
+    }
+
+    const protocol = window.location.protocol || 'http:';
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return `${protocol}//${host}:${port}${path}`;
+    }
+  }
+
+  if (VERCEL_PORTAL_URLS[port]) {
+    return `${VERCEL_PORTAL_URLS[port]}${path}`;
   }
   return `http://localhost:${port}${path}`;
 }
@@ -58,7 +103,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   let finalUrl = url;
   if (!finalUrl.startsWith('http')) {
     finalUrl = `${getApiBaseUrl()}${finalUrl}`;
-  } else if (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+  } else if (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('vercel.app')) {
     finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`);
   }
 
@@ -148,4 +193,3 @@ export function isNetworkError(error: any): boolean {
   const msg = String(error.message || error).toLowerCase();
   return msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('connection');
 }
-

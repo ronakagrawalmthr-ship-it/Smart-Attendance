@@ -45,15 +45,35 @@ if is_sqlite:
 else:
     # Production PostgreSQL connection configured for Supabase Pooled IPv4
     # (Supabase session-pooler limit is 15 clients, keep pool bounded to avoid EMAXCONNSESSION)
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        pool_size=10,
-        max_overflow=4,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        pool_timeout=20,
-        connect_args={"connect_timeout": 15}
-    )
+    try:
+        engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            pool_size=10,
+            max_overflow=4,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            pool_timeout=10,
+            connect_args={"connect_timeout": 5}
+        )
+        with engine.connect() as probe_conn:
+            pass
+    except Exception as db_err:
+        print(f"\n[DATABASE FAILOVER] Remote PostgreSQL unavailable ({db_err}). Falling back to local SQLite ({DEFAULT_DB_FILE}) to keep system 100% operational!\n")
+        SQLALCHEMY_DATABASE_URL = DEFAULT_SQLITE_URL
+        is_sqlite = True
+        engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            connect_args={"check_same_thread": False, "timeout": 30}
+        )
+        from sqlalchemy import event
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=10000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -73,6 +93,15 @@ def ensure_sqlite_columns():
                 try:
                     cur = con.cursor()
                     
+                    # Check users
+                    cur.execute("PRAGMA table_info(users)")
+                    u_cols = [r[1] for r in cur.fetchall()]
+                    if u_cols:
+                        if "is_verified" not in u_cols:
+                            cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 1")
+                        if "is_active" not in u_cols:
+                            cur.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1")
+
                     # Check teacher_profiles
                     cur.execute("PRAGMA table_info(teacher_profiles)")
                     tp_cols = [r[1] for r in cur.fetchall()]

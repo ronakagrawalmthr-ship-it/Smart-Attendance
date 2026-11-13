@@ -13,7 +13,7 @@ export default function StudentPortal() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [isSubmittingGrievance, setIsSubmittingGrievance] = useState(false);
   const [grievanceFeedback, setGrievanceFeedback] = useState<string | null>(null);
-  const [standaloneUrl, setStandaloneUrl] = useState('http://localhost:3002');
+  const [standaloneUrl, setStandaloneUrl] = useState(getStudentPortalUrl());
 
   const [showAllLogs, setShowAllLogs] = useState(false);
 

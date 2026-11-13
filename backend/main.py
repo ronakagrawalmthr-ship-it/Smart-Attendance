@@ -22,7 +22,7 @@ app = FastAPI(title="Smart Face-Authentication Attendance API")
 
 is_dev = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local")
 
-# Explicit Whitelist for Multi-Portal Architecture + Private LAN regex
+# Explicit Whitelist for Multi-Portal Architecture + Private LAN regex + Vercel
 DEFAULT_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -32,6 +32,10 @@ DEFAULT_ORIGINS = [
     "http://127.0.0.1:3001",
     "http://127.0.0.1:3002",
     "http://127.0.0.1:3003",
+    "https://web-frontend-five-gray.vercel.app",
+    "https://admin-portal-eta-lilac.vercel.app",
+    "https://student-portal-one-ruby.vercel.app",
+    "https://hod-portal.vercel.app",
 ]
 
 env_origins = os.getenv("ALLOWED_ORIGINS")
@@ -59,14 +63,8 @@ cors_kwargs = {
     "allow_credentials": True,
     "allow_methods": ["*"],
     "allow_headers": ["*"],
+    "allow_origin_regex": r"^(https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?|https:\/\/[a-zA-Z0-9-]+\.vercel\.app)$",
 }
-if is_dev:
-    # Strict Dev Origin Guard: Only permit localhost, 127.0.0.1, and private RFC 1918 subnets
-    cors_kwargs["allow_origin_regex"] = (
-        r"^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-        r"192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})"
-        r"(:\d+)?$"
-    )
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 

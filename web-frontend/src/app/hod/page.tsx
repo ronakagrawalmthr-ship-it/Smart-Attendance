@@ -28,7 +28,7 @@ import {
 import { API_BASE_URL, getHodPortalUrl } from '@/lib/api';
 
 export default function HODDashboard() {
-  const [hodPortalUrl, setHodPortalUrl] = useState('http://localhost:3003');
+  const [hodPortalUrl, setHodPortalUrl] = useState(getHodPortalUrl());
   const [activeTab, setActiveTab] = useState<'overview' | 'defaulters' | 'admin' | 'timetable'>('overview');
   const [holidayDate, setHolidayDate] = useState('');
   const [holidayReason, setHolidayReason] = useState('');
@@ -53,6 +53,7 @@ export default function HODDashboard() {
   const [ttSchedule, setTtSchedule] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
+    setHodPortalUrl(getHodPortalUrl());
     fetch(`${API_BASE_URL}/attendance/departments-meta`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
