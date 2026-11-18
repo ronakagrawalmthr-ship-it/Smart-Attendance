@@ -195,6 +195,7 @@ async def login_json(request: Request, db: Session = Depends(database.get_db)):
         or data.get("roll_number") 
         or data.get("rollNumber") 
         or data.get("identifier") 
+        or data.get("email_or_roll")
         or data.get("user")
     )
     if not identifier:
