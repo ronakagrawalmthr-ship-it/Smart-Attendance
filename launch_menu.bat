@@ -20,13 +20,15 @@ echo   [6] Start Smart Attendance Mobile App   (Expo Metro Bundler)
 echo   [7] Start Ngrok Cloud Tunnel             (Port 8000 - Public HTTPS)
 echo.
 echo   -----------------------------------------------------------------------------
-echo   [8] Start ALL Services Simultaneously    (Master 1-Click Launch)
+echo   [C] Start Cloud Mode (Backend + Ngrok Tunnel + Launch Vercel App)
+echo   [8] Start ALL Services Locally           (Master 1-Click Launch)
 echo   [9] Stop ALL Running Services            (Kill Node, Python, Ngrok)
 echo   [0] Exit Menu
 echo.
 echo ===============================================================================
-set /p choice="Enter your choice [0-9]: "
+set /p choice="Enter your choice [0-9, C]: "
 
+if /i "%choice%"=="C" goto CLOUD
 if "%choice%"=="1" goto BACKEND
 if "%choice%"=="2" goto WEB
 if "%choice%"=="3" goto ADMIN
@@ -41,6 +43,11 @@ if "%choice%"=="0" goto EXIT
 echo.
 echo [!] Invalid selection. Please enter a number between 0 and 9.
 timeout /t 2 >nul
+goto MENU
+
+:CLOUD
+echo Starting Cloud Mode (Backend + Ngrok)...
+call "%~dp0start_cloud_backend.bat"
 goto MENU
 
 :BACKEND
@@ -74,8 +81,8 @@ start "Smart Attendance - Mobile App (Expo QR)" cmd /k "cd /d "%~dp0mobile-app" 
 goto MENU
 
 :NGROK
-echo Starting Ngrok Cloud Tunnel (Port 8000)...
-start "Smart Attendance - Ngrok Cloud Tunnel (8000)" cmd /k "title Smart Attendance - Ngrok Cloud Tunnel (8000) && ngrok http 8000"
+echo Starting Dedicated Ngrok Cloud Tunnel (monika-monohydroxy-jimmy.ngrok-free.dev)...
+start "Smart Attendance - Ngrok Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && ngrok http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev"
 goto MENU
 
 :ALL

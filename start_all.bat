@@ -17,9 +17,9 @@ start "Smart Attendance - Backend API (8000)" "%~dp0start_backend.bat"
 :: Wait 3 seconds for backend to initialize
 timeout /t 3 /nobreak >nul
 
-:: 2. Start Ngrok Cloud Tunnel (Public Internet URL for Backend Port 8000)
-echo [2/7] Booting Ngrok Cloud Tunnel for Backend API (Port 8000)...
-start "Smart Attendance - Ngrok Cloud Tunnel (8000)" cmd /k "title Smart Attendance - Ngrok Cloud Tunnel (8000) && echo =================================================== && echo   SMART ATTENDANCE - NGROK CLOUD TUNNEL (PORT 8000) && echo   Copy the 'Forwarding' https:// URL to connect phone && echo =================================================== && ngrok http 8000"
+:: 2. Start Ngrok Cloud Tunnel (Dedicated Domain for Backend Port 8000)
+echo [2/7] Booting Ngrok Cloud Tunnel on Dedicated Domain (Port 8000)...
+start "Smart Attendance - Ngrok Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && echo =================================================== && echo   SMART ATTENDANCE - DEDICATED NGROK CLOUD TUNNEL && echo   https://monika-monohydroxy-jimmy.ngrok-free.dev && echo =================================================== && ngrok http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev"
 
 :: 3. Start Web Frontend & Teacher Console (Port 3000)
 echo [3/7] Booting Web Showcase & Teacher Console (Port 3000)...
@@ -47,12 +47,20 @@ echo                        ALL SERVICES ARE NOW ACTIVE!
 echo ===============================================================================
 echo.
 echo  [API Backend]        http://localhost:8000/docs  (FastAPI Swagger Engine)
-echo  [Ngrok Tunnel]       Check the Ngrok window for your public HTTPS cloud link
-echo  [Main Showcase]      http://localhost:3000       (Landing & Teacher Console)
-echo  [Admin Portal]       http://localhost:3001       (Executive Admin Suite)
-echo  [Student Portal]     http://localhost:3002       (Student Profile & Attendance)
-echo  [HOD Command Hub]    http://localhost:3003       (Classes, Excel & Analytics)
-echo  [Mobile App]         Expo Terminal is OPEN! Scan the QR Code with Expo Go!
+echo  [Cloud Backend]      https://monika-monohydroxy-jimmy.ngrok-free.dev
+echo.
+echo  LIVE CLOUD PRODUCTION PORTALS (Vercel):
+echo  - Main Showcase:     https://web-frontend-five-gray.vercel.app
+echo  - Admin Portal:      https://admin-portal-eta-lilac.vercel.app
+echo  - Student Portal:    https://student-portal-one-ruby.vercel.app
+echo  - HOD Command Hub:   https://hod-portal.vercel.app
+echo.
+echo  LOCAL DEVELOPMENT PORTALS:
+echo  - Main Showcase:     http://localhost:3000
+echo  - Admin Portal:      http://localhost:3001
+echo  - Student Portal:    http://localhost:3002
+echo  - HOD Command Hub:   http://localhost:3003
+echo  - Mobile App:        Expo Terminal is OPEN! Scan the QR Code with Expo Go!
 echo.
 echo  To safely close all services anytime, run: stop_all.bat
 echo ===============================================================================

@@ -10,6 +10,9 @@ echo.
 echo Starting FastAPI Backend Server on http://localhost:8000 ...
 echo Swagger API Documentation will be available at: http://localhost:8000/docs
 echo.
+echo Releasing port 8000 if previously occupied...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
 cd /d "%~dp0backend"
 if exist "venv\Scripts\python.exe" (
     venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
