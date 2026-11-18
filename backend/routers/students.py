@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -9,9 +9,16 @@ import secrets
 try:
     from .. import models, schemas, database
     from ..services.biometrics import process_student_selfie, compress_selfie_thumbnail
+    from ..limiter import limiter
 except (ImportError, ValueError):
     import models, schemas, database
     from services.biometrics import process_student_selfie, compress_selfie_thumbnail
+    try:
+        from limiter import limiter
+    except (ImportError, ValueError):
+        from slowapi import Limiter
+        from slowapi.util import get_remote_address
+        limiter = Limiter(key_func=get_remote_address)
 from .auth import get_current_user
 
 router = APIRouter(
@@ -32,7 +39,9 @@ except (ImportError, ValueError):
         def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
 
 @router.post("/register", response_model=schemas.StudentProfile)
+@limiter.limit("10/minute")
 async def register_student(
+    request: Request,
     full_name: str = Form(...),
     roll_number: str = Form(...),
     branch: str = Form(...),
@@ -40,7 +49,6 @@ async def register_student(
     section: str = Form(...),
     email: Optional[str] = Form(None),
     password: Optional[str] = Form(None),
-    user_id: Optional[int] = Form(None),
     parent_email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     otp: Optional[str] = Form(None),
@@ -59,6 +67,11 @@ async def register_student(
     clean_section = section.strip().upper()
     clean_email = email.strip().lower() if (email and email.strip()) else f"{clean_roll.lower()}@student.university.edu"
     clean_pwd = password.strip() if (password and password.strip()) else os.getenv("DEFAULT_STUDENT_PASSWORD", "Student@Secure2026!")
+    if password and password.strip() and len(clean_pwd) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long."
+        )
     clean_parent_email = parent_email.strip().lower() if (parent_email and parent_email.strip()) else None
     clean_phone = phone.strip() if (phone and phone.strip()) else None
 
@@ -104,33 +117,33 @@ async def register_student(
         )
 
     # 2. Check if student user account already exists
-    if not user_id:
-        existing_user = db.query(models.User).filter(
-            (func.lower(models.User.email) == clean_email.lower()) | 
-            (func.lower(models.User.email) == f"{clean_roll.lower()}@student.university.edu")
-        ).first()
-        if existing_user:
-            existing_profile = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == existing_user.id).first()
-            if existing_profile:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"This roll number '{clean_roll}' or email '{clean_email}' is already registered in the institutional database."
-                )
-            existing_user.hashed_password = security.get_password_hash(clean_pwd)
-            existing_user.email = clean_email
-            user_id = existing_user.id
-            db.commit()
-        else:
-            new_user = models.User(
-                email=clean_email,
-                hashed_password=security.get_password_hash(clean_pwd),
-                role=models.RoleEnum.student,
-                is_active=True
+    user_id = None
+    existing_user = db.query(models.User).filter(
+        (func.lower(models.User.email) == clean_email.lower()) |
+        (func.lower(models.User.email) == f"{clean_roll.lower()}@student.university.edu")
+    ).first()
+    if existing_user:
+        existing_profile = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == existing_user.id).first()
+        if existing_profile:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This roll number '{clean_roll}' or email '{clean_email}' is already registered in the institutional database."
             )
-            db.add(new_user)
-            db.commit()
-            db.refresh(new_user)
-            user_id = new_user.id
+        existing_user.hashed_password = security.get_password_hash(clean_pwd)
+        existing_user.email = clean_email
+        user_id = existing_user.id
+        db.commit()
+    else:
+        new_user = models.User(
+            email=clean_email,
+            hashed_password=security.get_password_hash(clean_pwd),
+            role=models.RoleEnum.student,
+            is_active=True
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        user_id = new_user.id
 
     # 3. Extract Biometric Vector, Validate Quality & Apply AES-256 Field Encryption
     photo_thumbnail_b64 = None
@@ -152,8 +165,8 @@ async def register_student(
                 encrypted_face_encoding = security.encrypt_biometric_vector(face_encoding_json)
         except HTTPException:
             raise
-        except Exception as e:
-            print(f"Selfie processing note: {e}")
+        except Exception:
+            pass
 
     # 4. Direct Database creation - auto-categorized by department, semester, section
     new_student = models.StudentProfile(

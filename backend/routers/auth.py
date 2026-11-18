@@ -71,6 +71,22 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+def get_current_user_optional(request: Request, db: Session = Depends(database.get_db)) -> Optional[models.User]:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ")[1].strip()
+    if not token or token in ("null", "undefined"):
+        return None
+    try:
+        payload = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+        email = payload.get("sub")
+        if email:
+            return db.query(models.User).filter(models.User.email == email, models.User.is_active == True).first()
+    except Exception:
+        pass
+    return None
+
 class SendOTPRequest(BaseModel):
     email: str
     purpose: Optional[str] = "registration"
@@ -337,11 +353,13 @@ def send_reset_email(to_email: str, otp: str):
             html_content=html_content,
             sender_name="Smart Attendance Security"
         )
-    except Exception as e:
-        print(f"Password reset email dispatch note: {e}")
+    except Exception:
+        pass
 
 @router.post("/forgot-password")
+@limiter.limit("5/minute")
 def forgot_password(
+    request: Request,
     payload: ForgotPasswordRequest, 
     background_tasks: BackgroundTasks,
     db: Session = Depends(database.get_db)
@@ -379,8 +397,6 @@ def forgot_password(
     db.add(otp_record)
     db.commit()
     
-    if os.getenv("DEBUG", "false").lower() in ("true", "1", "yes"):
-        print(f"\n[SECURITY VERIFICATION] Database-persisted password reset OTP generated for {user.email}: {otp} (Valid for 15 minutes)\n")
     background_tasks.add_task(send_reset_email, user.email, otp)
     
     return {
@@ -390,7 +406,9 @@ def forgot_password(
     }
 
 @router.post("/reset-password")
+@limiter.limit("10/minute")
 def reset_password(
+    request: Request,
     payload: ResetPasswordRequest,
     db: Session = Depends(database.get_db)
 ):
@@ -501,7 +519,9 @@ def update_users_me(
 # Strict Email Verification & OTP Onboarding Flow
 # ---------------------------------------------------------------------------
 @router.post("/send-otp")
+@limiter.limit("5/minute")
 def send_verification_otp(
+    request: Request,
     payload: SendOTPRequest,
     db: Session = Depends(database.get_db)
 ):
@@ -576,7 +596,9 @@ def send_verification_otp(
     return resp_data
 
 @router.post("/verify-otp-and-set-password")
+@limiter.limit("10/minute")
 def verify_otp_and_set_password(
+    request: Request,
     payload: VerifyOTPRequest,
     db: Session = Depends(database.get_db)
 ):

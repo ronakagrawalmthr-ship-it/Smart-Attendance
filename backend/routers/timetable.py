@@ -746,9 +746,11 @@ GUIDELINES:
 """
 
     models_to_try = [
-        "gemini-3-flash-preview",
-        "gemini-flash-latest",
-        "gemini-2.5-flash-lite"
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest"
     ]
 
     contents = []
@@ -769,7 +771,7 @@ GUIDELINES:
         req = urllib.request.Request(url, data=b, headers={"Content-Type": "application/json"}, method="POST")
 
         try:
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=6) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 return text, f"Google Gemini ({model})"
@@ -791,7 +793,7 @@ GUIDELINES:
             )
         else:
             return (
-                f"âš ï¸ **Debarment Risk Alert for {student_name}:**\n\n"
+                f"**Debarment Risk Alert for {student_name}:**\n\n"
                 f"Aapki attendance abhi **{pct}%** hai jo ki 75% requirement se kam hai! "
                 f"Aapko kisi bhi halat me classes bunk nahi karni chahiye.\n\n"
                 f"Aapko eligibility restore karne ke liye agle **{needed_classes} lectures continuously attend** karne honge.",
@@ -799,17 +801,17 @@ GUIDELINES:
             )
     elif any(w in msg_lower for w in ["schedule", "timetable", "class", "today", "aaj", "routine", "lecture"]):
         return (
-            f"ðŸ“… **Today's Academic Schedule ({today_name}) for {branch} (Sem {semester}-{section}):**\n\n"
+            f"**Today's Academic Schedule ({today_name}) for {branch} (Sem {semester}-{section}):**\n\n"
             f"{today_schedule_text}\n\n"
-            f"ðŸ’¡ **Tip:** Class me pahuchte hi Teacher Kiosk ka 10-second dynamic QR code scan kar lena!",
+            f"**Tip:** Scan the teacher kiosk dynamic QR within 10 seconds when you reach class!",
             "Campus Copilot Engine (Local AI)"
         )
     elif any(w in msg_lower for w in ["attendance", "percent", "score", "status"]):
         return (
-            f"ðŸ“Š **Attendance Snapshot for {student_name}:**\n\n"
+            f"**Attendance Snapshot for {student_name}:**\n\n"
             f"- **Overall Percentage:** **{pct}%**\n"
             f"- **Attended:** {attended} of {total} conducted classes\n"
-            f"- **Status:** {'ðŸŸ¢ Safe Standing (Exam Cleared)' if pct >= 75 else 'ðŸ”´ Debarment Alert (< 75%)'}\n"
+            f"- **Status:** {'Safe Standing (Exam Cleared)' if pct >= 75 else 'Debarment Alert (< 75%)'}\n"
             f"- **Safe Bunk Cushion:** {safe_bunks} lecture(s)\n\n"
             f"Discipline maintain rakhein internal assessment marks maximize karne ke liye!",
             "Campus Copilot Engine (Local AI)"
@@ -941,4 +943,3 @@ def campus_copilot_chat(
         "source": source,
         "suggested_questions": suggested
     }
-

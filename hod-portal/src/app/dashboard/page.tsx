@@ -83,12 +83,15 @@ export default function HODDashboard() {
       }
 
       const activeBranch = getDeptBranch();
-      const [resDept, resTelemetry] = await Promise.all([
+      const results = await Promise.allSettled([
         authFetchWithRetry(`${API_BASE_URL}/management/department/overview?branch=${encodeURIComponent(activeBranch)}`, {}, { maxRetries: 2, delayMs: 600 }),
         authFetchWithRetry(`${API_BASE_URL}/management/telemetry/recent-scans?branch=${encodeURIComponent(activeBranch)}&limit=8`, {}, { maxRetries: 2, delayMs: 600 })
       ]);
 
-      if (resDept.ok) {
+      const resDept = results[0].status === 'fulfilled' ? results[0].value : null;
+      const resTelemetry = results[1].status === 'fulfilled' ? results[1].value : null;
+
+      if (resDept && resDept.ok) {
         const data = await resDept.json();
         if (data.departmentName) setDepartmentName(data.departmentName);
         if (data.hodName) {
@@ -110,11 +113,11 @@ export default function HODDashboard() {
         if (data.semesterStats && data.semesterStats.length > 0) {
           setSemesterStats(data.semesterStats);
         }
-      } else {
+      } else if (!resDept || !resDept.ok) {
         setFetchError('Department overview service returned an unexpected response.');
       }
 
-      if (resTelemetry.ok) {
+      if (resTelemetry && resTelemetry.ok) {
         const scans = await resTelemetry.json();
         if (Array.isArray(scans) && scans.length > 0) {
           const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
@@ -149,17 +152,20 @@ export default function HODDashboard() {
     }
     fetchDepartmentData();
 
-    // 📡 Live Telemetry Heartbeat: Auto-polls SQLite DB every 2.5s for real-time attendance sync
+    // 📡 Live Telemetry Heartbeat: Auto-polls SQLite DB every 6s for real-time attendance sync
     const liveInterval = setInterval(async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const activeBranch = getDeptBranch();
-        const [resDept, resTelemetry] = await Promise.all([
+        const results = await Promise.allSettled([
           authFetch(`${API_BASE_URL}/management/department/overview?branch=${encodeURIComponent(activeBranch)}`),
           authFetch(`${API_BASE_URL}/management/telemetry/recent-scans?branch=${encodeURIComponent(activeBranch)}&limit=8`)
         ]);
 
-        if (resDept.ok) {
+        const resDept = results[0].status === 'fulfilled' ? results[0].value : null;
+        const resTelemetry = results[1].status === 'fulfilled' ? results[1].value : null;
+
+        if (resDept && resDept.ok) {
           const data = await resDept.json();
           if (data.departmentName) setDepartmentName(data.departmentName);
           setStats(prev => ({
@@ -173,7 +179,7 @@ export default function HODDashboard() {
           }
         }
 
-        if (resTelemetry.ok) {
+        if (resTelemetry && resTelemetry.ok) {
           const scans = await resTelemetry.json();
           if (Array.isArray(scans) && scans.length > 0) {
             const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
@@ -190,7 +196,7 @@ export default function HODDashboard() {
       } catch (e) {
         // Silent background heartbeat catch
       }
-    }, 2500);
+    }, 6000);
 
     return () => clearInterval(liveInterval);
   }, [departmentName]);

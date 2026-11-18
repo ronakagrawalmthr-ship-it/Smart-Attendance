@@ -1224,7 +1224,6 @@ def verify_and_mark_qr_attendance(
             models.AttendanceLog.session_id == session.id,
             models.AttendanceLog.is_present == True
         ).count()
-        import asyncio
         safe_dispatch_ws_task(ws_manager.broadcast_to_session(
             session_id=session.id,
             event_type="STUDENT_CHECKED_IN",
@@ -1237,8 +1236,8 @@ def verify_and_mark_qr_attendance(
                 "present_count": present_count
             }
         ))
-    except Exception as ws_err:
-        print(f"[WS BROADCAST NOTE] {ws_err}")
+    except Exception:
+        pass
 
     # Real-Time Push Notification to Student Device
     try:
@@ -1246,12 +1245,12 @@ def verify_and_mark_qr_attendance(
             notify_user_id(
                 db=db,
                 user_id=student.user_id,
-                title="Attendance Verified ✓",
+                title="Attendance Verified",
                 body=f"Your attendance for {subj_name} was logged successfully at {now_dt.strftime('%I:%M %p')}.",
                 data={"sessionId": session.id, "type": "ATTENDANCE_CONFIRMATION"}
             )
-    except Exception as push_err:
-        print(f"[PUSH NOTE] {push_err}")
+    except Exception:
+        pass
 
     return {
         "success": True,

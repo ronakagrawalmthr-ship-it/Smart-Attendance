@@ -74,14 +74,19 @@ export default function AdminDashboard() {
         if (cached) setAdminName(cached);
       }
 
-      const [resLive, resKpi, resMe, resTelemetry] = await Promise.all([
+      const results = await Promise.allSettled([
         authFetchWithRetry(`${API_BASE_URL}/management/attendance/live`, {}, { maxRetries: 2, delayMs: 600 }),
         authFetchWithRetry(`${API_BASE_URL}/management/college/kpi-stats`, {}, { maxRetries: 2, delayMs: 600 }),
         authFetchWithRetry(`${API_BASE_URL}/api/auth/me`, {}, { maxRetries: 2, delayMs: 600 }),
         authFetchWithRetry(`${API_BASE_URL}/management/telemetry/recent-scans?limit=8`, {}, { maxRetries: 2, delayMs: 600 })
       ]);
 
-      if (resMe.ok) {
+      const resLive = results[0].status === 'fulfilled' ? results[0].value : null;
+      const resKpi = results[1].status === 'fulfilled' ? results[1].value : null;
+      const resMe = results[2].status === 'fulfilled' ? results[2].value : null;
+      const resTelemetry = results[3].status === 'fulfilled' ? results[3].value : null;
+
+      if (resMe && resMe.ok) {
         const meData = await resMe.json();
         if (meData.full_name) {
           setAdminName(meData.full_name);
@@ -91,7 +96,7 @@ export default function AdminDashboard() {
         }
       }
 
-      if (resLive.ok) {
+      if (resLive && resLive.ok) {
         const data = await resLive.json();
         if (data.live_matrices && data.live_matrices.length > 0) {
           setMatrices(data.live_matrices);
@@ -102,7 +107,7 @@ export default function AdminDashboard() {
         }
       }
 
-      if (resKpi.ok) {
+      if (resKpi && resKpi.ok) {
         const kpi = await resKpi.json();
         setKpiStats(kpi);
         if (kpi.greeting) setGreeting(kpi.greeting);
@@ -117,7 +122,7 @@ export default function AdminDashboard() {
         }));
       }
 
-      if (resTelemetry.ok) {
+      if (resTelemetry && resTelemetry.ok) {
         const scans = await resTelemetry.json();
         if (Array.isArray(scans) && scans.length > 0) {
           const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
@@ -132,8 +137,8 @@ export default function AdminDashboard() {
         }
       }
 
-      // If key endpoints failed
-      if (!resLive.ok && !resKpi.ok) {
+      // If both primary endpoints failed completely
+      if ((!resLive || !resLive.ok) && (!resKpi || !resKpi.ok)) {
         setFetchError('Institutional system server returned an unexpected response.');
       }
 
@@ -157,17 +162,21 @@ export default function AdminDashboard() {
     }
     fetchDashboardData();
 
-    // 📡 Live Telemetry Heartbeat: Polls SQLite DB every 2.5s for real-time campus attendance sync
+    // 📡 Live Telemetry Heartbeat: Polls SQLite DB every 6s for real-time campus attendance sync
     const liveInterval = setInterval(async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
-        const [resLive, resKpi, resTelemetry] = await Promise.all([
+        const results = await Promise.allSettled([
           authFetch(`${API_BASE_URL}/management/attendance/live`),
           authFetch(`${API_BASE_URL}/management/college/kpi-stats`),
           authFetch(`${API_BASE_URL}/management/telemetry/recent-scans?limit=6`)
         ]);
 
-        if (resLive.ok) {
+        const resLive = results[0].status === 'fulfilled' ? results[0].value : null;
+        const resKpi = results[1].status === 'fulfilled' ? results[1].value : null;
+        const resTelemetry = results[2].status === 'fulfilled' ? results[2].value : null;
+
+        if (resLive && resLive.ok) {
           const liveData = await resLive.json();
           if (liveData.liveToday) {
             setStats(prev => ({
@@ -179,7 +188,7 @@ export default function AdminDashboard() {
           }
         }
 
-        if (resTelemetry.ok) {
+        if (resTelemetry && resTelemetry.ok) {
           const scans = await resTelemetry.json();
           if (Array.isArray(scans) && scans.length > 0) {
             const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
@@ -196,7 +205,7 @@ export default function AdminDashboard() {
       } catch (e) {
         // Silent background heartbeat catch
       }
-    }, 2500);
+    }, 6000);
 
     return () => clearInterval(liveInterval);
   }, []);

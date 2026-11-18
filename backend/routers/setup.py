@@ -11,6 +11,7 @@ from jose import jwt, JWTError
 try:
     from .. import models, database, security
     from ..time_utils import now_ist_naive
+    from ..limiter import limiter
 except (ImportError, ValueError):
     import models, database, security
     try:
@@ -19,6 +20,12 @@ except (ImportError, ValueError):
         from datetime import timezone
         _IST = timezone(timedelta(hours=5, minutes=30))
         def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
+    try:
+        from limiter import limiter
+    except (ImportError, ValueError):
+        from slowapi import Limiter
+        from slowapi.util import get_remote_address
+        limiter = Limiter(key_func=get_remote_address)
 
 try:
     import resend
@@ -89,7 +96,8 @@ def get_setup_status(db: Session = Depends(database.get_db)):
     }
 
 @router.post("/send-otp")
-def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_db)):
+@limiter.limit("3/minute")
+def send_setup_otp(request: Request, payload: SendOtpRequest, db: Session = Depends(database.get_db)):
     if is_system_already_initialized(db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -157,7 +165,7 @@ def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_d
             </span>
         </div>
         <p style="color: #64748B; font-size: 12px; line-height: 1.5;">
-            ⏱️ This security code is valid for <b>10 minutes</b>. If you did not request this setup, please disregard this email.
+             This security code is valid for <b>10 minutes</b>. If you did not request this setup, please disregard this email.
         </p>
     </div>
     """
@@ -184,7 +192,8 @@ def send_setup_otp(payload: SendOtpRequest, db: Session = Depends(database.get_d
     }
 
 @router.post("/verify-otp")
-def verify_setup_otp(payload: VerifyOtpRequest, db: Session = Depends(database.get_db)):
+@limiter.limit("10/minute")
+def verify_setup_otp(request: Request, payload: VerifyOtpRequest, db: Session = Depends(database.get_db)):
     if is_system_already_initialized(db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

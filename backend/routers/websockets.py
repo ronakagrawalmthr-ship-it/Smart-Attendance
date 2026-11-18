@@ -105,8 +105,8 @@ async def websocket_session_roster_endpoint(
             }
         }
         await websocket.send_text(json.dumps(init_payload))
-    except Exception as e:
-        print(f"[WS INIT NOTE] Could not construct initial snapshot: {e}")
+    except Exception:
+        pass
 
     # Keep connection open and respond to heartbeats
     try:

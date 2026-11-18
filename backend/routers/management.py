@@ -6,6 +6,7 @@ from datetime import datetime, date
 import os
 import csv
 import io
+import time
 import secrets
 try:
     import resend
@@ -60,7 +61,7 @@ except (ImportError, ValueError):
                 else:
                     key.append((1, chunk.lower()))
             return key
-from .auth import get_current_user
+from .auth import get_current_user, get_current_user_optional
 
 router = APIRouter(
     prefix="/management",
@@ -402,6 +403,12 @@ def get_live_events(
 
     return events[:limit]
 
+_MATRICES_CACHE = {}
+_MATRICES_CACHE_TTL = 4.0
+
+_KPI_STATS_CACHE = {"data": None, "timestamp": 0.0}
+_KPI_CACHE_TTL = 4.0
+
 @router.get("/attendance/live")
 def get_live_attendance_matrices(
     branch: str = None, 
@@ -413,6 +420,12 @@ def get_live_attendance_matrices(
     scope = get_user_department_scope(current_user)
     if scope:
         branch = scope
+
+    cache_key = branch or "all"
+    now_ts = time.time()
+    cached = _MATRICES_CACHE.get(cache_key)
+    if cached and (now_ts - cached["timestamp"] < _MATRICES_CACHE_TTL):
+        return cached["data"]
 
     # Aggregate calculation
     query = db.query(
@@ -436,7 +449,9 @@ def get_live_attendance_matrices(
             "attendance_percentage": round(percentage, 2)
         })
         
-    return {"live_matrices": matrices}
+    res = {"live_matrices": matrices}
+    _MATRICES_CACHE[cache_key] = {"data": res, "timestamp": now_ts}
+    return res
 
 
 # -----------------------------------------------------------------------------
@@ -972,9 +987,18 @@ def delete_department(
 @router.get("/college/kpi-stats")
 def get_college_kpi_stats(
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
-    verify_hod_or_admin(current_user)
+    is_admin = bool(current_user and current_user.role in [models.RoleEnum.admin, models.RoleEnum.hod])
+    
+    now_ts = time.time()
+    if _KPI_STATS_CACHE["data"] is not None and (now_ts - _KPI_STATS_CACHE["timestamp"] < _KPI_CACHE_TTL):
+        cached = _KPI_STATS_CACHE["data"]
+        if is_admin:
+            return cached
+        pub = dict(cached)
+        pub["defaultersList"] = []
+        return pub
     
     total_students = db.query(models.StudentProfile).count()
     total_faculty = db.query(models.TeacherProfile).count()
@@ -1052,7 +1076,7 @@ def get_college_kpi_stats(
     student_performance.sort(
         key=lambda x: (-x["attendance_percentage"], -x["attended_classes"], natural_sort_key(x["roll_number"]))
     )
-    medals = ["🥇 Rank 1 • Gold", "🥈 Rank 2 • Silver", "🥉 Rank 3 • Bronze"]
+    medals = ["Rank 1 - Gold", "Rank 2 - Silver", "Rank 3 - Bronze"]
     top_students = []
     for idx, sp in enumerate(student_performance[:10]):
         item = dict(sp)
@@ -1172,7 +1196,7 @@ def get_college_kpi_stats(
 
     punctuality = f"{overall_turnout:.1f}%" if (total_logs > 0 and overall_turnout is not None) else "0.0%"
 
-    return {
+    result_payload = {
         "greeting": greeting,
         "greetingIcon": greeting_icon,
         "activeSchedule": f"{period_str} • Campus Lectures",
@@ -1191,6 +1215,13 @@ def get_college_kpi_stats(
         "weeklyTrajectory": real_trajectory,
         "topAchievers": top_students
     }
+    _KPI_STATS_CACHE["data"] = result_payload
+    _KPI_STATS_CACHE["timestamp"] = now_ts
+    if not is_admin:
+        pub = dict(result_payload)
+        pub["defaultersList"] = []
+        return pub
+    return result_payload
 
 @router.get("/college/top-achievers")
 def get_top_attendance_achievers(
@@ -1246,7 +1277,7 @@ def get_top_attendance_achievers(
         key=lambda x: (-x["attendance_percentage"], -x["attended_classes"], natural_sort_key(x["roll_number"]))
     )
     
-    medals = ["🥇 Rank 1 • Gold", "🥈 Rank 2 • Silver", "🥉 Rank 3 • Bronze"]
+    medals = ["Rank 1 - Gold", "Rank 2 - Silver", "Rank 3 - Bronze"]
     results = []
     for idx, item in enumerate(performance[:limit]):
         entry = dict(item)

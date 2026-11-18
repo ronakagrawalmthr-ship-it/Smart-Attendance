@@ -53,15 +53,16 @@ def send_expo_push_batch(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
     try:
         with httpx.Client(timeout=8.0) as client:
             response = client.post(EXPO_PUSH_URL, json=messages, headers=headers)
-            res_data = response.json()
-            print(f"[PUSH NOTIFICATION SUCCESS] Dispatched {len(messages)} push notifications. Status: {response.status_code}")
+            try:
+                res_data = response.json()
+            except Exception:
+                res_data = None
             return {
                 "success": response.status_code == 200,
                 "sent_count": len(messages),
                 "response": res_data
             }
     except Exception as e:
-        print(f"[PUSH NOTIFICATION NOTICE] Could not dispatch to Expo Push Gateway: {e}")
         return {
             "success": False,
             "sent_count": 0,
@@ -100,7 +101,6 @@ def notify_user_id(
     if messages:
         res = send_expo_push_batch(messages)
         if not res.get("success", False):
-            print(f"[PUSH WARNING] Delivery to user {user_id} failed: {res.get('error')}")
             return {"success": False, "devices_targeted": len(messages), "sent_count": 0, "error": res.get("error")}
         return {"success": True, "devices_targeted": len(messages), "sent_count": res.get("sent_count", len(messages)), "error": None}
     return {"success": True, "devices_targeted": 0, "sent_count": 0, "error": None}

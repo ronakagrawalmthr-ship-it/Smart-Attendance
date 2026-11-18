@@ -38,6 +38,7 @@
       ]
     ],
     "extra": {
+      "apiUrl": "https://monika-monohydroxy-jimmy.ngrok-free.dev",
       "eas": {
         "projectId": "c6883446-6e71-4e95-b071-33e9973ed2cf"
       }

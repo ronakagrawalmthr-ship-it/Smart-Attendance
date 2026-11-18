@@ -20,7 +20,6 @@ class ConnectionManager:
         if session_id not in self.active_session_connections:
             self.active_session_connections[session_id] = []
         self.active_session_connections[session_id].append(websocket)
-        print(f"[WS CONNECT] Client joined session {session_id}. Active clients for session: {len(self.active_session_connections[session_id])}")
 
     def disconnect_session(self, session_id: int, websocket: WebSocket):
         if session_id in self.active_session_connections:
@@ -28,7 +27,6 @@ class ConnectionManager:
                 self.active_session_connections[session_id].remove(websocket)
             if not self.active_session_connections[session_id]:
                 del self.active_session_connections[session_id]
-        print(f"[WS DISCONNECT] Client left session {session_id}.")
 
     async def connect_global(self, websocket: WebSocket):
         await websocket.accept()
