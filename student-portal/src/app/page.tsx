@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, ArrowRight, Lock, User, AlertCircle, UserPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL, authFetchWithRetry } from '@/lib/api';
+import { API_BASE_URL, authFetchWithRetry, formatApiError } from '@/lib/api';
 
 export default function StudentHome() {
   const router = useRouter();
@@ -15,8 +15,21 @@ export default function StudentHome() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('student_token')) {
-      router.push('/dashboard');
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ssoToken = params.get('token') || params.get('sso_token') || params.get('access_token');
+      if (ssoToken) {
+        localStorage.setItem('student_token', ssoToken);
+        const name = params.get('name');
+        if (name) localStorage.setItem('student_name', name);
+        const roll = params.get('roll');
+        if (roll) localStorage.setItem('student_roll', roll);
+        router.replace('/dashboard');
+        return;
+      }
+      if (localStorage.getItem('student_token')) {
+        router.replace('/dashboard');
+      }
     }
   }, [router]);
 
@@ -52,7 +65,7 @@ export default function StudentHome() {
       }
       router.push('/dashboard');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Login failed. Please try again.');
+      setErrorMessage(formatApiError(err));
     } finally {
       setIsLoading(false);
     }

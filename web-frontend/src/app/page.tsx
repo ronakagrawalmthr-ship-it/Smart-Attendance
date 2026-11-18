@@ -46,6 +46,14 @@ export default function Home() {
     turnout: '0.0%'
   });
 
+  const getSsoUrl = (baseUrl: string) => {
+    if (typeof window === 'undefined') return baseUrl;
+    const token = localStorage.getItem('token') || localStorage.getItem('admin_token') || localStorage.getItem('student_token') || localStorage.getItem('hod_token');
+    if (!token) return baseUrl;
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+  };
+
   useEffect(() => {
     setAdminUrl(getAdminPortalUrl());
     setStudentUrl(getStudentPortalUrl());
@@ -220,7 +228,7 @@ export default function Home() {
               <span className="hidden sm:inline">Teacher Terminal</span>
             </Link>
             <a
-              href={adminUrl}
+              href={getSsoUrl(adminUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
@@ -230,7 +238,7 @@ export default function Home() {
               <span>Admin</span>
             </a>
             <a
-              href={hodUrl}
+              href={getSsoUrl(hodUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"
@@ -240,7 +248,7 @@ export default function Home() {
               <span>HOD</span>
             </a>
             <a
-              href={studentUrl}
+              href={getSsoUrl(studentUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 transition shadow-sm"

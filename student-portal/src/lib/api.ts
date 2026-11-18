@@ -200,3 +200,12 @@ export function isNetworkError(error: any): boolean {
   const msg = String(error.message || error).toLowerCase();
   return msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('connection');
 }
+
+export function formatApiError(err: any): string {
+  if (!err) return 'An unexpected error occurred. Please try again.';
+  const msg = String(err.message || err.detail || err);
+  if (isNetworkError(err) || msg.includes('Failed to fetch') || msg.includes('Network request failed') || msg.includes('Load failed')) {
+    return 'Campus Server Unreachable: Please ensure the attendance backend service is running or check network connection.';
+  }
+  return msg;
+}

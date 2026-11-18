@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Building2, ArrowRight, Lock, Mail, AlertCircle, Sparkles, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL, authFetchWithRetry } from '@/lib/api';
+import { API_BASE_URL, authFetchWithRetry, formatApiError } from '@/lib/api';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -16,8 +16,26 @@ export default function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Check setup status on load
+  // Check SSO handoff or setup status on load
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ssoToken = params.get('token') || params.get('sso_token') || params.get('access_token');
+      if (ssoToken) {
+        localStorage.setItem('admin_token', ssoToken);
+        const name = params.get('name');
+        if (name) localStorage.setItem('admin_name', name);
+        const role = params.get('role');
+        if (role) localStorage.setItem('admin_role', role);
+        router.replace('/dashboard');
+        return;
+      }
+      if (localStorage.getItem('admin_token')) {
+        router.replace('/dashboard');
+        return;
+      }
+    }
+
     async function checkSetup() {
       try {
         const res = await authFetchWithRetry(`${API_BASE_URL}/setup/status`, {}, { maxRetries: 2, delayMs: 500 });
@@ -30,9 +48,6 @@ export default function AdminLogin() {
             router.push('/setup');
           } else {
             setIsInitialized(true);
-            if (typeof window !== 'undefined' && localStorage.getItem('admin_token')) {
-              router.push('/dashboard');
-            }
           }
         }
       } catch (err) {
@@ -74,7 +89,7 @@ export default function AdminLogin() {
       }
       router.push('/dashboard');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Login failed.');
+      setErrorMessage(formatApiError(err));
     } finally {
       setIsLoading(false);
     }

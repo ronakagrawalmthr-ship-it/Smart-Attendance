@@ -18,7 +18,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetchWithRetry } from '@/lib/api';
+import { API_BASE_URL, authFetchWithRetry, formatApiError } from '@/lib/api';
 
 const getDeptCode = (name: string) => {
   if (!name) return 'DEPT';
@@ -49,8 +49,21 @@ export default function HODLogin() {
   const deptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('hod_token')) {
-      router.push('/dashboard');
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ssoToken = params.get('token') || params.get('sso_token') || params.get('access_token');
+      if (ssoToken) {
+        localStorage.setItem('hod_token', ssoToken);
+        const name = params.get('name');
+        if (name) localStorage.setItem('hod_name', name);
+        const dept = params.get('dept') || params.get('department');
+        if (dept) localStorage.setItem('hod_department', dept);
+        router.replace('/dashboard');
+        return;
+      }
+      if (localStorage.getItem('hod_token')) {
+        router.replace('/dashboard');
+      }
     }
   }, [router]);
 
@@ -109,7 +122,7 @@ export default function HODLogin() {
       }
       router.push('/dashboard');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Login failed.');
+      setErrorMessage(formatApiError(err));
     } finally {
       setIsLoading(false);
     }
