@@ -778,7 +778,57 @@ GUIDELINES:
         except Exception:
             continue
 
-    # Fallback to local intelligent rule engine
+    # ── Tier 2: Secondary AI Fallback Router (OmniRoute / FreeLLMAPI) ──
+    secondary_endpoints = [
+        # OmniRoute (Port 20128)
+        {
+            "url": os.getenv("OMNIROUTE_URL", "http://127.0.0.1:20128/v1/chat/completions"),
+            "key": os.getenv("OMNIROUTE_API_KEY", "65e6147ccf10914449d518b99b3ebeb171d25528d2acc5a8de2f8954df7a8285"),
+            "model": os.getenv("OMNIROUTE_MODEL", "deepseek-ai/DeepSeek-V3"),
+            "label": "OmniRoute AI Router"
+        },
+        # FreeLLMAPI (Port 3001)
+        {
+            "url": os.getenv("FREELLM_URL", "http://127.0.0.1:3001/v1/chat/completions"),
+            "key": os.getenv("FREELLM_API_KEY", "none"),
+            "model": os.getenv("FREELLM_MODEL", "default"),
+            "label": "FreeLLMAPI Router"
+        }
+    ]
+
+    for ep in secondary_endpoints:
+        try:
+            messages = [{"role": "system", "content": system_prompt}]
+            for h in history[-6:]:
+                r = "user" if getattr(h, "role", "user") == "user" else "assistant"
+                c = getattr(h, "content", "")
+                if c:
+                    messages.append({"role": r, "content": c})
+            messages.append({"role": "user", "content": message})
+
+            payload = {
+                "model": ep["model"],
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 600
+            }
+            b = json.dumps(payload).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+            if ep["key"] and ep["key"] != "none":
+                headers["Authorization"] = f"Bearer {ep['key']}"
+
+            req = urllib.request.Request(ep["url"], data=b, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=4) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                choices = res_data.get("choices", [])
+                if choices and "message" in choices[0]:
+                    ans = choices[0]["message"].get("content", "").strip()
+                    if ans:
+                        return ans, f"{ep['label']} ({ep['model']})"
+        except Exception:
+            continue
+
+    # ── Tier 3: Local Zero-Failure Mathematical Engine ──
     msg_lower = message.lower()
     if any(w in msg_lower for w in ["bunk", "skip", "chhutti", "leave", "miss"]):
         if pct >= 75:
