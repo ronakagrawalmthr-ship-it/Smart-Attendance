@@ -1,5 +1,5 @@
 @echo off
-title Smart Attendance - Cloud Backend & Tunnel Launcher
+title "Smart Attendance - Cloud Backend and Tunnel Launcher"
 color 0a
 cls
 echo ===============================================================================
@@ -14,7 +14,7 @@ echo [2/3] Starting Central FastAPI Backend API (Port 8000)...
 start "Smart Attendance - Backend API (8000)" "%~dp0start_backend.bat"
 
 echo Waiting 3 seconds for Backend to initialize...
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 4 >nul
 
 echo [3/3] Starting Dedicated Ngrok Cloud Tunnel...
 set "NGROK_BIN=ngrok"
@@ -23,10 +23,10 @@ if exist "%APPDATA%\npm\node_modules\ngrok\bin\ngrok.exe" (
 ) else if exist "%APPDATA%\npm\node_modules\@expo\ngrok\node_modules\@expo\ngrok-bin-win32-x64\ngrok.exe" (
     set "NGROK_BIN=%APPDATA%\npm\node_modules\@expo\ngrok\node_modules\@expo\ngrok-bin-win32-x64\ngrok.exe"
 )
-start "Smart Attendance - Ngrok Dedicated Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && "%NGROK_BIN%" http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev --host-header=rewrite"
+start "Smart Attendance - Ngrok Dedicated Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel & \"%NGROK_BIN%\" http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev --host-header=rewrite"
 
 echo Waiting 2 seconds for tunnel sync...
-timeout /t 2 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 
 echo.
 echo ===============================================================================

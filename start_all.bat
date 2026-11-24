@@ -15,7 +15,7 @@ echo [1/7] Booting Central Backend & AI Biometrics Engine (Port 8000)...
 start "Smart Attendance - Backend API (8000)" "%~dp0start_backend.bat"
 
 :: Wait 3 seconds for backend to initialize
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 4 >nul
 
 :: 2. Start Ngrok Cloud Tunnel (Dedicated Domain for Backend Port 8000)
 echo [2/7] Booting Ngrok Cloud Tunnel on Dedicated Domain (Port 8000)...
