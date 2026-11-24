@@ -1,5 +1,7 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Request
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -66,8 +68,20 @@ async def register_student(
     clean_branch = branch.strip()
     clean_section = section.strip().upper()
     clean_email = email.strip().lower() if (email and email.strip()) else f"{clean_roll.lower()}@student.university.edu"
-    clean_pwd = password.strip() if (password and password.strip()) else os.getenv("DEFAULT_STUDENT_PASSWORD", "Student@Secure2026!")
-    if password and password.strip() and len(clean_pwd) < 8:
+    generated_password = None
+    if password and password.strip():
+        clean_pwd = password.strip()
+    else:
+        env_pwd = os.getenv("DEFAULT_STUDENT_PASSWORD", "").strip()
+        if env_pwd:
+            clean_pwd = env_pwd
+        else:
+            # No predictable default: generate a strong random password and surface it
+            # once so the operator/student can set it on first login.
+            import secrets as _secrets
+            clean_pwd = "Stu@" + _secrets.token_urlsafe(12)
+            generated_password = clean_pwd
+    if len(clean_pwd) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password must be at least 8 characters long."
@@ -187,5 +201,14 @@ async def register_student(
     db.add(new_student)
     db.commit()
     db.refresh(new_student)
+
+    # If a strong random password was auto-generated (no password supplied and no
+    # DEFAULT_STUDENT_PASSWORD configured), surface it once so the operator/student
+    # can log in, then change it. Never use a predictable default password.
+    if generated_password:
+        return JSONResponse(
+            content=jsonable_encoder(schemas.StudentProfile.model_validate(new_student)),
+            headers={"X-Generated-Password": generated_password}
+        )
 
     return new_student

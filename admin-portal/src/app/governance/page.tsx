@@ -15,11 +15,11 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, getTodayISTString } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function GovernancePage() {
-  const [holidayDate, setHolidayDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [holidayDate, setHolidayDate] = useState(() => getTodayISTString());
   const [holidayReason, setHolidayReason] = useState('');
   const [isSubmittingHoliday, setIsSubmittingHoliday] = useState(false);
   const [holidayNotice, setHolidayNotice] = useState<string | null>(null);

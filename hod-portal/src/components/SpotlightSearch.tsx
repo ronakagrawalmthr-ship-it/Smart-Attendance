@@ -30,7 +30,7 @@ interface SearchItem {
 
 const DEFAULT_COMMANDS: SearchItem[] = [
   { type: 'page', title: 'Department Dashboard', subtitle: 'Department attendance, sections and live labs', url: '/dashboard', category: 'Quick Navigation' },
-  { type: 'page', title: 'Classes & Lab Sessions', subtitle: 'Lecture telemetry, active time-slots and labs', url: '/classes', category: 'Quick Navigation' },
+  { type: 'page', title: 'Classes & Lab Sessions', subtitle: 'Lecture schedule, active time-slots and labs', url: '/classes', category: 'Quick Navigation' },
   { type: 'page', title: 'Faculty Directory', subtitle: 'Faculty members, subjects and lecture logs', url: '/faculty', category: 'Quick Navigation' },
   { type: 'page', title: 'Student Grievance Desk', subtitle: 'Review absence disputes and grant attendance', url: '/grievances', category: 'Quick Navigation' },
   { type: 'page', title: 'Defaulters Action Roster', subtitle: 'Students below statutory 75% cutoff with alerts', url: '/defaulters', category: 'Quick Navigation' },

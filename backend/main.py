@@ -12,17 +12,51 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from limiter import limiter
 import models
-from database import engine, Base, ensure_sqlite_columns, is_sqlite
+from database import engine, Base, ensure_sqlite_columns, ensure_perf_indexes, is_sqlite
 
 
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Smart Face-Authentication Attendance API")
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from services.cron_worker import background_cron_loop
+
+# Centralized structured logging for the whole backend. Level is configurable via
+# LOG_LEVEL (default INFO); set to DEBUG for verbose diagnostics in development.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+)
+
+logger = logging.getLogger("smart_attendance.startup")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    if os.getenv("ENVIRONMENT") != "test":
+        # Safe model creation after full metadata registration
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as e:
+            logger.warning("Startup metadata sync note: %s", e)
+        # Automatic database column self-healing migration for SQLite & PostgreSQL
+        ensure_sqlite_columns()
+        # Hot-path performance indexes (idempotent)
+        ensure_perf_indexes()
+        # Production Mode: Automatic dummy seeding disabled. 0 Fake records.
+        asyncio.create_task(background_cron_loop())
+    yield
+    # Shutdown: nothing to tear down explicitly; cron task is cancelled with the loop.
+
+
+app = FastAPI(title="Smart Face-Authentication Attendance API", lifespan=lifespan)
 
 
 is_dev = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local")
 
-# Explicit Whitelist for Multi-Portal Architecture + Private LAN regex + Vercel
+# Explicit Whitelist for Multi-Portal Architecture + Private LAN regex + Vercel + Ngrok
 DEFAULT_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -36,6 +70,7 @@ DEFAULT_ORIGINS = [
     "https://admin-portal-eta-lilac.vercel.app",
     "https://student-portal-one-ruby.vercel.app",
     "https://hod-portal.vercel.app",
+    "https://monika-monohydroxy-jimmy.ngrok-free.dev",
 ]
 
 env_origins = os.getenv("ALLOWED_ORIGINS")
@@ -44,6 +79,23 @@ if env_origins:
     ALLOWED_ORIGINS.extend([o for o in DEFAULT_ORIGINS if o not in ALLOWED_ORIGINS])
 else:
     ALLOWED_ORIGINS = DEFAULT_ORIGINS
+
+from fastapi.responses import Response
+
+# Universal Preflight Handler to ensure cloud tunnels and Vercel cross-origin never fail
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str, request: Request):
+    origin = request.headers.get("origin", "*")
+    headers = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": request.headers.get(
+            "Access-Control-Request-Headers",
+            "Content-Type, Authorization, ngrok-skip-browser-warning, Accept, X-Requested-With, device-token"
+        ),
+    }
+    return Response(status_code=200, headers=headers)
 
 # Enterprise OWASP Security Headers Middleware
 @app.middleware("http")
@@ -63,10 +115,11 @@ cors_kwargs = {
     "allow_credentials": True,
     "allow_methods": ["*"],
     "allow_headers": ["*"],
-    "allow_origin_regex": r"^(https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?|https:\/\/[a-zA-Z0-9-]+\.vercel\.app)$",
+    "allow_origin_regex": r"^(https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?|https:\/\/([a-zA-Z0-9-]+\.)*vercel\.app|https:\/\/([a-zA-Z0-9-]+\.)*ngrok-free\.(dev|app)|https:\/\/([a-zA-Z0-9-]+\.)*ngrok\.io)$",
 }
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -90,20 +143,6 @@ app.include_router(websockets.router, prefix="/api")
 app.include_router(notifications.router)
 app.include_router(notifications.router, prefix="/api")
 
-import asyncio
-from services.cron_worker import background_cron_loop
-
-@app.on_event("startup")
-async def on_startup():
-    # Safe model creation after full metadata registration
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        print(f"[DB CONNECT ADVISORY] Startup metadata sync note: {e}")
-    # Automatic database column self-healing migration for SQLite & PostgreSQL
-    ensure_sqlite_columns()
-    # Production Mode: Automatic dummy seeding disabled. 0 Fake records.
-    asyncio.create_task(background_cron_loop())
 
 @app.get("/")
 @app.get("/health")

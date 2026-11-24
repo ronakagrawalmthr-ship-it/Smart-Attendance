@@ -134,7 +134,7 @@ export default function HODDashboard() {
 
     } catch (e: any) {
       console.log("Error synchronizing department metrics:", e);
-      setFetchError("Unable to connect to departmental telemetry service. Please retry.");
+      setFetchError("Unable to connect to departmental attendance service. Please retry.");
     } finally {
       setLoading(false);
       setInitialLoading(false);
@@ -251,7 +251,7 @@ export default function HODDashboard() {
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-rose-900">Department Telemetry Connection Error</p>
+              <p className="text-xs font-bold text-rose-900">Department Attendance Connection Error</p>
               <p className="text-[11px] text-rose-700">{fetchError}</p>
             </div>
           </div>

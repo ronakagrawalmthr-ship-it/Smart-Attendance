@@ -1,10 +1,13 @@
 import cv2
 import numpy as np
 import json
+import logging
 import os
 import base64
 from pathlib import Path
 from fastapi import UploadFile, HTTPException
+
+logger = logging.getLogger("smart_attendance.biometrics")
 
 try:
     import face_recognition as dlib_face_rec
@@ -54,7 +57,7 @@ class SmartBiometricEngine:
                 try:
                     self._onnx_net = cv2.dnn.readNetFromONNX(str(model_path))
                 except Exception as e:
-                    print(f"[ONNX NOTICE] Could not load ONNX model: {e}")
+                    logger.warning("Could not load ONNX model: %s", e)
         return self._onnx_net
 
     def detect_face_region(self, rgb_img):

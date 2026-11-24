@@ -30,7 +30,7 @@ interface SearchItem {
 
 const DEFAULT_STUDENT_COMMANDS: SearchItem[] = [
   { type: 'page', title: 'Personal Attendance Dashboard', subtitle: 'View real-time lecture attendance & 75% cutoff status', url: '/dashboard', category: 'Navigation' },
-  { type: 'page', title: 'Face Biometric Enrollment', subtitle: 'Register 3D facial vectors for classroom scanner kiosks', url: '/enroll', category: 'Biometrics' },
+  { type: 'page', title: 'Face Biometric Enrollment', subtitle: 'Register face biometrics for classroom attendance', url: '/enroll', category: 'Biometrics' },
   { type: 'page', title: 'Submit Absence Dispute / Grievance', subtitle: 'Appeal missed lectures with medical or official duty proof', url: '/grievance', category: 'Academic Redressal' },
   { type: 'page', title: 'Student Profile & Digital ID', subtitle: 'Roll number, semester, section & biometric status', url: '/profile', category: 'Profile' },
   { type: 'page', title: 'Account & Security Settings', subtitle: 'Password changes and notification preferences', url: '/settings', category: 'Settings' }

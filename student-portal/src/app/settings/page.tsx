@@ -410,7 +410,7 @@ export default function StudentSettingsPage() {
                     <div className="text-xs font-semibold text-stone-900">Biometric Facial Vector Status</div>
                     <div className="text-[11px] text-emerald-700 flex items-center space-x-1 font-medium">
                       <ShieldCheck className="h-3.5 w-3.5" />
-                      <span>{hasFaceEnrolled ? '128-D Biometric Vectors Active' : 'Not Enrolled'}</span>
+                      <span>{hasFaceEnrolled ? 'Face Recognition Active' : 'Not Enrolled'}</span>
                     </div>
                   </div>
                 </div>

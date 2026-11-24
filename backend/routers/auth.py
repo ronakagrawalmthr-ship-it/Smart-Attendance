@@ -579,7 +579,7 @@ def send_verification_otp(
     """
     success, err = send_system_email(
         to_email=clean_email,
-        subject=f"{otp_code} is your Smart Attendance verification code",
+        subject="Your Smart Attendance verification code",
         html_content=email_html
     )
 
@@ -589,11 +589,19 @@ def send_verification_otp(
         "delivery_status": "sent" if success else "sandbox_notice",
         "detail": err if not success else None
     }
-    # If email delivery failed (sandbox or key missing) or in dev mode, provide OTP in payload so user isn't stuck
-    is_development = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local")
-    if not success or is_development:
+    # SECURITY: Only expose the OTP in the response when explicitly running in a
+    # development/test environment. Never leak it in production, even if email
+    # delivery fails (that would allow account takeover by whoever called send-otp).
+    is_development = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local", "test")
+    if is_development:
         resp_data["otp"] = otp_code
-        resp_data["hint"] = f"Sandbox / Testing active. Passcode: {otp_code}"
+        resp_data["hint"] = f"Development / Testing active. Passcode: {otp_code}"
+    elif not success:
+        # Production + delivery failure: do not reveal the code.
+        resp_data["message"] = (
+            f"Verification code could not be delivered to {clean_email}. "
+            "Please retry or contact your administrator."
+        )
     return resp_data
 
 @router.post("/verify-otp-and-set-password")

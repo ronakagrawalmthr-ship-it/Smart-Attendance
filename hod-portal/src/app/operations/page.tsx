@@ -20,7 +20,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, getTodayISTString } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 type TabType = 'dutyleave' | 'holidays' | 'proxy' | 'classtests';
@@ -41,12 +41,12 @@ export default function AcademicOperationsPage() {
 
   // Form states
   const [odStudentRoll, setOdStudentRoll] = useState('');
-  const [odDate, setOdDate] = useState(new Date().toISOString().slice(0, 10));
+  const [odDate, setOdDate] = useState(() => getTodayISTString());
   const [odEvent, setOdEvent] = useState('Smart India Hackathon Finalist');
   const [odRemarks, setOdRemarks] = useState('Official College Representation Duty Leave');
 
   const [holidayTitle, setHolidayTitle] = useState('');
-  const [holidayDate, setHolidayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [holidayDate, setHolidayDate] = useState(() => getTodayISTString());
   const [holidayEndDate, setHolidayEndDate] = useState('');
   const [holidayEventType, setHolidayEventType] = useState<'HOLIDAY' | 'PREPARATION_LEAVE' | 'EXAM_PERIOD' | 'SEMESTER_BREAK'>('HOLIDAY');
   const [holidayDesc, setHolidayDesc] = useState('');
@@ -54,7 +54,7 @@ export default function AcademicOperationsPage() {
   const [proxyOrigTeacher, setProxyOrigTeacher] = useState<number | null>(null);
   const [proxySubTeacher, setProxySubTeacher] = useState<number | null>(null);
   const [proxySubject, setProxySubject] = useState<number | null>(null);
-  const [proxyDate, setProxyDate] = useState(new Date().toISOString().slice(0, 10));
+  const [proxyDate, setProxyDate] = useState(() => getTodayISTString());
   const [proxyReason, setProxyReason] = useState('Attending National Conference / FDP');
 
   const showToast = (msg: string) => {

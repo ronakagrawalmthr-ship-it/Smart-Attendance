@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 try:
@@ -17,8 +17,7 @@ class User(UserBase):
     id: int
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class StudentProfileBase(BaseModel):
     full_name: str
@@ -41,8 +40,7 @@ class StudentProfile(StudentProfileBase):
     id: int
     user_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class StudentProfileUpdate(BaseModel):
     full_name: Optional[str] = None

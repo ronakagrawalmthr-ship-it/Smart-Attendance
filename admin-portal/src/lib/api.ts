@@ -6,25 +6,54 @@ export const VERCEL_PORTAL_URLS: Record<number, string> = {
   3003: 'https://hod-portal.vercel.app',
 };
 
+export const CLOUD_BACKEND_URL = 'https://monika-monohydroxy-jimmy.ngrok-free.dev';
+
 export function getApiBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  // 1. Explicit environment variable
+  if (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) {
+    return process.env.NEXT_PUBLIC_API_URL.trim().replace(/\/+$/, '');
   }
-  if (typeof window !== 'undefined' && window.location?.hostname) {
+
+  // 2. Client-side runtime overrides & cloud detection
+  if (typeof window !== 'undefined') {
+    const customHost = localStorage.getItem('api_base_url') || localStorage.getItem('custom_backend_url') || localStorage.getItem('api_host');
+    if (customHost && customHost.trim()) {
+      return customHost.trim().replace(/\/+$/, '');
+    }
+    const settingsStr = localStorage.getItem('global_system_settings');
+    if (settingsStr) {
+      try {
+        const parsed = JSON.parse(settingsStr);
+        if (parsed.api_host && parsed.api_host.trim()) {
+          return parsed.api_host.trim().replace(/\/+$/, '');
+        }
+      } catch {}
+    }
+
     const host = window.location.hostname;
     const protocol = window.location.protocol || 'http:';
-    if (host !== 'localhost' && host !== '127.0.0.1' && !host.includes('vercel.app')) {
+
+    // 3. When accessed on Vercel, route to live dedicated cloud backend tunnel
+    if (host.includes('vercel.app')) {
+      return CLOUD_BACKEND_URL;
+    }
+
+    // 4. When accessed on local LAN IP, route to same host on port 8000
+    if (host !== 'localhost' && host !== '127.0.0.1') {
       return `${protocol}//${host}:8000`;
     }
   }
+
   return 'http://localhost:8000';
 }
 
 export const API_BASE_URL = 
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('vercel.app')
-    ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
-    : 'http://localhost:8000');
+  (typeof window !== 'undefined' && window.location?.hostname?.includes('vercel.app')
+    ? CLOUD_BACKEND_URL
+    : (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+        ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
+        : 'http://localhost:8000'));
 
 export function getPortalUrl(port: number, path: string = ''): string {
   // If explicitly configured in environment
@@ -205,4 +234,67 @@ export function formatApiError(err: any): string {
     return 'Campus Server Unreachable: Please ensure the attendance backend service is running or check network connection.';
   }
   return msg;
+}
+
+
+// Indian Standard Time (IST / Asia/Kolkata) Date & Time Utilities
+export function getTodayISTString(): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  } catch {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 330);
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+export function formatISTDate(dateInput?: string | Date | null): string {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return String(dateInput);
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    }).format(d);
+  } catch {
+    return d.toLocaleDateString();
+  }
+}
+
+export function formatISTTime(dateInput?: string | Date | null): string {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return String(dateInput);
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(d);
+  } catch {
+    return d.toLocaleTimeString();
+  }
+}
+
+export function formatISTDateTime(dateInput?: string | Date | null): string {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return String(dateInput);
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(d);
+  } catch {
+    return ${d.toLocaleDateString()} ;
+  }
 }

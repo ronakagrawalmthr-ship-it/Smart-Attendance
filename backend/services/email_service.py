@@ -1,9 +1,12 @@
+import logging
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, List, Union, Tuple
 from pathlib import Path
+
+logger = logging.getLogger("smart_attendance.email")
 
 try:
     from dotenv import load_dotenv
@@ -62,11 +65,11 @@ def send_system_email(
                 server.login(smtp_user, clean_pass)
                 server.sendmail(smtp_user, recipients, msg.as_string())
 
-            print(f"[SMTP SUCCESS] Email successfully dispatched to {recipients} via {smtp_host}")
+            logger.info("Email dispatched to %s via %s", recipients, smtp_host)
             return True, None
         except Exception as e:
             smtp_err = str(e)
-            print(f"[SMTP NOTICE] Dispatch to {recipients} failed via SMTP: {smtp_err}")
+            logger.warning("Email dispatch to %s failed via SMTP: %s", recipients, smtp_err)
             # Fall through to Resend fallback
 
     # 2. Fallback: Resend API
@@ -83,11 +86,11 @@ def send_system_email(
                     "subject": subject,
                     "html": html_content
                 })
-            print(f"[RESEND SUCCESS] Email dispatched to {recipients} | Subject: {subject}")
+            logger.info("Email dispatched to %s via Resend | Subject: %s", recipients, subject)
             return True, None
         except Exception as e:
             resend_err = str(e)
-            print(f"[RESEND NOTICE] Dispatch to {recipients} failed: {resend_err}")
+            logger.warning("Email dispatch to %s failed via Resend: %s", recipients, resend_err)
 
     # If Resend failed and no SMTP was configured
     if resend_key:

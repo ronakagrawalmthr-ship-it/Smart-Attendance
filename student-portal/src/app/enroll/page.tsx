@@ -282,8 +282,8 @@ export default function StudentEnrollment() {
         window.dispatchEvent(new CustomEvent('campus-notification', {
           detail: {
             type: 'enrollment_alert',
-            title: 'Face ID Biometrics Active',
-            detail: `128-d face embedding enrolled for ${formData.fullName || 'Student'} (${formData.rollNumber.toUpperCase()}) in ${formData.branch} (Sem ${formData.semester})`,
+            title: 'Face Recognition Active',
+            detail: `Face recognition registered for ${formData.fullName || 'Student'} (${formData.rollNumber.toUpperCase()}) in ${formData.branch} (Sem ${formData.semester})`,
             time: 'Just now',
             badge: 'Active'
           }

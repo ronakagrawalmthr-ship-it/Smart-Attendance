@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -32,7 +32,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL, authFetch, authFetchWithRetry } from '@/lib/api';
+import { API_BASE_URL, authFetch, authFetchWithRetry, getTodayISTString } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 interface SessionLogItem {
@@ -120,7 +120,7 @@ interface AttendanceRecord {
 }
 
 export default function ClassAttendancePage() {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getTodayISTString();
   
   // View Modes: 'sessions' (Conducted Lectures History) | 'students' (Cumulative Ledger) | 'records' (Individual Scan Logs)
   const [viewMode, setViewMode] = useState<'sessions' | 'students' | 'records'>('sessions');
@@ -778,7 +778,7 @@ export default function ClassAttendancePage() {
                 <AlertCircle className="h-6 w-6" />
               </div>
               <div className="max-w-md mx-auto space-y-1">
-                <h3 className="text-sm font-bold text-rose-900">Department Attendance Telemetry Disconnected</h3>
+                <h3 className="text-sm font-bold text-rose-900">Department Attendance Service Disconnected</h3>
                 <p className="text-xs text-rose-700">{fetchError}</p>
               </div>
               <button

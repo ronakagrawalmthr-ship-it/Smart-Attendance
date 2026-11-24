@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional, List
 from pydantic import BaseModel
+import logging
+
+logger = logging.getLogger("smart_attendance.portal")
 
 try:
     from .. import models, schemas, database, security
@@ -32,16 +35,19 @@ except (ImportError, ValueError):
                 "description": ""
             }
 try:
-    from ..time_utils import now_ist_naive, today_ist_str, format_time_ist
+    from ..time_utils import now_ist_naive, today_ist_str, format_time_ist, to_ist, today_ist_formatted
 except (ImportError, ValueError):
     try:
-        from time_utils import now_ist_naive, today_ist_str, format_time_ist
+        from time_utils import now_ist_naive, today_ist_str, format_time_ist, to_ist, today_ist_formatted
     except (ImportError, ValueError):
         from datetime import timezone, timedelta
         _IST = timezone(timedelta(hours=5, minutes=30))
         def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
         def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
+        def today_ist_formatted(): return datetime.now(_IST).strftime("%A, %d %B %Y")
+        def to_ist(dt=None): return dt or now_ist_naive()
         def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
+
 
 router = APIRouter(
     prefix="/portal",
@@ -128,11 +134,12 @@ def get_student_metrics(
     # 1. Day-Wise Attendance Grouping
     day_groups = defaultdict(list)
     for log, sess in logs_query:
-        dt = sess.start_time or log.timestamp or now_ist_naive()
+        raw_dt = sess.start_time or log.timestamp or now_ist_naive()
+        dt = to_ist(raw_dt)
         date_str = dt.strftime("%Y-%m-%d")
         time_str = dt.strftime("%I:%M %p")
         if sess.end_time:
-            time_str += f" - {sess.end_time.strftime('%I:%M %p')}"
+            time_str += f" - {to_ist(sess.end_time).strftime('%I:%M %p')}"
 
         is_guest = sess.session_type == models.SessionType.guest_lecture
         subj_name = sess.custom_subject_name or (sess.subject.name if sess.subject else ("Special Guest Lecture" if is_guest else "Classroom Session"))
@@ -258,17 +265,19 @@ def get_student_metrics(
         ]
     }
 
-    # 4. Recent Raw Logs (last 15)
+    # 4. Recent Raw Logs (last 15) with accurate Indian Standard Time (IST) formatting
     logs_data = []
     for log, sess in logs_query[:15]:
-        dt = sess.start_time or log.timestamp or now_ist_naive()
+        raw_dt = sess.start_time or log.timestamp or now_ist_naive()
+        dt = to_ist(raw_dt)
         is_guest = sess.session_type == models.SessionType.guest_lecture
         subj_name = sess.custom_subject_name or (sess.subject.name if sess.subject else ("Special Guest Lecture" if is_guest else "Classroom Session"))
         conductor = sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator")
         logs_data.append({
             "id": log.id,
             "session_id": sess.id,
-            "date": dt.strftime("%Y-%m-%d"),
+            "date": dt.strftime("%d %b %Y"),
+            "raw_date": dt.strftime("%Y-%m-%d"),
             "time": dt.strftime("%I:%M %p"),
             "subject": subj_name,
             "conducted_by": conductor,
@@ -278,6 +287,7 @@ def get_student_metrics(
             "confidence": f"{round(log.confidence_score, 1)}%" if (log.is_present and log.confidence_score is not None) else ("100.0%" if log.is_present else "No Match"),
             "remarks": log.remarks
         })
+
 
     # Real database subjects only - zero hardcoded fallback demo data
     # (Empty list if no subjects or classes configured yet)
@@ -336,8 +346,12 @@ def get_student_metrics(
         "subjects": subject_wise,
         "guest_lectures": guest_summary,
         "day_wise": day_wise,
-        "recent_logs": logs_data
+        "recent_logs": logs_data,
+        "current_date": today_ist_formatted(),
+        "current_time": format_time_ist(),
+        "timezone": "IST (UTC+05:30)"
     }
+
 
 class GrievanceSubmission(BaseModel):
     session_id: Optional[int] = None
@@ -427,7 +441,7 @@ def submit_grievance(
         except Exception:
             pass
     except Exception as e:
-        print("Audit log error:", e)
+        logger.warning("Audit log error: %s", e)
     
     return {
         "success": True,
@@ -530,14 +544,16 @@ def get_student_profile(
     # Recent raw logs (up to 10)
     recent_logs = []
     for log, sess in logs_query[:10]:
-        dt = sess.start_time or log.timestamp or now_ist_naive()
+        raw_dt = sess.start_time or log.timestamp or now_ist_naive()
+        dt = to_ist(raw_dt)
         is_guest = sess.session_type == models.SessionType.guest_lecture
         subj_name = sess.custom_subject_name or (sess.subject.name if sess.subject else ("Special Guest Lecture" if is_guest else "Classroom Session"))
         conductor = sess.conducted_by_name or (sess.teacher.full_name if sess.teacher else "Faculty Coordinator")
         recent_logs.append({
             "id": log.id,
             "session_id": sess.id,
-            "date": dt.strftime("%Y-%m-%d"),
+            "date": dt.strftime("%d %b %Y"),
+            "raw_date": dt.strftime("%Y-%m-%d"),
             "time": dt.strftime("%I:%M %p"),
             "subject": subj_name,
             "conducted_by": conductor,
@@ -708,8 +724,8 @@ def get_student_live_notifications(
             "type": "attendance_submission" if l.is_present else "grievance_alert",
             "title": f"Attendance Marked: {status_str}",
             "detail": f"You were marked {status_str} in {subj_name}",
-            "time": l.timestamp.strftime("%I:%M %p") if l.timestamp else "Today",
-            "raw_time": l.timestamp.isoformat() if l.timestamp else now.isoformat(),
+            "time": format_time_ist(l.timestamp) if l.timestamp else "Today",
+            "raw_time": to_ist(l.timestamp).isoformat() if l.timestamp else now.isoformat(),
             "badge": "Verified Present" if l.is_present else "Marked Absent"
         })
 

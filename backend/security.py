@@ -2,10 +2,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import logging
 import os
 import secrets
 from pathlib import Path
 from dotenv import load_dotenv
+
+logger = logging.getLogger("smart_attendance.security")
 
 env_path = Path(__file__).resolve().parent / ".env"
 user_env = Path.home() / ".smart_attendance" / ".env"
@@ -124,7 +127,7 @@ def encrypt_biometric_vector(raw_json: Optional[str]) -> Optional[str]:
         encrypted_bytes = cipher.encrypt(raw_json.strip().encode('utf-8'))
         return f"enc:{encrypted_bytes.decode('utf-8')}"
     except Exception as e:
-        print(f"[SECURITY WARNING] Biometric encryption error: {e}")
+        logger.error("Biometric encryption error: %s", e)
         return raw_json
 
 def decrypt_biometric_vector(stored_data: Optional[str]) -> Optional[str]:

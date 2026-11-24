@@ -2,17 +2,17 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  ScanFace, 
-  ShieldCheck, 
-  GraduationCap, 
-  Building2, 
-  Smartphone, 
-  CheckCircle2, 
-  Sparkles, 
-  ArrowRight, 
-  Activity, 
-  Mail, 
+import {
+  ScanFace,
+  ShieldCheck,
+  GraduationCap,
+  Building2,
+  Smartphone,
+  CheckCircle2,
+  Sparkles,
+  ArrowRight,
+  Activity,
+  Mail,
   Database,
   Fingerprint,
   ExternalLink,
@@ -70,7 +70,7 @@ export default function Home() {
           setInstitutionName(data.institution_name);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     authFetch(`${API_BASE_URL}/management/college/kpi-stats`)
       .then(res => res.json())
@@ -84,7 +84,7 @@ export default function Home() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function Home() {
       id: 'student-register',
       title: 'Biometric Face Enrollment',
       category: 'Student Self-Onboarding',
-      desc: 'Live webcam face detection, anti-spoofing liveness verification, and 128-d mathematical vector encoding. Zero raw images saved.',
+      desc: 'Live webcam face detection, anti-spoofing liveness verification, and secure face recognition encoding. Zero raw images saved.',
       href: '/register',
       icon: ScanFace,
       iconBg: 'bg-blue-50 text-blue-600 border border-blue-200/60',
@@ -271,9 +271,9 @@ export default function Home() {
 
       {/* Main Hero Section */}
       <main className="relative max-w-7xl mx-auto px-6 pt-10 pb-20">
-        <motion.div 
-          
-          
+        <motion.div
+
+
           transition={{ duration: 0.5 }}
           className="text-center max-w-3xl mx-auto mb-16"
         >
@@ -290,14 +290,14 @@ export default function Home() {
           </h1>
 
           <p className="text-stone-600 text-base sm:text-lg leading-relaxed mb-8">
-            Eliminate manual roll-calls, buddy-punching, and proxy attendance. Built with 128-dimensional facial vector embeddings, OpenCV anti-spoofing liveness detection, and real-time administrative dashboards.
+            Eliminate manual roll-calls, buddy-punching, and proxy attendance. Built with AI facial recognition, secure dynamic QR codes, and real-time administrative dashboards.
           </p>
 
           {/* System Spec Badges */}
           <div className="flex flex-wrap justify-center gap-3 text-xs text-stone-700 font-medium">
             <div className="flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-white border border-stone-200/80 shadow-sm">
               <Fingerprint className="h-4 w-4 text-blue-600" />
-              <span>128-D Cryptographic Vectors</span>
+              <span>Secure Face Recognition</span>
             </div>
             <div className="flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-white border border-stone-200/80 shadow-sm">
               <ShieldCheck className="h-4 w-4 text-indigo-600" />
@@ -341,8 +341,8 @@ export default function Home() {
             return (
               <motion.div
                 key={portal.id}
-                
-                
+
+
                 transition={{ duration: 0.4, delay: index * 0.08 }}
                 className="group relative rounded-3xl bg-white/85 border border-stone-200/80 hover:border-stone-300 p-8 flex flex-col justify-between transition-all duration-300 hover:shadow-xl shadow-sm backdrop-blur-xl overflow-hidden"
               >
@@ -424,7 +424,7 @@ export default function Home() {
                 <h3 className="text-lg font-bold text-stone-900">Full Stack Live Integration Status</h3>
               </div>
               <p className="text-stone-600 text-xs sm:text-sm max-w-2xl leading-relaxed">
-                Every endpoint is verified: JWT token issuance, 128-d biometrics vector extraction, automated student user provisioning, <span className="font-semibold text-stone-800">Resend email delivery</span>, and PostgreSQL Docker parity.
+                Every endpoint is verified: JWT token issuance, facial recognition verification, automated student user provisioning, <span className="font-semibold text-stone-800">Resend email delivery</span>, and PostgreSQL Docker parity.
               </p>
             </div>
 

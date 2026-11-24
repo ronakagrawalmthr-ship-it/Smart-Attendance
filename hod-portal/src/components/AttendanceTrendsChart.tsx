@@ -243,7 +243,7 @@ export default function AttendanceTrendsChart({
           <span>Departmental attendance trajectory dynamically synced with institutional ledger.</span>
         </div>
         <div className="hidden sm:block text-stone-400 font-mono text-[11px]">
-          Live telemetry updated 2m ago
+          Live attendance updated 2m ago
         </div>
       </div>
     </div>

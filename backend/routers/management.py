@@ -2,12 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, case
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, date
+import logging
 import os
 import csv
 import io
 import time
 import secrets
+
+logger = logging.getLogger("smart_attendance.management")
 try:
     import resend
     _resend_key = os.environ.get("RESEND_API_KEY")
@@ -24,7 +28,7 @@ from typing import Optional, List
 try:
     from .. import models, schemas, database, security
     from ..sort_utils import natural_sort_key
-    from ..time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, format_time_ist
+    from ..time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, today_ist_formatted, format_time_ist, format_datetime_ist, to_ist
     from ..academic_config import resolve_program_meta, get_all_supported_programs, get_program_total_semesters, SETTING_KEY_CUSTOM_PROGRAMS, calculate_attendance_ia_marks
 except (ImportError, ValueError):
     import models, schemas, database, security
@@ -35,7 +39,7 @@ except (ImportError, ValueError):
             return {"ia_marks": 5 if attendance_pct >= 90 else (2 if attendance_pct >= 75 else 0), "standing": "Normal", "tier": "GREEN"}
 
     try:
-        from time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, format_time_ist
+        from time_utils import now_ist, now_ist_naive, today_ist_str, today_ist_date, today_ist_formatted, format_time_ist, format_datetime_ist, to_ist
     except (ImportError, ValueError):
         from datetime import timezone, timedelta
         _IST = timezone(timedelta(hours=5, minutes=30))
@@ -43,7 +47,10 @@ except (ImportError, ValueError):
         def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
         def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
         def today_ist_date(): return datetime.now(_IST).date()
+        def today_ist_formatted(): return datetime.now(_IST).strftime("%A, %d %B %Y")
         def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
+        def format_datetime_ist(dt=None, fmt="%Y-%m-%d %I:%M:%S %p"): return (dt or now_ist_naive()).strftime(fmt)
+        def to_ist(dt): return dt or now_ist_naive()
     try:
         from sort_utils import natural_sort_key
     except (ImportError, ValueError):
@@ -143,7 +150,8 @@ def get_latest_scan_telemetry(
         "confidence": confidence,
         "session_name": subject_name,
         "room": venue,
-        "timestamp": log.timestamp.strftime("%I:%M %p") if log.timestamp else "Just now",
+        "timestamp": format_time_ist(log.timestamp) if log.timestamp else "Just now",
+        "date": to_ist(log.timestamp).strftime("%d %b %Y") if log.timestamp else today_ist_formatted(),
         "is_present": bool(log.is_present),
         "avatar": avatar
     }
@@ -153,12 +161,17 @@ def get_recent_scans_telemetry(
     branch: Optional[str] = None,
     limit: int = 20,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
     """
     Returns a stream of recent real student attendance recognitions from SQLite.
     Used by the Deluxe Apple Dynamic Island to rotate real, live verified students dynamically.
     """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to view scan telemetry."
+        )
     query = (
         db.query(models.AttendanceLog, models.StudentProfile, models.AcademicSession)
         .join(models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id)
@@ -190,7 +203,8 @@ def get_recent_scans_telemetry(
             "confidence": confidence,
             "session_name": subject_name,
             "room": venue,
-            "timestamp": log.timestamp.strftime("%I:%M %p") if log.timestamp else "Just now",
+            "timestamp": format_time_ist(log.timestamp) if log.timestamp else "Just now",
+        "date": to_ist(log.timestamp).strftime("%d %b %Y") if log.timestamp else today_ist_formatted(),
             "avatar": avatar,
             "is_present": True
         })
@@ -288,8 +302,8 @@ def get_live_events(
             "subject": subj_name,
             "code": code,
             "detail": f"{conductor} finalized attendance for {subj_name} • {present_count} Present",
-            "time": session_time.strftime("%I:%M %p") if hasattr(session_time, "strftime") else "Today",
-            "raw_time": session_time.isoformat() if hasattr(session_time, "isoformat") else now_iso,
+            "time": format_time_ist(session_time) if hasattr(session_time, "strftime") else "Today",
+            "raw_time": to_ist(session_time).isoformat() if hasattr(session_time, "isoformat") else now_iso,
             "badge": f"{present_count} Present"
         })
 
@@ -316,8 +330,8 @@ def get_live_events(
             "subject": g.subject_name or "Attendance Dispute",
             "code": g.ticket_id or "GRV",
             "detail": f"{st_roll} ({st_name}): {g.reason[:42]}...",
-            "time": g.created_at.strftime("%I:%M %p") if g.created_at else "Today",
-            "raw_time": g.created_at.isoformat() if g.created_at else now_iso,
+            "time": format_time_ist(g.created_at) if g.created_at else "Today",
+            "raw_time": to_ist(g.created_at).isoformat() if g.created_at else now_iso,
             "badge": g.status or "Under Review"
         })
 
@@ -377,8 +391,8 @@ def get_live_events(
             "subject": subj.name if subj else "Academic OD",
             "code": "OD_CREDIT",
             "detail": f"{st.full_name if st else 'Student'} credited with OD: {l.remarks or 'Hackathon / Sports'}",
-            "time": l.timestamp.strftime("%I:%M %p") if l.timestamp else "Today",
-            "raw_time": l.timestamp.isoformat() if l.timestamp else now_iso,
+            "time": format_time_ist(l.timestamp) if l.timestamp else "Today",
+            "raw_time": to_ist(l.timestamp).isoformat() if l.timestamp else now_iso,
             "badge": "OD Approved"
         })
 
@@ -396,8 +410,8 @@ def get_live_events(
             "subject": p.trigger_reason or "Attendance Alert",
             "code": "DISPATCH",
             "detail": f"Notice dispatched to guardian of {p.student_name or 'Student'} ({p.student_roll or 'CSE'})",
-            "time": p.timestamp.strftime("%I:%M %p") if p.timestamp else "Today",
-            "raw_time": p.timestamp.isoformat() if p.timestamp else now_iso,
+            "time": format_time_ist(p.timestamp) if p.timestamp else "Today",
+            "raw_time": to_ist(p.timestamp).isoformat() if p.timestamp else now_iso,
             "badge": p.channel or "Dispatched"
         })
 
@@ -989,7 +1003,13 @@ def get_college_kpi_stats(
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
-    is_admin = bool(current_user and current_user.role in [models.RoleEnum.admin, models.RoleEnum.hod])
+    # College-wide KPIs are restricted to institutional leadership (Admin / HOD).
+    if not current_user or current_user.role not in (models.RoleEnum.admin, models.RoleEnum.hod):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="College KPI statistics are restricted to administrators and HODs."
+        )
+    is_admin = True
     
     now_ts = time.time()
     if _KPI_STATS_CACHE["data"] is not None and (now_ts - _KPI_STATS_CACHE["timestamp"] < _KPI_CACHE_TTL):
@@ -1166,7 +1186,17 @@ def get_college_kpi_stats(
         greeting = "Good night"
         greeting_icon = "\U0001F319"
 
-    if time_val < 9.0:
+    weekday = now.weekday()  # 0=Monday, 5=Saturday, 6=Sunday
+    if weekday == 6:
+        period_str = "Sunday • Campus Holiday"
+    elif weekday == 5:
+        if time_val < 9.0:
+            period_str = "Saturday • Operations Resume at 09:00 AM"
+        elif time_val > 14.0:
+            period_str = "Saturday • Weekend Academic Recess"
+        else:
+            period_str = "Saturday Sessions • Active Hours"
+    elif time_val < 9.0:
         period_str = "Pre-Campus Hours • Operations Resume at 09:00 AM"
     elif 9.0 <= time_val < 10.0:
         period_str = "Period 1 (09:00 - 10:00 AM)"
@@ -1199,7 +1229,10 @@ def get_college_kpi_stats(
     result_payload = {
         "greeting": greeting,
         "greetingIcon": greeting_icon,
-        "activeSchedule": f"{period_str} • Campus Lectures",
+        "currentDate": now.strftime("%A, %d %B %Y"),
+        "currentTime": now.strftime("%I:%M %p"),
+        "activeSchedule": period_str,
+
         "totalStudents": total_students,
         "totalFaculty": total_faculty,
         "totalDepartments": total_departments,
@@ -1298,8 +1331,20 @@ def global_spotlight_search(
 ):
     """
     Spotlight Universal Quick Search across Students, Faculty, Departments, and Pages.
-    Publicly accessible across all university portals.
+    Requires authentication (portals call this with the user's bearer token).
     """
+    # Require a valid bearer token — the directory contains student/faculty PII.
+    _authed = False
+    if request is not None:
+        _auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if _auth_header and _auth_header.startswith("Bearer "):
+            if security.decode_access_token(_auth_header.split(" ")[1]):
+                _authed = True
+    if not _authed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to use campus search."
+        )
     query_str = (q or "").strip().lower()
     
     host_name = "localhost"
@@ -1514,7 +1559,14 @@ def get_department_overview(
         greeting_icon = "\U0001F319"
 
     # 3. Compute real-time academic period & active lecture
-    if time_val < 9.0:
+    weekday = now.weekday()
+    if weekday == 6:  # Sunday
+        period_str = "Sunday • Campus Holiday"
+        active_schedule = "Sunday • Campus Holiday • Regular classes resume on Monday"
+    elif weekday == 5:  # Saturday
+        period_str = "Saturday • Weekend Schedule"
+        active_schedule = "Saturday • Weekend Schedule • Labs & Revision Sessions"
+    elif time_val < 9.0:
         period_str = "Pre-Campus Hours • First Period at 09:00 AM"
     elif 9.0 <= time_val < 10.0:
         period_str = "Period 1 (09:00 - 10:00 AM)"
@@ -1535,25 +1587,26 @@ def get_department_overview(
     else:
         period_str = "Campus Operations Concluded"
 
-    # Fetch latest active subject in department
-    active_session = (
-        db.query(models.AcademicSession)
-        .filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
-        .order_by(models.AcademicSession.id.desc())
-        .first()
-    )
-    active_sub_name = (
-        active_session.subject.name if (active_session and active_session.subject)
-        else (active_session.custom_subject_name if active_session else None)
-    )
-    if not active_sub_name:
-        sub_first = db.query(models.Subject).filter(models.Subject.branch.ilike(f"%{branch}%")).first()
-        active_sub_name = sub_first.name if sub_first else "Engineering Curriculum"
+    if weekday not in (5, 6):
+        # Fetch latest active subject in department
+        active_session = (
+            db.query(models.AcademicSession)
+            .filter(models.AcademicSession.branch.ilike(f"%{branch}%"))
+            .order_by(models.AcademicSession.id.desc())
+            .first()
+        )
+        active_sub_name = (
+            active_session.subject.name if (active_session and active_session.subject)
+            else (active_session.custom_subject_name if active_session else None)
+        )
+        if not active_sub_name:
+            sub_first = db.query(models.Subject).filter(models.Subject.branch.ilike(f"%{branch}%")).first()
+            active_sub_name = sub_first.name if sub_first else "Engineering Curriculum"
 
-    if "Period" in period_str:
-        active_schedule = f"{period_str}: {active_sub_name}"
-    else:
-        active_schedule = f"{period_str} • {active_sub_name}"
+        if "Period" in period_str:
+            active_schedule = f"{period_str}: {active_sub_name}"
+        else:
+            active_schedule = f"{period_str} • {active_sub_name}"
 
     for sem in (semesters if semesters else [6]):
         sem_students = [s for s in students if s.semester == sem]
@@ -1583,6 +1636,8 @@ def get_department_overview(
         "greeting": greeting,
         "greetingIcon": greeting_icon,
         "activeSchedule": active_schedule,
+        "currentDate": now.strftime("%A, %d %B %Y"),
+        "currentTime": now.strftime("%I:%M %p"),
         "totalEnrolled": total_enrolled,
         "overallTurnout": f"{overall_turnout}%" if overall_turnout is not None else "0.0%",
         "defaulterCount": len(dept_defaulters),
@@ -2252,7 +2307,7 @@ def get_today_attendance_sessions(
             "semester": s.semester,
             "section": s.section,
             "conducted_by": s.conducted_by_name or (s.teacher.full_name if s.teacher else "Faculty"),
-            "time": s.start_time.strftime("%I:%M %p") if s.start_time else "N/A",
+            "time": format_time_ist(s.start_time) if s.start_time else "N/A",
             "total_enrolled": total_cnt,
             "present_count": present_cnt,
             "absent_count": total_cnt - present_cnt,
@@ -2480,7 +2535,7 @@ def send_holiday_email(holiday_date: date, reason: str, target_emails: Optional[
             sender_name="Institutional Academic Affairs"
         )
     except Exception as e:
-        print(f"Failed to send holiday email: {str(e)}")
+        logger.warning("Failed to send holiday email: %s", e)
 
 @router.post("/holiday")
 def declare_holiday(
@@ -2847,19 +2902,31 @@ def resolve_grievance(
             att_log.status_tag = "ABSENT"
             att_log.remarks = f"Grievance rejected by HOD on {today_ist_str()}"
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This grievance/attendance record was updated concurrently. Please retry."
+        )
 
     # Real-Time Push Notification to Student Device
     try:
+        import logging as _logging
         from services.push_notification_service import notify_user_id
         if g.student and g.student.user_id:
-            notify_user_id(
+            delivery = notify_user_id(
                 db=db,
                 user_id=g.student.user_id,
                 title="Grievance Decision Update",
                 body=f"Your grievance dispute #{ticket_id} was {clean_decision.lower()} by the Department HOD.",
                 data={"ticket_id": ticket_id, "type": "GRIEVANCE_RESOLVED", "decision": clean_decision}
             )
+            if isinstance(delivery, dict) and not delivery.get("success", True):
+                _logging.getLogger("management").warning(
+                    "Grievance push not delivered for user %s: %s",
+                    g.student.user_id, delivery.get("error"))
     except Exception:
         pass
 
@@ -3974,7 +4041,7 @@ def set_db_setting(db: Session, key: str, value: dict):
             db.add(models.SystemSetting(key=key, value=json_str))
         db.commit()
     except Exception as e:
-        print(f"Error persisting system setting: {e}")
+        logger.warning("Error persisting system setting: %s", e)
 
 @router.get("/hod/profile")
 def get_hod_profile(

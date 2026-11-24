@@ -429,11 +429,12 @@ def test_hod_master_condonation_and_grievance_loop(db_session: Session, client: 
     assert cond_res.status_code == 200
     assert cond_res.json()["is_present"] is True
 
-    # Step C: HOD resolves student's Grievance Ticket
-    resolve_res = client.post(f"/management/grievances/{ticket_id}/resolve", json={
-        "status": "RESOLVED",
-        "remarks": "Condonation granted under official On-Duty (OD) allowance."
-    }, headers=hod_auth)
+    # Step C: HOD resolves student's Grievance Ticket (real route: body/query based)
+    resolve_res = client.post(
+        f"/management/grievances/resolve?ticket_id={ticket_id}&decision=Granted",
+        json={"remarks": "Condonation granted under official On-Duty (OD) allowance."},
+        headers=hod_auth
+    )
     assert resolve_res.status_code in [200, 404]
 
 
@@ -479,8 +480,8 @@ def test_admin_podium_champions_and_security_audit(db_session: Session, client: 
     kpi_data = kpi_res.json()
     assert "topAchievers" in kpi_data or "top_achievers" in kpi_data
 
-    # Step C: Admin queries Security Audit Logs
-    audit_res = client.get("/management/audit-logs", headers=admin_auth)
+    # Step C: Admin queries Security/Audit logs (real route: alerts/logs)
+    audit_res = client.get("/management/alerts/logs", headers=admin_auth)
     assert audit_res.status_code in [200, 404]
 
 

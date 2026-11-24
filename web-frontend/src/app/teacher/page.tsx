@@ -39,7 +39,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
-import { getApiBaseUrl, getHodPortalUrl, authFetchWithRetry, isNetworkError } from '@/lib/api';
+import { getApiBaseUrl, getHodPortalUrl, getPortalUrl, authFetchWithRetry, authFetch, isNetworkError } from '@/lib/api';
 
 interface Student {
   id: number;
@@ -64,7 +64,7 @@ export default function TeacherAttendancePage() {
   const [branches, setBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
-  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
+  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C', 'All']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [metaError, setMetaError] = useState<string | null>(null);
@@ -166,9 +166,9 @@ export default function TeacherAttendancePage() {
   };
 
   // Form selections
-  const [selectedBranch, setSelectedBranch] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('teacher_department')) || '');
-  const [selectedSemester, setSelectedSemester] = useState<number>(1);
-  const [selectedSection, setSelectedSection] = useState<string>('A');
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => (typeof window !== 'undefined' && localStorage.getItem('teacher_department')) || 'Computer Science');
+  const [selectedSemester, setSelectedSemester] = useState<number>(3);
+  const [selectedSection, setSelectedSection] = useState<string>('C');
   type AcademicSessionType = 'regular' | 'practical' | 'test' | 'guest' | 'proxy';
   const [sessionCategory, setSessionCategory] = useState<AcademicSessionType>('regular');
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(60);
@@ -344,14 +344,23 @@ export default function TeacherAttendancePage() {
         const data = await res.json();
         if (data.branches && data.branches.length > 0) {
           setBranches(data.branches);
-          setSelectedBranch(prev => data.branches.includes(prev) ? prev : data.branches[0]);
+          setSelectedBranch(prev => {
+            if (prev && data.branches.includes(prev)) return prev;
+            if (data.branches.includes('Computer Science')) return 'Computer Science';
+            if (data.branches.includes('Computer Science & Engineering')) return 'Computer Science & Engineering';
+            return data.branches[0];
+          });
         }
         if (data.subjects) setAvailableSubjects(data.subjects);
         if (data.branch_programs && typeof data.branch_programs === 'object') {
           setBranchPrograms(data.branch_programs);
         }
         if (data.semesters && data.semesters.length > 0) setAvailableSemesters(data.semesters);
-        if (data.sections && data.sections.length > 0) setAvailableSections(data.sections);
+        if (data.sections && data.sections.length > 0) {
+          const secs = [...data.sections];
+          if (!secs.includes('All')) secs.push('All');
+          setAvailableSections(secs);
+        }
         if (data.teachers && data.teachers.length > 0) {
           setConductedByName(prev => prev || data.teachers[0].name);
         }
@@ -502,16 +511,53 @@ export default function TeacherAttendancePage() {
           fetchNextQrToken();
           return 10;
         }
+        if (prev === 8 || prev === 6 || prev === 4 || prev === 2) {
+          syncLiveCheckins();
+        }
         return prev - 1;
       });
     }, 1000);
+
+    const syncLiveCheckins = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await authFetchWithRetry(`${getApiBaseUrl()}/attendance/qr/token/${qrSessionId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setQrCheckedInCount(data.checked_in_count || 0);
+          setQrRecentCheckins(data.recent_checkins || []);
+          if (data.recent_checkins && data.recent_checkins.length > 0) {
+            setAttendanceState(prev => {
+              const next = { ...prev };
+              data.recent_checkins.forEach((item: any) => {
+                next[item.id] = true;
+              });
+              return next;
+            });
+            setStudentOverrides(prev => {
+              const next = { ...prev };
+              data.recent_checkins.forEach((item: any) => {
+                if (!next[item.id]) {
+                  next[item.id] = { tag: 'QR_VERIFIED', remark: `Live 10s Dynamic QR Verified at ${item.time}` };
+                }
+              });
+              return next;
+            });
+          }
+        }
+      } catch {
+        // silent sync error
+      }
+    };
 
     const fetchNextQrToken = async () => {
       try {
         const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(`${getApiBaseUrl()}/attendance/qr/token/${qrSessionId}`, { headers });
+        const res = await authFetchWithRetry(`${getApiBaseUrl()}/attendance/qr/token/${qrSessionId}`, { headers });
         if (res.ok) {
           const data = await res.json();
           setQrToken(data.token);
@@ -551,7 +597,7 @@ export default function TeacherAttendancePage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${getApiBaseUrl()}/attendance/qr/init-session`, {
+      const res = await authFetchWithRetry(`${getApiBaseUrl()}/attendance/qr/init-session`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -586,6 +632,63 @@ export default function TeacherAttendancePage() {
       }
     } catch {
       alert('Network error connecting to Dynamic QR generator.');
+    } finally {
+      setIsQrStarting(false);
+    }
+  };
+
+  // Switch Class & Topic Directly Inside Live QR Modal
+  const switchQrClass = async (branch: string, sem: number, sec: string, subjId: number | null) => {
+    let targetSubjId = subjId;
+    const branchSemSubjects = availableSubjects.filter(s => 
+      (s.branch.toLowerCase().includes(branch.toLowerCase()) || branch.toLowerCase().includes(s.branch.toLowerCase())) && 
+      (sem ? s.semester === sem : true)
+    );
+    if (branchSemSubjects.length > 0 && (!targetSubjId || !branchSemSubjects.some(s => s.id === targetSubjId))) {
+      targetSubjId = branchSemSubjects[0].id;
+    }
+    setSelectedBranch(branch);
+    setSelectedSemester(sem);
+    setSelectedSection(sec);
+    setSelectedSubjectId(targetSubjId);
+    setIsQrStarting(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const matchedSubj = availableSubjects.find(s => s.id === targetSubjId);
+      const res = await authFetchWithRetry(`${getApiBaseUrl()}/attendance/qr/init-session`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          subject_id: subjId || null,
+          branch: branch,
+          semester: sem,
+          section: sec,
+          session_type: sessionCategory === 'guest' ? 'guest_lecture' : (sessionCategory === 'practical' ? 'practical' : (sessionCategory === 'test' ? 'test' : 'lecture')),
+          duration_minutes: sessionDurationMinutes,
+          credit_weight: sessionCreditWeight,
+          sub_batch: sessionCategory === 'practical' ? selectedSubBatch : 'All',
+          conducted_by_name: conductedByName || 'Faculty Coordinator',
+          custom_subject_name: sessionCategory === 'guest' 
+            ? (customSubjectName || 'Special Guest Lecture') 
+            : (matchedSubj?.name || currentSubjectObj?.name || 'Classroom Lecture'),
+          notes: sessionNotes || undefined
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setQrSessionId(data.session_id);
+        setQrToken(data.token);
+        setQrTimeLeft(10);
+        setQrCheckedInCount(data.checked_in_count || 0);
+        setQrTotalExpected(data.total_expected || 0);
+        setQrRecentCheckins(data.recent_checkins || []);
+      }
+    } catch (e) {
+      console.error('Error switching class in QR modal:', e);
     } finally {
       setIsQrStarting(false);
     }
@@ -639,7 +742,7 @@ export default function TeacherAttendancePage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${getApiBaseUrl()}/attendance/create-and-submit`, {
+      const res = await authFetchWithRetry(`${getApiBaseUrl()}/attendance/create-and-submit`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -675,6 +778,35 @@ export default function TeacherAttendancePage() {
     <AppleDeluxeShell facultyName={conductedByName || 'Faculty Conductor'}>
       <div className="w-full space-y-6">
         
+        {/* Quick QR Attendance Launch Bar (Direct Mobile Access) */}
+        <div className="rounded-3xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 p-4 sm:p-5 text-stone-950 shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center space-x-3.5 text-center sm:text-left">
+            <div className="h-11 w-11 rounded-2xl bg-stone-950 text-amber-400 flex items-center justify-center shrink-0 shadow">
+              <QrCode className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="text-sm sm:text-base font-black text-stone-950 tracking-tight flex items-center justify-center sm:justify-start space-x-2">
+                <span>Instant QR Attendance Mode</span>
+                <span className="px-2 py-0.5 rounded-full bg-stone-950/20 text-stone-950 text-[10px] font-extrabold uppercase">
+                  Direct Launch
+                </span>
+              </div>
+              <p className="text-xs text-stone-900 font-medium mt-0.5">
+                {selectedBranch} • Sem {selectedSemester} • Sec {selectedSection} • Present: {presentCount} / {totalStudentsCount}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartQrBroadcast}
+            disabled={isQrStarting}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-stone-950 hover:bg-stone-900 text-amber-400 font-black text-xs transition flex items-center justify-center space-x-2 shadow active:scale-95 cursor-pointer shrink-0"
+          >
+            <QrCode className="h-4 w-4" />
+            <span>{isQrStarting ? 'Initiating...' : '⚡ Open Live QR Code Now'}</span>
+          </button>
+        </div>
+
         {/* 🏆 Top Section: Apple Fitness-Ring Card + 4 Colourful Pastel Squircles (Exact Reference Match) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left Column: Overall Attendance Card (lg:col-span-5) */}
@@ -741,7 +873,7 @@ export default function TeacherAttendancePage() {
             </div>
 
             <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-xs">
-              <span className="text-stone-400 text-[11px]">Biometric Console Scanner Online</span>
+              <span className="text-stone-400 text-[11px]">Attendance System Online</span>
               <button
                 onClick={() => {
                   setKioskPinError(null);
@@ -1729,92 +1861,76 @@ export default function TeacherAttendancePage() {
         )}
       </AnimatePresence>
 
-      {/* ⚡ Dynamic 10-Second Anti-Proxy QR Attendance Broadcast Modal */}
+      {/* ⚡ Dynamic 10-Second QR Attendance Broadcast Modal */}
       <AnimatePresence>
         {isQrModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-stone-950/80 backdrop-blur-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/85 backdrop-blur-xl overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 10 }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: "spring", stiffness: 350, damping: 28 }}
-              className="w-full max-w-4xl bg-stone-900 text-white rounded-[32px] border border-white/10 shadow-[0_25px_70px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-[92vh]"
+              className="w-full max-w-xl bg-stone-900 text-white rounded-[28px] sm:rounded-[32px] border border-white/10 shadow-[0_25px_70px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col my-auto max-h-[96vh]"
             >
-              {/* Header Bar */}
-              <div className="px-6 sm:px-8 py-5 border-b border-white/10 flex items-center justify-between bg-stone-900/60 backdrop-blur-md">
-                <div className="flex items-center space-x-3.5">
-                  <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-stone-950 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                    <QrCode className="h-6 w-6" />
+              {/* Header Bar: Direct & Compact */}
+              <div className="px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between bg-stone-900/80 shrink-0">
+                <div className="flex items-center space-x-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 text-stone-950 flex items-center justify-center font-bold shadow-sm">
+                    <QrCode className="h-4 w-4" />
                   </div>
                   <div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-base font-extrabold tracking-tight text-white">Dynamic 10s Attendance QR</span>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping mr-1.5" />
-                        Live Broadcast
+                      <span className="text-sm font-extrabold tracking-tight text-white">Live Attendance QR</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping mr-1" />
+                        Live
                       </span>
                     </div>
-                    <p className="text-xs text-stone-400 mt-0.5 font-medium">
-                      {selectedBranch} • Sem {selectedSemester} • Sec {selectedSection} • Conductor: {conductedByName || 'Faculty'}
-                    </p>
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setIsQrModalOpen(false)}
-                  className="h-10 w-10 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-stone-400 hover:text-white transition"
-                  title="Close & Sync Roster"
+                  className="h-8 w-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-stone-400 hover:text-white transition cursor-pointer text-xs font-bold"
+                  title="Close & Return to Roster"
                 >
                   ✕
                 </button>
               </div>
 
-              {/* Main Content: Split Grid (Left: Dynamic Rotating QR, Right: Live Check-in Telemetry) */}
-              <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto">
-                {/* Left: Dynamic QR Stage (7 cols) */}
-                <div className="lg:col-span-7 flex flex-col items-center justify-center space-y-6">
-                  {/* Topic Pill */}
-                  <div className="px-4 py-1.5 rounded-2xl bg-white/5 border border-white/10 text-stone-300 text-xs font-semibold text-center max-w-sm truncate">
-                    📖 {sessionCategory === 'guest' ? (customSubjectName || 'Guest Lecture') : (currentSubjectObj?.name || 'Classroom Lecture')}
-                  </div>
+              {/* Modal Body: Direct Stack (1. QR Code -> 2. Options -> 3. Present Count & List) */}
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5">
 
-                  {/* QR Code Container with Rotating Countdown Glow */}
-                  <div className="relative p-6 rounded-[28px] bg-white shadow-2xl flex flex-col items-center justify-center">
+                {/* 1. DIRECT QR CODE AT THE VERY TOP */}
+                <div className="flex flex-col items-center justify-center bg-stone-950/70 rounded-2xl border border-white/10 p-4 space-y-2.5">
+                  <div className="p-2.5 bg-white rounded-2xl shadow-xl">
                     {qrToken ? (
-                      <div className="p-2 bg-white rounded-2xl">
-                        <QRCodeSVG
-                          value={qrToken}
-                          size={240}
-                          level="M"
-                          includeMargin={false}
-                        />
-                      </div>
+                      <QRCodeSVG
+                        value={qrToken.startsWith('http') ? qrToken : getPortalUrl(3002, `/scan?token=${encodeURIComponent(qrToken)}`)}
+                        size={190}
+                        level="M"
+                        includeMargin={false}
+                      />
                     ) : (
-                      <div className="w-[240px] h-[240px] flex items-center justify-center text-stone-400 text-xs font-medium">
-                        <RefreshCw className="h-6 w-6 animate-spin mr-2" /> Initializing QR Token...
+                      <div className="w-[190px] h-[190px] flex items-center justify-center text-stone-400 text-xs">
+                        <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Initializing QR...
                       </div>
                     )}
-
-                    {/* Watermark Logo / Badge inside QR center */}
-                    <div className="mt-3 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500">
-                      SECURE TOKEN • ANTI-PROXY V2
-                    </div>
                   </div>
 
-                  {/* 10-Second Countdown Meter Bar */}
-                  <div className="w-full max-w-md space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="text-stone-400 flex items-center space-x-1.5">
-                        <Clock className="h-3.5 w-3.5 text-amber-400 animate-spin" />
-                        <span>Token Rotation Window</span>
+                  {/* 10-Second Auto-Rotation Bar */}
+                  <div className="w-full max-w-xs space-y-1 text-center">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className="text-stone-400 flex items-center space-x-1">
+                        <Clock className="h-3 w-3 text-amber-400" />
+                        <span>Rotating Code</span>
                       </span>
-                      <span className="font-mono text-amber-400 font-extrabold text-sm">
+                      <span className="font-mono text-amber-400 font-extrabold">
                         Rotating in {qrTimeLeft}s
                       </span>
                     </div>
-
-                    <div className="w-full h-2 rounded-full bg-stone-800 overflow-hidden border border-white/5">
+                    <div className="w-full h-1.5 rounded-full bg-stone-800 overflow-hidden">
                       <motion.div
                         className="h-full bg-gradient-to-r from-amber-400 to-emerald-400"
                         initial={false}
@@ -1823,77 +1939,162 @@ export default function TeacherAttendancePage() {
                       />
                     </div>
                   </div>
+                </div>
 
-                  {/* Anti-Proxy Security Guarantee */}
-                  <div className="w-full max-w-md p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/90 leading-relaxed flex items-start space-x-2.5">
-                    <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                {/* 2. CLASS & LECTURE OPTIONS DIRECTLY BELOW QR */}
+                <div className="bg-stone-950/50 rounded-2xl border border-white/10 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-stone-300 border-b border-white/10 pb-1.5">
+                    <span className="flex items-center space-x-1.5">
+                      <SlidersHorizontal className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Class & Lecture Options</span>
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-normal">
+                      Updates instantly
+                    </span>
+                  </div>
+
+                  {/* Branch & Subject Dropdowns */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <strong className="text-amber-300">Anti-Screenshot Protection:</strong> This QR automatically refreshes every 10 seconds. Students must scan directly from this live screen. Screenshots sent via WhatsApp or chat will fail validation.
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                        Department / Branch
+                      </label>
+                      <select
+                        value={selectedBranch}
+                        onChange={(e) => switchQrClass(e.target.value, selectedSemester, selectedSection, selectedSubjectId)}
+                        className="w-full h-8 px-2.5 rounded-xl bg-stone-900 border border-white/15 text-white text-xs font-semibold focus:outline-none focus:border-amber-400"
+                      >
+                        {branches.map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                        Subject / Topic
+                      </label>
+                      <select
+                        value={selectedSubjectId || ''}
+                        onChange={(e) => switchQrClass(selectedBranch, selectedSemester, selectedSection, e.target.value ? Number(e.target.value) : null)}
+                        className="w-full h-8 px-2.5 rounded-xl bg-stone-900 border border-white/15 text-white text-xs font-semibold focus:outline-none focus:border-amber-400"
+                      >
+                        {filteredSubjects.length > 0 ? (
+                          filteredSubjects.map(s => (
+                            <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                          ))
+                        ) : (
+                          <option value="">Core Department Lecture</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Semester Pills */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                      Semester
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {availableSemesters.map(sem => (
+                        <button
+                          key={sem}
+                          type="button"
+                          onClick={() => switchQrClass(selectedBranch, sem, selectedSection, selectedSubjectId)}
+                          className={`px-2 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            selectedSemester === sem
+                              ? 'bg-amber-400 text-stone-950 shadow-sm'
+                              : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
+                          }`}
+                        >
+                          Sem {sem}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section Pills */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                      Section
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {availableSections.map(sec => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => switchQrClass(selectedBranch, selectedSemester, sec, selectedSubjectId)}
+                          className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            selectedSection === sec
+                              ? 'bg-emerald-400 text-stone-950 shadow-sm'
+                              : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
+                          }`}
+                        >
+                          Sec {sec}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
 
-                {/* Right: Real-time Student Check-in Feed (5 cols) */}
-                <div className="lg:col-span-5 flex flex-col bg-stone-950/60 rounded-3xl border border-white/10 p-5 space-y-4">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                {/* 3. PRESENT COUNT & LIVE CHECK-INS DIRECTLY BELOW OPTIONS */}
+                <div className="bg-stone-950/70 rounded-2xl border border-white/10 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <div>
-                      <div className="text-xs font-bold text-stone-400 uppercase tracking-wider">Live Check-ins</div>
-                      <div className="text-2xl font-black text-white tracking-tight mt-0.5">
-                        {qrCheckedInCount} <span className="text-sm font-semibold text-stone-500">/ {qrTotalExpected} Present</span>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                        Attendance Present
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-white tracking-tight mt-0.5">
+                        {qrCheckedInCount} <span className="text-xs font-semibold text-stone-400">/ {qrTotalExpected} Present</span>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-mono font-bold text-emerald-400">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         {qrTotalExpected > 0 ? Math.round((qrCheckedInCount / qrTotalExpected) * 100) : 0}% Turnout
                       </span>
                     </div>
                   </div>
 
-                  {/* Recent Check-in Feed */}
-                  <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[290px] pr-1">
+                  {/* Live Student Check-in List */}
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
                     {qrRecentCheckins && qrRecentCheckins.length > 0 ? (
                       qrRecentCheckins.map((item, idx) => (
-                        <motion.div
+                        <div
                           key={`${item.id}-${idx}`}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                          className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/10 text-xs"
                         >
-                          <div className="flex items-center space-x-3">
-                            <div className="h-8 w-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                          <div className="flex items-center space-x-2">
+                            <div className="h-5 w-5 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px]">
                               ✓
                             </div>
                             <div>
-                              <div className="text-xs font-bold text-white leading-snug">{item.name}</div>
-                              <div className="text-[10px] font-mono text-stone-400">{item.roll_number}</div>
+                              <div className="font-bold text-white text-xs">{item.name}</div>
+                              <div className="font-mono text-stone-400 text-[10px]">{item.roll_number}</div>
                             </div>
                           </div>
-                          <div className="text-[10px] font-mono text-stone-400 font-medium">
-                            {item.time}
-                          </div>
-                        </motion.div>
+                          <span className="font-mono text-stone-400 text-[10px]">{item.time}</span>
+                        </div>
                       ))
                     ) : (
-                      <div className="py-12 text-center text-stone-500 flex flex-col items-center justify-center space-y-2">
-                        <Users className="h-8 w-8 text-stone-600" />
-                        <p className="text-xs font-medium text-stone-400">Waiting for first scan...</p>
-                        <p className="text-[11px] text-stone-500 max-w-[200px]">Students open student portal and scan this live QR screen.</p>
+                      <div className="py-4 text-center text-stone-400 text-xs flex flex-col items-center justify-center space-y-1">
+                        <Users className="h-5 w-5 text-stone-600 mb-1" />
+                        <p className="font-semibold text-stone-300">Waiting for student scans...</p>
+                        <p className="text-[10px] text-stone-500">Students scan this QR code on their mobile portal.</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Done / Sync Button */}
+                  {/* Done / Return Button */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsQrModalOpen(false);
-                    }}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-stone-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2 transition active:scale-95"
+                    onClick={() => setIsQrModalOpen(false)}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-stone-950 font-black text-xs shadow-md flex items-center justify-center space-x-2 transition cursor-pointer active:scale-95"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Finish QR Session & Return to Roster</span>
+                    <span>Done • Return to Full Roster</span>
                   </button>
                 </div>
+
               </div>
             </motion.div>
           </div>

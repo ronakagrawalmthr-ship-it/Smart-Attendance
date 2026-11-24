@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum, ARRAY, UniqueConstraint
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum, ARRAY, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 import enum
 from datetime import datetime
@@ -52,9 +52,12 @@ class EmailVerificationOTP(Base):
 
 class StudentProfile(Base):
     __tablename__ = "student_profiles"
+    __table_args__ = (
+        Index("ix_student_branch_sem_sec", "branch", "semester", "section"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     full_name = Column(String)
     roll_number = Column(String, unique=True, index=True)
     branch = Column(String)
@@ -125,11 +128,13 @@ class AttendanceLog(Base):
     __tablename__ = "attendance_logs"
     __table_args__ = (
         UniqueConstraint('session_id', 'student_id', name='uq_session_student'),
+        Index("ix_att_session_present", "session_id", "is_present"),
+        Index("ix_att_student_present", "student_id", "is_present"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("academic_sessions.id"))
-    student_id = Column(Integer, ForeignKey("student_profiles.id"))
+    session_id = Column(Integer, ForeignKey("academic_sessions.id"), index=True)
+    student_id = Column(Integer, ForeignKey("student_profiles.id"), index=True)
     timestamp = Column(DateTime, default=now_ist_naive)
     is_present = Column(Boolean, default=True)
     status_tag = Column(String, default="PRESENT")  # "PRESENT", "ABSENT", "DUTY_LEAVE", "MEDICAL"

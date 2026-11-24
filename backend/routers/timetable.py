@@ -16,17 +16,21 @@ from jose import jwt, JWTError
 try:
     from .. import models, schemas, database, security
     from .auth import get_current_user
-    from ..time_utils import today_ist_day_name, today_ist_str, now_ist_naive
+    from ..time_utils import today_ist_day_name, today_ist_str, today_ist_formatted, now_ist_naive, format_time_ist, to_ist
 except (ImportError, ValueError):
     import models, schemas, database, security
     from routers.auth import get_current_user
     try:
-        from time_utils import today_ist_day_name, today_ist_str, now_ist_naive
+        from time_utils import today_ist_day_name, today_ist_str, today_ist_formatted, now_ist_naive, format_time_ist, to_ist
     except (ImportError, ValueError):
         from datetime import timezone, timedelta
         _IST = timezone(timedelta(hours=5, minutes=30))
         def today_ist_day_name(): return datetime.now(_IST).strftime("%A")
         def today_ist_str(): return datetime.now(_IST).strftime("%Y-%m-%d")
+        def today_ist_formatted(): return datetime.now(_IST).strftime("%A, %d %B %Y")
+        def now_ist_naive(): return datetime.now(_IST).replace(tzinfo=None)
+        def format_time_ist(dt=None, fmt="%I:%M %p"): return (dt or now_ist_naive()).strftime(fmt)
+        def to_ist(dt): return dt or now_ist_naive()
 
 def get_current_user_optional(request: Request, db: Session = Depends(database.get_db)) -> Optional[models.User]:
     auth_header = request.headers.get("Authorization")
@@ -245,8 +249,12 @@ def get_today_timetable(
 
     return {
         "success": True,
+        "current_date": today_ist_formatted(),
+        "current_time": format_time_ist(now),
         "day_of_week": effective_day,
         "is_preview_day": effective_day != today_name,
+        "is_sunday": today_name == "Sunday",
+        "is_saturday": today_name == "Saturday",
         "is_holiday": bool(holiday_today),
         "holiday": {
             "title": holiday_today.title,
@@ -609,6 +617,8 @@ def get_gemini_ai_academic_advisory(
     Generates personalized, high-IQ academic insights using Google Gemini AI,
     blending attendance statistics, rest allowances, and the student's live timetable.
     """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required for AI advisory.")
     student = None
     # Privacy safeguard: Students cannot snoop on other students' advisory or telemetry
     if current_user and current_user.role == models.RoleEnum.student:
@@ -889,6 +899,8 @@ def campus_copilot_chat(
     Provides conversational answers about attendance health, safe bunks,
     today's schedule, and timetable queries with full student telemetry context.
     """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required for campus copilot.")
     student = None
     # Privacy safeguard: Students cannot snoop on other students' chat telemetry
     if current_user and current_user.role == models.RoleEnum.student:

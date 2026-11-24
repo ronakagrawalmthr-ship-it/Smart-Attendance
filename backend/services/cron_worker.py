@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import os
 from datetime import datetime, date, timedelta
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
+
+logger = logging.getLogger("smart_attendance.cron")
 
 try:
     import models
@@ -189,14 +192,14 @@ def send_parent_alert_email(
             sender_name=f"{inst_name} Academic Office"
         )
         if success:
-            print(f"[EMAIL SENT] Alert dispatched to {to_email} for {student_name} ({attendance_pct:.1f}%)")
+            logger.info("Parent alert dispatched to %s for %s (%.1f%%)", to_email, student_name, attendance_pct)
             return True
         else:
-            print(f"[EMAIL NOTICE] Could not deliver to {to_email}: {err}")
+            logger.warning("Could not deliver parent alert to %s: %s", to_email, err)
             return False
 
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send to {to_email}: {e}")
+        logger.error("Failed to send parent alert to %s: %s", to_email, e)
         return False
 
 
@@ -421,7 +424,7 @@ async def background_cron_loop():
     while True:
         try:
             sleep_sec = get_seconds_until_midnight()
-            print(f"[CRON] Next midnight attendance audit scheduled in {round(sleep_sec / 3600, 2)} hours.")
+            logger.info("Next midnight attendance audit scheduled in %.2f hours.", round(sleep_sec / 3600, 2))
             await asyncio.sleep(sleep_sec)
 
             # Properly manage session lifecycle (prevents connection leaks)
@@ -429,11 +432,11 @@ async def background_cron_loop():
             try:
                 # Offload synchronous DB operations and SMTP alerts to thread pool (Zero Event-Loop Block)
                 result = await asyncio.to_thread(run_midnight_attendance_audit, db)
-                print(f"[CRON] {result['message']}")
+                logger.info("Midnight audit: %s", result['message'])
             finally:
                 db.close()
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"[CRON ERROR] Background audit failed: {e}")
+            logger.error("Background audit failed: %s", e)
             await asyncio.sleep(300)

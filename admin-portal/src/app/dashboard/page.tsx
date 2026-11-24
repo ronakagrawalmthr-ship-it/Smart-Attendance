@@ -261,7 +261,7 @@ export default function AdminDashboard() {
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-rose-900">Institutional Telemetry Connection Error</p>
+              <p className="text-xs font-bold text-rose-900">Attendance System Connection Error</p>
               <p className="text-[11px] text-rose-700">{fetchError}</p>
             </div>
           </div>

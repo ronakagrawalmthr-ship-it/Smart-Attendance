@@ -186,6 +186,7 @@ export default function StudentDashboard() {
   // 📅 Timetable & Gemini AI Advisor States
   const [todaySchedule, setTodaySchedule] = useState<any[]>([]);
   const [scheduleDay, setScheduleDay] = useState<string>('Today');
+  const [currentDateStr, setCurrentDateStr] = useState<string>('');
   const [todayHoliday, setTodayHoliday] = useState<any>(null);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -203,6 +204,9 @@ export default function StudentDashboard() {
         const data = await res.json();
         setTodaySchedule(data.slots || []);
         setScheduleDay(data.day_of_week || 'Today');
+        if (data.current_date) {
+          setCurrentDateStr(data.current_date);
+        }
         setTodayHoliday(data.is_holiday ? data.holiday : null);
       } else {
         setScheduleError('Timetable not available for current batch.');
@@ -372,7 +376,7 @@ export default function StudentDashboard() {
           </div>
         ) : (
           <>
-        {/* ⚡ Dynamic Anti-Proxy QR Scanner Quick Check-in Banner */}
+        {/* ⚡ Dynamic QR Scanner Quick Check-in Banner */}
         <div className="rounded-[26px] bg-gradient-to-r from-stone-900 via-stone-850 to-stone-900 text-white p-5 sm:p-6 border border-stone-850 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
             <div className="h-12 w-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/10">
@@ -382,7 +386,7 @@ export default function StudentDashboard() {
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-extrabold text-white">Live Classroom QR Check-in</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-400 text-stone-950">
-                  New 10s Token
+                  Live QR Check-in
                 </span>
               </div>
               <p className="text-xs text-stone-300">
@@ -407,10 +411,10 @@ export default function StudentDashboard() {
                 <Calendar className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-stone-900 tracking-tight flex items-center space-x-2">
+                <h3 className="text-sm font-extrabold text-stone-900 tracking-tight flex flex-wrap items-center gap-2">
                   <span>Today's Academic Schedule</span>
-                  <span className="text-[11px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
-                    {scheduleDay}
+                  <span className="text-[11px] font-bold text-stone-600 bg-stone-100 border border-stone-200/80 px-2.5 py-0.5 rounded-full">
+                    {currentDateStr || scheduleDay}
                   </span>
                 </h3>
                 <p className="text-[11px] text-stone-400 font-medium">
@@ -1189,17 +1193,17 @@ export default function StudentDashboard() {
             <div>
               <h2 className="text-base font-extrabold text-stone-900 tracking-tight flex items-center space-x-2">
                 <Clock className="h-4 w-4 text-stone-700" />
-                <span>Recent Biometric Attendance Logs</span>
+                <span>Recent Attendance Records</span>
               </h2>
               <p className="text-xs text-stone-500 mt-0.5">
-                Timestamped biometric authentication history captured by classroom kiosk tablets.
+                Verified attendance history recorded from classrooms and kiosks.
               </p>
             </div>
             
             <div className="flex items-center space-x-2 text-xs">
               <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Camera Stream 100% Online</span>
+                <span>Attendance System Online</span>
               </span>
             </div>
           </div>
@@ -1221,7 +1225,7 @@ export default function StudentDashboard() {
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-stone-400 text-xs">
                       <Clock className="h-6 w-6 text-stone-300 mx-auto mb-2" />
-                      <span>No biometric attendance records logged yet. Verified scans will appear here live once attendance is taken in class.</span>
+                      <span>No attendance records logged yet. Verified check-ins will appear here live once attendance is taken in class.</span>
                     </td>
                   </tr>
                 ) : (

@@ -21,7 +21,12 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+import pytest
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+except ImportError:
+    pytest.skip("playwright not installed, skipping browser audit suite", allow_module_level=True)
+
 
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SCREENSHOT_DIR = Path(__file__).resolve().parent / "screenshots"

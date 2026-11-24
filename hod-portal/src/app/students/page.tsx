@@ -177,7 +177,7 @@ export default function HODStudentRosterPage() {
             <div className="text-2xl font-bold text-teal-700 font-mono">
               {metrics.enrolledBio} <span className="text-xs text-stone-400 font-normal">/ {metrics.total}</span>
             </div>
-            <p className="text-[10px] text-stone-400">128-d biometric signatures</p>
+            <p className="text-[10px] text-stone-400">Face recognition registered</p>
           </div>
 
           <div className="rounded-3xl bg-white border border-stone-200/70 p-5 shadow-2xs space-y-1">

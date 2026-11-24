@@ -17,7 +17,13 @@ echo Waiting 3 seconds for Backend to initialize...
 timeout /t 3 /nobreak >nul
 
 echo [3/3] Starting Dedicated Ngrok Cloud Tunnel...
-start "Smart Attendance - Ngrok Dedicated Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && ngrok http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev"
+set "NGROK_BIN=ngrok"
+if exist "%APPDATA%\npm\node_modules\ngrok\bin\ngrok.exe" (
+    set "NGROK_BIN=%APPDATA%\npm\node_modules\ngrok\bin\ngrok.exe"
+) else if exist "%APPDATA%\npm\node_modules\@expo\ngrok\node_modules\@expo\ngrok-bin-win32-x64\ngrok.exe" (
+    set "NGROK_BIN=%APPDATA%\npm\node_modules\@expo\ngrok\node_modules\@expo\ngrok-bin-win32-x64\ngrok.exe"
+)
+start "Smart Attendance - Ngrok Dedicated Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && "%NGROK_BIN%" http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev --host-header=rewrite"
 
 echo Waiting 2 seconds for tunnel sync...
 timeout /t 2 /nobreak >nul

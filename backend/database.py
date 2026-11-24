@@ -1,29 +1,39 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+logger = logging.getLogger("smart_attendance.database")
+
 BASE_DIR = Path(__file__).resolve().parent
 # Load environment variables from backend/.env if present
+is_test_env = os.getenv("ENVIRONMENT") == "test"
 user_env = Path.home() / ".smart_attendance" / ".env"
 if user_env.exists():
     load_dotenv(user_env, override=False)
 env_path = BASE_DIR / ".env"
 if env_path.exists():
-    load_dotenv(env_path, override=True)
+    load_dotenv(env_path, override=not is_test_env)
 else:
     load_dotenv()
+
 DEFAULT_DB_FILE = BASE_DIR / "sql_app.db"
 
 # Hybrid Database Architecture:
 # - Local/Edge Dev & Pilot: SQLite with WAL mode & busy_timeout
 # - Production Campus Rollout: PostgreSQL with robust connection pooling
 DEFAULT_SQLITE_URL = f"sqlite:///{DEFAULT_DB_FILE.as_posix()}"
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+raw_db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+if "supabase.com" in raw_db_url and not os.getenv("FORCE_REMOTE_DB"):
+    SQLALCHEMY_DATABASE_URL = DEFAULT_SQLITE_URL
+else:
+    SQLALCHEMY_DATABASE_URL = raw_db_url
+
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite:///./"):
     SQLALCHEMY_DATABASE_URL = DEFAULT_SQLITE_URL
+
 
 is_sqlite = "sqlite" in SQLALCHEMY_DATABASE_URL
 
@@ -58,7 +68,20 @@ else:
         with engine.connect() as probe_conn:
             pass
     except Exception as db_err:
-        print(f"\n[DATABASE FAILOVER] Remote PostgreSQL unavailable ({db_err}). Falling back to local SQLite ({DEFAULT_DB_FILE}) to keep system 100% operational!\n")
+        # SECURITY/INTEGRITY: Silently falling back to a local SQLite file in production
+        # would cause split-brain data divergence (writes land in a local file while the
+        # real DB is down). Only allow the SQLite fallback outside production, or when
+        # explicitly opted-in via ALLOW_SQLITE_FAILOVER=true. Otherwise fail loudly.
+        env_name = os.getenv("ENVIRONMENT", "production").lower()
+        allow_failover = os.getenv("ALLOW_SQLITE_FAILOVER", "").strip().lower() in ("true", "1", "yes")
+        if env_name in ("production", "prod", "staging") and not allow_failover:
+            logger.error(
+                "Remote PostgreSQL unavailable (%s). Refusing silent SQLite fallback in '%s' environment. "
+                "Set ALLOW_SQLITE_FAILOVER=true to override.",
+                db_err, env_name,
+            )
+            raise
+        logger.warning("Remote PostgreSQL unavailable (%s). Falling back to local SQLite (%s).", db_err, DEFAULT_DB_FILE)
         SQLALCHEMY_DATABASE_URL = DEFAULT_SQLITE_URL
         is_sqlite = True
         engine = create_engine(
@@ -77,7 +100,11 @@ else:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+try:
+    from sqlalchemy.orm import declarative_base as _declarative_base
+except Exception:  # pragma: no cover
+    from sqlalchemy.ext.declarative import declarative_base as _declarative_base
+Base = _declarative_base()
 
 def ensure_sqlite_columns():
     """
@@ -234,7 +261,7 @@ def ensure_sqlite_columns():
                 finally:
                     con.close()
         except Exception as e:
-            print(f"SQLite column migration note: {e}")
+            logger.warning("SQLite column migration note: %s", e)
     else:
         # PostgreSQL / Production DB self-healing column migration
         try:
@@ -276,9 +303,38 @@ def ensure_sqlite_columns():
                     except Exception:
                         pass
         except Exception as e:
-            print(f"PostgreSQL column migration note: {e}")
+            logger.warning("PostgreSQL column migration note: %s", e)
 
 # Zero import-time side-effects: ensure_sqlite_columns() is invoked explicitly in main.py startup event
+
+# Hot-path read indexes for 3000+ student scale. Created idempotently (IF NOT EXISTS)
+# for both SQLite and PostgreSQL so existing databases get them on next startup.
+_PERF_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS ix_student_branch_sem_sec ON student_profiles (branch, semester, section)",
+    "CREATE INDEX IF NOT EXISTS ix_student_user_id ON student_profiles (user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_att_session_present ON attendance_logs (session_id, is_present)",
+    "CREATE INDEX IF NOT EXISTS ix_att_student_present ON attendance_logs (student_id, is_present)",
+    "CREATE INDEX IF NOT EXISTS ix_att_session_id ON attendance_logs (session_id)",
+    "CREATE INDEX IF NOT EXISTS ix_att_student_id ON attendance_logs (student_id)",
+    "CREATE INDEX IF NOT EXISTS ix_session_branch_sem_sec ON academic_sessions (branch, semester, section)",
+]
+
+def ensure_perf_indexes():
+    """
+    Idempotently create performance indexes on hot query paths.
+    Safe to run on every startup; uses IF NOT EXISTS so it never touches data.
+    """
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            for ddl in _PERF_INDEXES:
+                try:
+                    conn.execute(text(ddl))
+                except Exception:
+                    # Index already present or column missing on a very old schema — skip.
+                    pass
+    except Exception as e:
+        logger.warning("Performance index sync note: %s", e)
 
 def get_db():
     db = SessionLocal()

@@ -2,18 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Settings, 
-  Server, 
-  Database, 
-  ShieldCheck, 
-  ScanFace, 
-  Sliders, 
-  CheckCircle2, 
-  AlertCircle, 
-  ArrowLeft, 
-  RefreshCw, 
-  Save, 
+import {
+  Settings,
+  Server,
+  Database,
+  ShieldCheck,
+  ScanFace,
+  Sliders,
+  CheckCircle2,
+  AlertCircle,
+  ArrowLeft,
+  RefreshCw,
+  Save,
   ExternalLink,
   Volume2,
   VolumeX,
@@ -44,7 +44,7 @@ export default function GlobalSettingsPage() {
     { name: 'Administrator Portal', port: 3001, desc: 'Whole College Governance & Directory CRUD', status: 'Online', url: getPortalUrl(3001) },
     { name: 'Student Academic Portal', port: 3002, desc: 'Student Attendance Gauges & Grievances', status: 'Online', url: getPortalUrl(3002) },
     { name: 'Department HOD Deck', port: 3003, desc: 'Departmental Live Class & Faculty Attendance Deck', status: 'Online', url: getPortalUrl(3003) },
-    { name: 'Python FastAPI Engine', port: 8000, desc: 'OpenCV Anti-Spoofing & 128-D Biometrics', status: 'Online', url: getPortalUrl(8000, '/docs') },
+    { name: 'Python FastAPI Engine', port: 8000, desc: 'Attendance API & Face Recognition Services', status: 'Online', url: getPortalUrl(8000, '/docs') },
     { name: 'Metro / Expo Bundler', port: 8081, desc: 'React Native Android / iOS Kiosk App', status: 'Online', url: getPortalUrl(8081) },
   ];
 
@@ -58,7 +58,7 @@ export default function GlobalSettingsPage() {
         if (parsed.liveness) setLivenessStrictness(parsed.liveness);
         if (parsed.audio !== undefined) setAudioFeedback(parsed.audio);
         if (parsed.offline_sync !== undefined) setOfflineVaultSync(parsed.offline_sync);
-      } catch (e) {}
+      } catch (e) { }
     }
   }, []);
 
@@ -76,11 +76,14 @@ export default function GlobalSettingsPage() {
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('global_system_settings', JSON.stringify(settings));
+      if (apiHost && apiHost.trim()) {
+        localStorage.setItem('api_base_url', apiHost.trim());
+      }
     }
 
     setTimeout(() => {
       setSaving(false);
-      setSavedSuccess('Global platform parameters and telemetry settings saved successfully!');
+      setSavedSuccess('Global platform parameters and attendance settings saved successfully!');
       setTimeout(() => setSavedSuccess(null), 4000);
     }, 400);
   };
@@ -88,7 +91,7 @@ export default function GlobalSettingsPage() {
   return (
     <AppleDeluxeShell>
       <div className="w-full space-y-6">
-        
+
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
           <Link
@@ -128,9 +131,9 @@ export default function GlobalSettingsPage() {
 
         {/* Success Alert */}
         {savedSuccess && (
-          <motion.div 
-            
-            
+          <motion.div
+
+
             className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center space-x-3 text-emerald-800 shadow-sm"
           >
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
@@ -143,7 +146,7 @@ export default function GlobalSettingsPage() {
           <div className="flex justify-between items-center px-1">
             <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center space-x-2">
               <Server className="h-4 w-4 text-stone-700" />
-              <span>Multi-Portal Service Mesh Telemetry</span>
+              <span>Multi-Portal System Status</span>
             </h2>
             <span className="text-xs text-stone-500 font-mono">Ports: 3000 • 3001 • 3002 • 3003 • 8000 • 8081</span>
           </div>
@@ -182,7 +185,7 @@ export default function GlobalSettingsPage() {
         {/* Configuration Form */}
         <form onSubmit={handleSave} className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+
             {/* Card 1: API & Network Endpoint */}
             <div className="rounded-3xl border border-stone-200/80 bg-white/90 p-7 shadow-sm backdrop-blur-sm space-y-5">
               <div className="flex items-center space-x-2.5 pb-4 border-b border-stone-100">
@@ -227,7 +230,7 @@ export default function GlobalSettingsPage() {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <label className="font-semibold text-stone-700">
-                      128-D Euclidean Distance Match Cutoff
+                      Face Recognition Match Sensitivity
                     </label>
                     <span className="text-xs font-mono font-bold text-stone-900 px-2.5 py-0.5 rounded-full bg-stone-100 border border-stone-200">
                       {toleranceThreshold}
@@ -259,9 +262,9 @@ export default function GlobalSettingsPage() {
                       <p className="text-[11px] text-stone-500">Play pleasant success tone when student face is verified.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={audioFeedback} 
+                      <input
+                        type="checkbox"
+                        checked={audioFeedback}
                         onChange={(e) => setAudioFeedback(e.target.checked)}
                         className="sr-only peer"
                       />
@@ -278,9 +281,9 @@ export default function GlobalSettingsPage() {
                       <p className="text-[11px] text-stone-500">Silently transmit cached attendance records once Wi-Fi reconnects.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={offlineVaultSync} 
+                      <input
+                        type="checkbox"
+                        checked={offlineVaultSync}
                         onChange={(e) => setOfflineVaultSync(e.target.checked)}
                         className="sr-only peer"
                       />
@@ -319,7 +322,7 @@ export default function GlobalSettingsPage() {
             </button>
           </div>
         </form>
-        </div>
-      </AppleDeluxeShell>
+      </div>
+    </AppleDeluxeShell>
   );
 }

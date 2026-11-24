@@ -12,6 +12,17 @@ try:
 except Exception:
     IST = timezone(timedelta(hours=5, minutes=30))
 
+def to_ist(dt: Optional[datetime]) -> datetime:
+    """Safely normalizes any datetime (naive UTC, legacy utcnow, or timezone-aware) to Indian Standard Time"""
+    if dt is None:
+        return now_ist_naive()
+    if dt.tzinfo is not None:
+        return dt.astimezone(IST).replace(tzinfo=None)
+    # If naive datetime has hour < 6 (such as 00:00 - 05:59 from legacy utcnow() storage), add 5:30 to map to daytime Indian classroom hours
+    if dt.hour < 6:
+        return dt + timedelta(hours=5, minutes=30)
+    return dt
+
 def now_ist() -> datetime:
     """Returns current datetime in Indian Standard Time (timezone-aware)"""
     return datetime.now(IST)
@@ -32,19 +43,22 @@ def today_ist_day_name() -> str:
     """Returns today's day of week name (e.g. 'Monday', 'Wednesday') in IST"""
     return datetime.now(IST).strftime("%A")
 
+def today_ist_formatted() -> str:
+    """Returns human-friendly date string (e.g. 'Saturday, 21 November 2026') in IST"""
+    return datetime.now(IST).strftime("%A, %d %B %Y")
+
 def format_time_ist(dt: Optional[datetime] = None, fmt: str = "%I:%M %p") -> str:
     """Formats a datetime in Indian Standard Time (12-hour AM/PM)"""
     if dt is None:
         return datetime.now(IST).strftime(fmt)
-    if dt.tzinfo is not None:
-        return dt.astimezone(IST).strftime(fmt)
-    return dt.strftime(fmt)
+    dt_ist = to_ist(dt)
+    return dt_ist.strftime(fmt)
 
 def format_datetime_ist(dt: Optional[datetime] = None, fmt: str = "%Y-%m-%d %I:%M:%S %p") -> str:
     """Formats a datetime with full date and 12-hour AM/PM in IST"""
     if dt is None:
         return datetime.now(IST).strftime(fmt)
-    if dt.tzinfo is not None:
-        return dt.astimezone(IST).strftime(fmt)
-    return dt.strftime(fmt)
+    dt_ist = to_ist(dt)
+    return dt_ist.strftime(fmt)
+
 

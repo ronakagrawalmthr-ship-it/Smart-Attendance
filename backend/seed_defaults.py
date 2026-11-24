@@ -11,7 +11,6 @@ if str(backend_dir) not in sys.path:
 import models
 import database
 import security
-from routers.timetable import seed_sample_timetable_for_class
 
 def seed_database_defaults():
     db = next(database.get_db())
@@ -200,15 +199,8 @@ def seed_database_defaults():
         db.commit()
         print(" [SEED] Curriculum Subjects verified")
 
-        # 8. Seed Timetable for Computer Science & Engineering Sem 3 Section C
-        slots_count = db.query(models.TimetableSlot).filter(
-            models.TimetableSlot.branch == "Computer Science & Engineering",
-            models.TimetableSlot.semester == 3,
-            models.TimetableSlot.section == "C"
-        ).count()
-        if slots_count == 0:
-            seed_sample_timetable_for_class("Computer Science & Engineering", 3, "C", db)
-            print(" [SEED] Timetable slots seeded for CSE Sem 3 Section C")
+        # 8. Timetable: No fake/sample slots are auto-injected (zero-mock production policy).
+        # Administrators populate the real timetable via the portal or CSV import.
 
         # 9. Seed Official 2026 Academic Holidays
         holidays_2026 = [

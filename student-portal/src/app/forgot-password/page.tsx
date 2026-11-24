@@ -268,7 +268,7 @@ export default function ForgotPasswordPage() {
 
           <div className="mt-4 pt-4 border-t border-stone-100 text-center text-xs text-stone-400 flex items-center justify-center space-x-1.5">
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span>End-to-End Cryptographic Bcrypt Security</span>
+            <span>Secure Password Encryption</span>
           </div>
         </motion.div>
       </div>

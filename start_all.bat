@@ -19,7 +19,7 @@ timeout /t 3 /nobreak >nul
 
 :: 2. Start Ngrok Cloud Tunnel (Dedicated Domain for Backend Port 8000)
 echo [2/7] Booting Ngrok Cloud Tunnel on Dedicated Domain (Port 8000)...
-start "Smart Attendance - Ngrok Cloud Tunnel" cmd /k "title Smart Attendance - Ngrok Dedicated Cloud Tunnel && echo =================================================== && echo   SMART ATTENDANCE - DEDICATED NGROK CLOUD TUNNEL && echo   https://monika-monohydroxy-jimmy.ngrok-free.dev && echo =================================================== && ngrok http 8000 --url=monika-monohydroxy-jimmy.ngrok-free.dev"
+start "Smart Attendance - Ngrok Cloud Tunnel" "%~dp0start_ngrok.bat"
 
 :: 3. Start Web Frontend & Teacher Console (Port 3000)
 echo [3/7] Booting Web Showcase & Teacher Console (Port 3000)...

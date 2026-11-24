@@ -18,11 +18,11 @@ export default function RegisterStudent() {
     semester: '',
     section: '',
   });
-  
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  
+
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
@@ -43,7 +43,7 @@ export default function RegisterStudent() {
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Dynamic semester adaptation based on degree course
@@ -184,7 +184,7 @@ export default function RegisterStudent() {
       <div className="flex justify-center mb-6">
         <div className="bg-stone-900/90 text-white px-5 py-2 rounded-full text-xs font-semibold shadow-md flex items-center space-x-2.5 backdrop-blur-md border border-stone-800">
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Biometric Enrollment Kiosk • 128-D Cryptographic Vectors</span>
+          <span>Biometric Enrollment • Secure Face Recognition</span>
         </div>
       </div>
 
@@ -203,9 +203,9 @@ export default function RegisterStudent() {
           </div>
         </div>
 
-        <motion.div 
-          
-          
+        <motion.div
+
+
           className="text-center mb-10"
         >
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-stone-900">
@@ -217,7 +217,7 @@ export default function RegisterStudent() {
         </motion.div>
 
         <div className="bg-white/90 border border-stone-200/80 rounded-3xl shadow-sm overflow-hidden flex flex-col md:flex-row backdrop-blur-xl">
-          
+
           {/* Form Section */}
           <div className="flex-1 p-5 sm:p-8 lg:p-10">
             <h2 className="text-xl font-bold mb-6 flex items-center text-stone-900">
@@ -282,10 +282,10 @@ export default function RegisterStudent() {
                   <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleInputChange} className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-sm focus:outline-none focus:border-stone-400 focus:bg-white transition" placeholder="Confirm password" />
                 </div>
               </div>
-              
+
               <div className="pt-4">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={isSubmitting || !capturedImage}
                   className={`w-full flex justify-center py-3.5 px-4 rounded-2xl shadow-sm text-sm font-bold transition-all ${!capturedImage ? 'bg-stone-200 text-stone-400 cursor-not-allowed' : 'bg-stone-900 hover:bg-stone-800 text-white'}`}
                 >
@@ -294,14 +294,14 @@ export default function RegisterStudent() {
               </div>
 
               {status === 'success' && (
-                <motion.div   className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center text-emerald-800 text-xs font-semibold">
+                <motion.div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center text-emerald-800 text-xs font-semibold">
                   <CheckCircle className="mr-2.5 h-5 w-5 text-emerald-600 flex-shrink-0" />
                   Successfully registered student & encrypted face vector into database.
                 </motion.div>
               )}
 
               {status === 'error' && (
-                <motion.div   className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center text-rose-800 text-xs font-semibold">
+                <motion.div className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center text-rose-800 text-xs font-semibold">
                   <AlertCircle className="mr-2.5 h-5 w-5 text-rose-600 flex-shrink-0" />
                   {errorMessage || 'Registration failed. Please check inputs and retry.'}
                 </motion.div>
@@ -315,29 +315,29 @@ export default function RegisterStudent() {
               <h2 className="text-xl font-bold mb-6 flex items-center text-stone-900">
                 <Camera className="mr-3 text-stone-700 h-5 w-5" /> Camera Viewfinder
               </h2>
-              
+
               <div className="bg-stone-900 rounded-3xl overflow-hidden aspect-[4/3] flex items-center justify-center relative border border-stone-300 shadow-inner">
-                
+
                 {!streamActive && !capturedImage && (
                   <div className="text-center p-6 bg-stone-100 w-full h-full flex flex-col items-center justify-center">
                     <div className="h-16 w-16 bg-white border border-stone-200 rounded-2xl flex items-center justify-center mb-4 text-stone-500 shadow-sm">
                       <User size={32} />
                     </div>
-                    <p className="text-xs text-stone-500 mb-4 max-w-xs">A clear, well-lit selfie is required to compute the 128-dimensional embedding.</p>
+                    <p className="text-xs text-stone-500 mb-4 max-w-xs">A clear, well-lit selfie is required to register your face recognition.</p>
                     <button onClick={startCamera} type="button" className="inline-flex items-center px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white rounded-2xl text-xs font-bold transition-all shadow-sm">
                       <Camera size={16} className="mr-2" /> Start Camera
                     </button>
                   </div>
                 )}
 
-                <video 
-                  ref={videoRef} 
-                  autoPlay 
-                  playsInline 
-                  className={`w-full h-full object-cover ${!streamActive ? 'hidden' : 'block'}`} 
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className={`w-full h-full object-cover ${!streamActive ? 'hidden' : 'block'}`}
                 />
                 <canvas ref={canvasRef} className="hidden" />
-                
+
                 {capturedImage && (
                   <div className="absolute inset-0 z-10">
                     <img src={capturedImage} alt="Captured face" className="w-full h-full object-cover" />
@@ -368,7 +368,7 @@ export default function RegisterStudent() {
                 )}
               </div>
             </div>
-            
+
             <div className="mt-6 p-4 rounded-2xl bg-white border border-stone-200/80 shadow-sm">
               <div className="flex items-start">
                 <ShieldCheck className="text-emerald-600 mt-0.5 mr-2.5 flex-shrink-0" size={18} />

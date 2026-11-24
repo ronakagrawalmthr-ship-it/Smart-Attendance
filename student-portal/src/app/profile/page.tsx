@@ -387,7 +387,7 @@ export default function StudentProfilePage() {
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-2 text-xs">
                 {academicInfo.hasFaceEnrolled ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/70 text-emerald-700 font-medium">
-                    <ScanFace className="h-3.5 w-3.5" /> Face Biometrics Enrolled (128-d Vector)
+                    <ScanFace className="h-3.5 w-3.5" /> Face Recognition Enrolled
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/70 text-amber-700 font-medium">

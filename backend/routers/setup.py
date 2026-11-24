@@ -3,10 +3,13 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import logging
 import secrets
 import time
 import os
 from jose import jwt, JWTError
+
+logger = logging.getLogger("smart_attendance.setup")
 
 try:
     from .. import models, database, security
@@ -103,7 +106,7 @@ def send_setup_otp(request: Request, payload: SendOtpRequest, db: Session = Depe
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System is already initialized and permanently locked. Contact your university master administrator."
         )
-    cleanup_expired_setup_otps()
+    cleanup_expired_setup_otps(db)
     email_clean = payload.admin_email.strip().lower()
     inst_name = payload.institution_name.strip()
     admin_name = payload.admin_name.strip()
@@ -140,10 +143,10 @@ def send_setup_otp(request: Request, payload: SendOtpRequest, db: Session = Depe
 
     # Console display for developers & local inspection (gated behind DEBUG)
     if os.getenv("DEBUG", "false").lower() in ("true", "1", "yes"):
-        print("\n" + "=" * 55)
-        print(f"[SECURITY OTP] Verification Code for {email_clean}: {otp_code}")
-        print(f"Institution: {inst_name} | Valid for 10 minutes")
-        print("=" * 55 + "\n")
+        logger.info(
+            "Setup verification code for %s: %s (Institution: %s | Valid for 10 minutes)",
+            email_clean, otp_code, inst_name,
+        )
 
     # Send via Resend Email service if configured
     email_dispatched = False
@@ -199,7 +202,7 @@ def verify_setup_otp(request: Request, payload: VerifyOtpRequest, db: Session = 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System is already initialized and permanently locked."
         )
-    cleanup_expired_setup_otps()
+    cleanup_expired_setup_otps(db)
     email_clean = payload.admin_email.strip().lower()
     now_dt = now_ist_naive()
 
@@ -231,8 +234,7 @@ def verify_setup_otp(request: Request, payload: VerifyOtpRequest, db: Session = 
         {
             "sub": email_clean,
             "type": "setup_session",
-            "inst": "Smart Campus Institute",
-            "name": "Administrator",
+            "name": email_clean.split("@")[0],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=15)
         },
         security.SECRET_KEY,

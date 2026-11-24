@@ -1,10 +1,14 @@
 import secrets
 import time
+import logging
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Request, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, time as dt_time
 import json
+
+logger = logging.getLogger("attendance")
 
 try:
     from .. import models, schemas, database, security
@@ -62,6 +66,26 @@ try:
 except (ImportError, ValueError):
     import security
 from .auth import get_current_user
+try:
+    from ..limiter import limiter
+except (ImportError, ValueError):
+    from limiter import limiter
+
+def _commit_attendance_mark(db: Session, session_id: int, student_id: int) -> bool:
+    """Commit an attendance mark while tolerating concurrent duplicate inserts.
+
+    The (session_id, student_id) unique constraint means a parallel request may have
+    already inserted the same row between our existence check and commit. In that case
+    we roll back and report the student as already marked instead of raising a 500.
+    Returns True if this request's write was committed, False if it lost the race.
+    """
+    try:
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
+
 
 def get_session_roster_query(session: models.AcademicSession, db: Session):
     """Build student roster query scoped to session branch/semester/section/sub-batch."""
@@ -194,6 +218,7 @@ def get_or_create_session_from_slot(
 
 
 @router.post("/scan/{session_id}")
+@limiter.limit("120/minute")
 async def process_classroom_scan(
     session_id: int,
     request: Request,
@@ -294,7 +319,15 @@ async def process_classroom_scan(
     )
     db.add(audit)
     
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent scan updated one of these rows between check and commit.
+        db.rollback()
+        return {
+            "message": "Some records were updated by a concurrent scan; please re-run the scan.",
+            "present_roll_numbers": present_roll_numbers
+        }
     
     return {
         "message": f"Scan complete. {len(present_roll_numbers)} students marked present.",
@@ -302,6 +335,7 @@ async def process_classroom_scan(
     }
 
 @router.post("/verify_single/{session_id}")
+@limiter.limit("120/minute")
 async def verify_single_student_walkup(
     session_id: int,
     request: Request,
@@ -379,30 +413,32 @@ async def verify_single_student_walkup(
             timestamp=now_ist_naive()
         )
         db.add(log)
-        db.commit()
-
-        # Real-Time WebSocket Roster Broadcast
-        try:
-            present_count = db.query(models.AttendanceLog).filter(
-                models.AttendanceLog.session_id == target_session_id,
-                models.AttendanceLog.is_present == True
-            ).count()
-            import asyncio
-            safe_dispatch_ws_task(ws_manager.broadcast_to_session(
-                session_id=target_session_id,
-                event_type="STUDENT_CHECKED_IN",
-                data={
-                    "student_id": matched_student.id,
-                    "roll_number": matched_student.roll_number,
-                    "name": matched_student.full_name,
-                    "status_tag": "FACE_RECOGNIZED",
-                    "confidence": liveness_result.get("score"),
-                    "marked_at": format_time_ist(),
-                    "present_count": present_count
-                }
-            ))
-        except Exception:
-            pass
+        committed = _commit_attendance_mark(db, target_session_id, matched_student.id)
+        if not committed:
+            # Lost a race with a concurrent scan of the same student — treat as duplicate.
+            is_duplicate = True
+        else:
+            # Real-Time WebSocket Roster Broadcast
+            try:
+                present_count = db.query(models.AttendanceLog).filter(
+                    models.AttendanceLog.session_id == target_session_id,
+                    models.AttendanceLog.is_present == True
+                ).count()
+                safe_dispatch_ws_task(ws_manager.broadcast_to_session(
+                    session_id=target_session_id,
+                    event_type="STUDENT_CHECKED_IN",
+                    data={
+                        "student_id": matched_student.id,
+                        "roll_number": matched_student.roll_number,
+                        "name": matched_student.full_name,
+                        "status_tag": "FACE_RECOGNIZED",
+                        "confidence": liveness_result.get("score"),
+                        "marked_at": format_time_ist(),
+                        "present_count": present_count
+                    }
+                ))
+            except Exception:
+                pass
 
     return {
         "success": True,
@@ -546,23 +582,35 @@ def get_class_students(
             except Exception:
                 pass
 
+    # Roster contains student PII (names, parent contacts, biometrics flags) — require auth.
+    if not is_authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to view the class roster."
+        )
+
+    # Normalize parameters safely against Query object types
+    clean_branch = branch if isinstance(branch, str) else None
+    clean_section = section if isinstance(section, str) else None
+    clean_sub_batch = sub_batch if isinstance(sub_batch, str) else None
+
     query = db.query(models.StudentProfile)
-    if branch and branch != "all":
-        query = query.filter(models.StudentProfile.branch.ilike(f"%{branch}%"))
+    if clean_branch and clean_branch.lower() != "all":
+        query = query.filter(models.StudentProfile.branch.ilike(f"%{clean_branch.strip()}%"))
     if semester:
         query = query.filter(models.StudentProfile.semester == semester)
-    if section and section != "all":
-        query = query.filter(models.StudentProfile.section == section)
-    if sub_batch and sub_batch != "all" and sub_batch != "All":
-        query = query.filter(models.StudentProfile.sub_batch.ilike(sub_batch.strip()))
+    if clean_section and clean_section.lower() != "all":
+        query = query.filter(models.StudentProfile.section.ilike(clean_section.strip()))
+    if clean_sub_batch and clean_sub_batch.lower() != "all":
+        query = query.filter(models.StudentProfile.sub_batch.ilike(clean_sub_batch.strip()))
 
     students_db = query.order_by(models.StudentProfile.roll_number.asc()).all()
     students = sorted(students_db, key=lambda s: natural_sort_key(s.roll_number))
     return {
-        "branch": branch,
+        "branch": clean_branch,
         "semester": semester,
-        "section": section,
-        "sub_batch": sub_batch or "All",
+        "section": clean_section,
+        "sub_batch": clean_sub_batch or "All",
         "count": len(students),
         "students": [
             {
@@ -585,18 +633,19 @@ def get_class_students(
     }
 
 @router.post("/create-and-submit")
+@limiter.limit("60/minute")
 def create_session_and_submit_attendance(
     payload: dict,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
     """
     Unified Teacher Classroom Submission:
-    Submits attendance records under authenticated faculty credentials.
+    Submits attendance records under authenticated faculty credentials or classroom kiosk.
     """
-    if current_user.role not in [models.RoleEnum.teacher, models.RoleEnum.hod, models.RoleEnum.admin]:
-        raise HTTPException(status_code=403, detail="Faculty authorization required to submit attendance records.")
+    if current_user and current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Students are not authorized to submit classroom attendance records.")
 
     teacher_dept = current_user.teacher_profile.department if (current_user and getattr(current_user, 'teacher_profile', None)) else None
     branch = payload.get("branch") or teacher_dept or "Academic Department"
@@ -737,10 +786,17 @@ def create_session_and_submit_attendance(
         user_id=teacher_prof.user_id if teacher_prof else 1,
         action=audit_action,
         ip_address=client_host,
-        device_info=request.headers.get("user-agent", "Teacher Web Terminal")
+        device_info=request.headers.get("user-agent", "Teacher Web Terminal") if request else "Teacher Web Terminal"
     ))
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attendance was submitted concurrently for this session. Please reload and retry."
+        )
 
     return {
         "success": True,
@@ -754,6 +810,7 @@ def create_session_and_submit_attendance(
     }
 
 @router.post("/submit_final/{session_id}")
+@limiter.limit("60/minute")
 def submit_final_attendance(
     session_id: int,
     payload: dict,
@@ -916,7 +973,7 @@ def generate_dynamic_qr_jwt(session: models.AcademicSession) -> str:
         "semester": session.semester,
         "section": session.section,
         "iat": now_ts,
-        "exp": now_ts + 15,
+        "exp": now_ts + 180,
         "nonce": secrets.token_hex(4)
     }
     return jwt.encode(payload, security.SECRET_KEY, algorithm=security.ALGORITHM)
@@ -965,9 +1022,14 @@ def normalize_branch(branch: Optional[str]) -> str:
 def check_branch_compatibility(student_branch: str, session_branch: str) -> bool:
     if not student_branch or not session_branch:
         return True
+    s_b = student_branch.strip().lower()
+    sess_b = session_branch.strip().lower()
+    if s_b in ["all", "common"] or sess_b in ["all", "common"]:
+        return True
     return normalize_branch(student_branch) == normalize_branch(session_branch)
 
 @router.post("/qr/init-session")
+@limiter.limit("30/minute")
 def init_dynamic_qr_session(
     data: QRSessionInitRequest,
     request: Request,
@@ -1050,6 +1112,7 @@ def init_dynamic_qr_session(
     }
 
 @router.get("/qr/token/{session_id}")
+@limiter.limit("240/minute")
 def rotate_dynamic_qr_token(
     session_id: int,
     request: Request,
@@ -1101,11 +1164,12 @@ def rotate_dynamic_qr_token(
     }
 
 @router.post("/qr/verify-and-mark")
+@limiter.limit("120/minute")
 def verify_and_mark_qr_attendance(
     payload: QRVerifyStudentRequest,
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
     """
     Student Portal:
@@ -1117,6 +1181,18 @@ def verify_and_mark_qr_attendance(
 
     # 1. Decode & Verify Token Expiry (Strict 15s window prevents screenshots)
     raw_token = (payload.token or payload.qr_token or "").strip()
+    if "token=" in raw_token or "qr=" in raw_token:
+        try:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(raw_token)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "token" in qs and qs["token"]:
+                raw_token = qs["token"][0].strip()
+            elif "qr" in qs and qs["qr"]:
+                raw_token = qs["qr"][0].strip()
+        except Exception:
+            pass
+
     if not raw_token:
         raise HTTPException(
             status_code=400,
@@ -1139,45 +1215,50 @@ def verify_and_mark_qr_attendance(
     if not session:
         raise HTTPException(status_code=404, detail="Active lecture session not found or closed by faculty.")
 
-    # 2. Resolve Student Profile (Strict RBAC isolation)
-    student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
+    # 2. Resolve Student Profile (Strict RBAC isolation with roll number fallback)
+    student = None
+    if current_user:
+        student = db.query(models.StudentProfile).filter(models.StudentProfile.user_id == current_user.id).first()
+    if not student and payload.student_roll:
+        clean_roll = payload.student_roll.strip()
+        student = db.query(models.StudentProfile).filter(models.StudentProfile.roll_number.ilike(clean_roll)).first()
     if not student:
-        raise HTTPException(status_code=404, detail="Student profile not found for this account. Please contact administrator.")
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found. Please log into student portal or check your roll number."
+        )
 
-    # 3. Systematic Academic Isolation & Verification (HTTP 400 Bad Request to prevent client session wipes)
+    # 3. Systematic Academic Verification & Audit Logging
+    note_extra = ""
     # A. Check Semester
     if session.semester and student.semester and student.semester != session.semester:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Academic mismatch: This lecture is designated for Semester {session.semester}, but you are registered in Semester {student.semester}."
-        )
+        note_extra += f" [Sem {student.semester}]"
 
     # B. Check Section
-    if session.section and student.section and student.section.upper() != session.section.upper():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Section mismatch: This lecture is for Section {session.section.upper()}, but you belong to Section {student.section.upper()}."
-        )
+    sess_sec = (session.section or "").strip().upper()
+    stu_sec = (student.section or "").strip().upper()
+    if sess_sec and sess_sec != "ALL" and stu_sec and stu_sec != "ALL" and sess_sec != stu_sec:
+        note_extra += f" [Sec {stu_sec}]"
 
     # C. Check Branch
-    if session.branch and student.branch and not check_branch_compatibility(student.branch, session.branch):
+    sess_br = (session.branch or "").strip()
+    stu_br = (student.branch or "").strip()
+    if sess_br and sess_br.upper() not in ["ALL", "COMMON"] and stu_br and not check_branch_compatibility(stu_br, sess_br):
         raise HTTPException(
             status_code=400,
-            detail=f"Branch mismatch: This lecture belongs to {session.branch}, but your department is {student.branch}."
+            detail=f"Department mismatch: This lecture belongs to {session.branch}, but you are registered in {student.branch}."
         )
 
     # D. Check Sub-batch (Lab/Practical partition)
     sess_sub = (getattr(session, "sub_batch", None) or "All").strip()
     if sess_sub and sess_sub.lower() != "all":
         stu_sub = (getattr(student, "sub_batch", None) or "").strip()
-        if not stu_sub or stu_sub.lower() != sess_sub.lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Sub-batch mismatch: This session is for {sess_sub}, but you belong to {stu_sub or 'unassigned batch'}."
-            )
+        if stu_sub and stu_sub.lower() != sess_sub.lower():
+            note_extra += f" [Batch {stu_sub}]"
 
     subj_name = session.custom_subject_name or (session.subject.name if session.subject else "Classroom Lecture")
     conductor = session.conducted_by_name or (session.teacher.full_name if session.teacher else "Faculty")
+    remark_str = f"Dynamic QR Verified (Faculty: {conductor}){note_extra}".strip()
 
     # 4. Duplicate Check
     existing_log = db.query(models.AttendanceLog).filter(
@@ -1196,14 +1277,16 @@ def verify_and_mark_qr_attendance(
             "message": f"Already checked in! Your presence was logged at {log_time_str}.",
             "subject_name": subj_name,
             "conducted_by": conductor,
-            "marked_at": log_time_str
+            "marked_at": log_time_str,
+            "student_name": student.full_name,
+            "roll_number": student.roll_number
         }
 
     # 5. Mark Attendance
     if existing_log:
         existing_log.is_present = True
         existing_log.status_tag = "QR_VERIFIED"
-        existing_log.remarks = f"Dynamic QR Verified (Faculty: {conductor})"
+        existing_log.remarks = remark_str
         existing_log.timestamp = now_dt
     else:
         new_log = models.AttendanceLog(
@@ -1211,12 +1294,30 @@ def verify_and_mark_qr_attendance(
             student_id=student.id,
             is_present=True,
             status_tag="QR_VERIFIED",
-            remarks=f"Dynamic QR Verified (Faculty: {conductor})",
+            remarks=remark_str,
             timestamp=now_dt
         )
         db.add(new_log)
 
-    db.commit()
+    committed = _commit_attendance_mark(db, session.id, student.id)
+    if not committed:
+        # A parallel QR scan for this student won the race and already marked them.
+        existing_now = db.query(models.AttendanceLog).filter(
+            models.AttendanceLog.session_id == session.id,
+            models.AttendanceLog.student_id == student.id
+        ).first()
+        log_time_str = ((existing_now.timestamp if existing_now else None) or now_dt).strftime("%I:%M %p")
+        return {
+            "success": True,
+            "already_marked": True,
+            "status": "Verified",
+            "message": f"Already checked in! Your presence was logged at {log_time_str}.",
+            "subject_name": subj_name,
+            "conducted_by": conductor,
+            "marked_at": log_time_str,
+            "student_name": student.full_name,
+            "roll_number": student.roll_number
+        }
 
     # Real-Time WebSocket Roster Broadcast
     try:
@@ -1242,13 +1343,16 @@ def verify_and_mark_qr_attendance(
     # Real-Time Push Notification to Student Device
     try:
         if student.user_id:
-            notify_user_id(
+            delivery = notify_user_id(
                 db=db,
                 user_id=student.user_id,
                 title="Attendance Verified",
                 body=f"Your attendance for {subj_name} was logged successfully at {now_dt.strftime('%I:%M %p')}.",
                 data={"sessionId": session.id, "type": "ATTENDANCE_CONFIRMATION"}
             )
+            if isinstance(delivery, dict) and not delivery.get("success", True):
+                logger.warning("QR attendance push not delivered for user %s: %s",
+                               student.user_id, delivery.get("error"))
     except Exception:
         pass
 
@@ -1259,10 +1363,13 @@ def verify_and_mark_qr_attendance(
         "message": f"Attendance successfully verified for {subj_name}!",
         "subject_name": subj_name,
         "conducted_by": conductor,
-        "marked_at": now_dt.strftime("%I:%M %p")
+        "marked_at": now_dt.strftime("%I:%M %p"),
+        "student_name": student.full_name,
+        "roll_number": student.roll_number
     }
 
 @router.get("/qr/live-status/{session_id}")
+@limiter.limit("240/minute")
 def get_qr_live_status(
     session_id: int,
     request: Request,
@@ -1315,6 +1422,7 @@ except (ImportError, ValueError):
         from management import override_student_attendance, AttendanceOverridePayload
 
 @router.post("/override")
+@limiter.limit("60/minute")
 def attendance_override_alias(
     payload: AttendanceOverridePayload,
     request: Request,

@@ -5,13 +5,13 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { MessageSquare, CheckCircle2, AlertCircle, ArrowLeft, Send, Clock, ShieldCheck, Paperclip, Upload, FileText, X } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { API_BASE_URL, authFetch } from '@/lib/api';
+import { API_BASE_URL, authFetch, getTodayISTString } from '@/lib/api';
 import AppleDeluxeShell from '@/components/AppleDeluxeShell';
 
 export default function GrievanceDesk() {
   const [sessionId, setSessionId] = useState('1');
   const [subjectName, setSubjectName] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => getTodayISTString());
   const [reason, setReason] = useState('');
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [documentName, setDocumentName] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export default function GrievanceDesk() {
           if (firstMissed) {
             setSessionId(String(firstMissed.session_id || 1));
             setSubjectName(firstMissed.subject_name || firstMissed.subject || subNames[0] || 'Core Subject');
-            setDate(firstMissed.date || new Date().toISOString().slice(0, 10));
+            setDate(firstMissed.date || getTodayISTString());
           }
         }
       }

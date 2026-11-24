@@ -99,6 +99,15 @@ export default function StudentQrScannerPage() {
       }
     };
     fetchStudentMe();
+
+    // Direct scan link detection: if opened from native camera with ?token=...
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token') || urlParams.get('qr');
+      if (urlToken && urlToken.trim()) {
+        handleProcessToken(urlToken.trim());
+      }
+    }
   }, []);
 
   // Initialize Camera Scanner
@@ -203,7 +212,20 @@ export default function StudentQrScannerPage() {
   // Process and Submit Scanned Token to Backend
   const handleProcessToken = async (tokenString: string) => {
     if (!tokenString || tokenString.trim().length === 0) return;
-    const cleanToken = tokenString.trim();
+    let cleanToken = tokenString.trim();
+
+    // If scanned text is a URL, extract token or qr query parameter
+    if (cleanToken.includes('token=') || cleanToken.includes('qr=')) {
+      try {
+        const urlObj = new URL(cleanToken, window.location.href);
+        const paramVal = urlObj.searchParams.get('token') || urlObj.searchParams.get('qr');
+        if (paramVal) cleanToken = paramVal.trim();
+      } catch {
+        const match = cleanToken.match(/[?&](?:token|qr)=([^&#]+)/);
+        if (match && match[1]) cleanToken = decodeURIComponent(match[1]).trim();
+      }
+    }
+
     setLastSubmittedToken(cleanToken);
     
     // Pause scanning while verifying
@@ -292,7 +314,7 @@ export default function StudentQrScannerPage() {
           <div className="flex items-center space-x-2">
             <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>Anti-Proxy 10s Scanner</span>
+              <span>QR Attendance Scanner</span>
             </span>
           </div>
         </div>
@@ -403,7 +425,7 @@ export default function StudentQrScannerPage() {
               <div className="text-center space-y-1.5">
                 <div className="inline-flex items-center space-x-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200/60">
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                  <span>Real-Time Optical Reticle</span>
+                  <span>Camera Scanner</span>
                 </div>
                 <h1 className="text-2xl font-black text-stone-900 tracking-tight">
                   Scan Teacher's Dynamic QR
@@ -426,7 +448,7 @@ export default function StudentQrScannerPage() {
                 {isVerifying && (
                   <div className="absolute inset-0 bg-stone-950/70 backdrop-blur-md flex flex-col items-center justify-center text-white space-y-3 z-30">
                     <RefreshCw className="h-8 w-8 animate-spin text-amber-400" />
-                    <span className="text-xs font-bold tracking-wider uppercase">Verifying Academic Match...</span>
+                    <span className="text-xs font-bold tracking-wider uppercase">Verifying Attendance...</span>
                   </div>
                 )}
 
@@ -487,7 +509,7 @@ export default function StudentQrScannerPage() {
               <div className="rounded-2xl bg-stone-50 border border-stone-200/80 p-4 space-y-2 text-xs">
                 <div className="flex items-center space-x-2 text-stone-900 font-bold">
                   <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                  <span>Automatic Systematic Isolation:</span>
+                  <span>Classroom Verification:</span>
                 </div>
                 <p className="text-stone-500 leading-relaxed text-[11px]">
                   Attendance is verified against your registered department (<strong className="text-stone-800">{studentInfo.branch || 'Branch'}</strong>), Semester (<strong className="text-stone-800">{studentInfo.semester}</strong>), and Section (<strong className="text-stone-800">{studentInfo.section}</strong>). Scanning lectures outside your section will be rejected.
@@ -502,15 +524,15 @@ export default function StudentQrScannerPage() {
                   className="text-stone-500 hover:text-stone-900 font-bold transition flex items-center space-x-1"
                 >
                   <QrCode className="h-3.5 w-3.5" />
-                  <span>{showManualInput ? 'Hide Manual Token' : 'Enter QR Token String Directly'}</span>
+                  <span>{showManualInput ? 'Hide Manual Input' : 'Enter QR Code Manually'}</span>
                 </button>
-                <span className="text-[11px] text-stone-400">10s Expiry Guard</span>
+                <span className="text-[11px] text-stone-400">Dynamic Security</span>
               </div>
 
               {showManualInput && (
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
                   <label className="block text-xs font-bold text-stone-700">
-                    Paste Scanned JWT Token (Diagnostic Fallback):
+                    Paste Scanned Attendance Code:
                   </label>
                   <div className="flex space-x-2">
                     <input
@@ -537,8 +559,8 @@ export default function StudentQrScannerPage() {
 
         {/* Security Help Footer */}
         <div className="text-center text-[11px] text-stone-400 space-y-1">
-          <p>🔒 University Cryptographic Token Service • Validated via SHA-256 JWT</p>
-          <p>Tokens rotate every 10 seconds. Static screenshots will fail verification.</p>
+          <p>🔒 Secure Attendance System • Real-Time Classroom QR Check-in</p>
+          <p>QR codes refresh dynamically. Static screenshots will fail verification.</p>
         </div>
       </div>
     </AppleDeluxeShell>

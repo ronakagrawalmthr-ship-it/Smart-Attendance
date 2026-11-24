@@ -9,7 +9,7 @@ services:
     runtime: docker
     dockerfilePath: backend/Dockerfile
     dockerContext: backend
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /health
     envVars:
@@ -23,13 +23,8 @@ services:
         value: 8000
       - key: ENVIRONMENT
         value: production
-      # Production PostgreSQL: Supabase Pooled IPv4 Connection URL (or Render internal DB)
-      - key: DATABASE_URL
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: https://student-portal-one-ruby.vercel.app,https://admin-portal-eta-lilac.vercel.app,https://web-frontend-five-gray.vercel.app,https://hod-portal.vercel.app,http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
       - key: DEFAULT_ADMIN_PASSWORD
         sync: false
       - key: DEFAULT_HOD_PASSWORD
