@@ -6,7 +6,7 @@ export const VERCEL_PORTAL_URLS: Record<number, string> = {
   3003: 'https://hod-portal.vercel.app',
 };
 
-export const CLOUD_BACKEND_URL = 'https://monika-monohydroxy-jimmy.ngrok-free.dev';
+export const CLOUD_BACKEND_URL = 'https://smart-attendance-api-o49f.onrender.com';
 
 export function getApiBaseUrl(): string {
   // 1. Explicit environment variable

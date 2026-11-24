@@ -47,7 +47,7 @@ echo                        ALL SERVICES ARE NOW ACTIVE!
 echo ===============================================================================
 echo.
 echo  [API Backend]        http://localhost:8000/docs  (FastAPI Swagger Engine)
-echo  [Cloud Backend]      https://monika-monohydroxy-jimmy.ngrok-free.dev
+echo  [Cloud Backend]      https://smart-attendance-api-o49f.onrender.com
 echo.
 echo  LIVE CLOUD PRODUCTION PORTALS (Vercel):
 echo  - Main Showcase:     https://web-frontend-five-gray.vercel.app

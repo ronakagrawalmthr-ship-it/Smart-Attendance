@@ -70,7 +70,7 @@ DEFAULT_ORIGINS = [
     "https://admin-portal-eta-lilac.vercel.app",
     "https://student-portal-one-ruby.vercel.app",
     "https://hod-portal.vercel.app",
-    "https://monika-monohydroxy-jimmy.ngrok-free.dev",
+    "https://smart-attendance-api-o49f.onrender.com",
 ]
 
 env_origins = os.getenv("ALLOWED_ORIGINS")

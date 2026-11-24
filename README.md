@@ -51,7 +51,7 @@ The platform is designed with a **micro-frontend architecture**, hosting four de
 
 | Portal / Service | Port | Live Production URL | Primary Target Audience |
 | :--- | :--- | :--- | :--- |
-| **Central Backend & API Engine** | `8000` | `https://monika-monohydroxy-jimmy.ngrok-free.dev` | REST API, Swagger `/docs`, OpenAPI |
+| **Central Backend & API Engine** | `8000` | `https://smart-attendance-api-o49f.onrender.com` | REST API, Swagger `/docs`, OpenAPI |
 | **Teacher Web & Showcase** | `3000` | [web-frontend-five-gray.vercel.app](https://web-frontend-five-gray.vercel.app) | Faculty, Classroom QR Broadcaster, Roster |
 | **Institutional Admin Portal** | `3001` | [admin-portal-eta-lilac.vercel.app](https://admin-portal-eta-lilac.vercel.app) | University Registrar, Deans, Governance |
 | **Student Academic Portal** | `3002` | [student-portal-one-ruby.vercel.app](https://student-portal-one-ruby.vercel.app) | Students, Timetable, Grievance, Scans |

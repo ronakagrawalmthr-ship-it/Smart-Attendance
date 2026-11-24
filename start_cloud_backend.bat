@@ -33,7 +33,7 @@ echo ===========================================================================
 echo                     SYSTEM ONLINE - OPENING PORTAL!
 echo ===============================================================================
 echo  Backend Docs:       http://localhost:8000/docs
-echo  Backend Cloud URL:  https://monika-monohydroxy-jimmy.ngrok-free.dev
+echo  Backend Cloud URL:  https://smart-attendance-api-o49f.onrender.com
 echo  Web Showcase:       https://web-frontend-five-gray.vercel.app
 echo  Admin Portal:       https://admin-portal-eta-lilac.vercel.app
 echo  Student Portal:     https://student-portal-one-ruby.vercel.app
