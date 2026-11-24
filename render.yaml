@@ -26,10 +26,10 @@ services:
       - key: ALLOWED_ORIGINS
         value: https://student-portal-one-ruby.vercel.app,https://admin-portal-eta-lilac.vercel.app,https://web-frontend-five-gray.vercel.app,https://hod-portal.vercel.app,http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
       - key: DEFAULT_ADMIN_PASSWORD
-        sync: false
+        value: admin123
       - key: DEFAULT_HOD_PASSWORD
-        sync: false
+        value: admin123
       - key: DEFAULT_TEACHER_PASSWORD
-        sync: false
+        value: teacher123
       - key: DEFAULT_STUDENT_PASSWORD
-        sync: false
+        value: Student@Secure2026!
