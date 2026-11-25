@@ -304,5 +304,151 @@ def seed_database_defaults():
     finally:
         db.close()
 
+def bootstrap_cloud_core_accounts():
+    """
+    Zero-User Cloud Bootstrap:
+    Runs safely at startup only when the database has 0 user accounts (e.g. fresh ephemeral
+    cloud container or empty database). Provisions the real core accounts using the
+    deployment's configured DEFAULT_*_PASSWORD environment variables without injecting
+    dummy/fake students or fake attendance records.
+    """
+    if os.getenv("AUTO_SEED_CORE_USERS", "true").strip().lower() not in ("true", "1", "yes"):
+        return
+
+    db = next(database.get_db())
+    try:
+        if db.query(models.User).count() > 0:
+            return
+
+        admin_pwd = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin1845")
+        hod_pwd = os.getenv("DEFAULT_HOD_PASSWORD", "hod1845")
+        teacher_pwd = os.getenv("DEFAULT_TEACHER_PASSWORD", "teacher1845")
+        student_pwd = os.getenv("DEFAULT_STUDENT_PASSWORD", "student1845")
+
+        settings_map = {
+            "is_setup_completed": "true",
+            "institution_name": os.getenv("INSTITUTION_NAME", "Apex Institute of Technology & Engineering"),
+            "admin_name": "Ronak Agrawal",
+            "admin_email": "spideronak@gmail.com",
+        }
+        for key, val in settings_map.items():
+            row = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+            if not row:
+                db.add(models.SystemSetting(key=key, value=val))
+            else:
+                row.value = val
+
+        admin_user = models.User(
+            email="spideronak@gmail.com",
+            hashed_password=security.get_password_hash(admin_pwd),
+            role=models.RoleEnum.admin,
+            is_active=True,
+            is_verified=True,
+        )
+        hod_user = models.User(
+            email="hodcse@gmail.com",
+            hashed_password=security.get_password_hash(hod_pwd),
+            role=models.RoleEnum.hod,
+            is_active=True,
+            is_verified=True,
+        )
+        teacher_user = models.User(
+            email="teacher@gmail.com",
+            hashed_password=security.get_password_hash(teacher_pwd),
+            role=models.RoleEnum.teacher,
+            is_active=True,
+            is_verified=True,
+        )
+        student_user = models.User(
+            email="ronakagrawalmthr@gmail.com",
+            hashed_password=security.get_password_hash(student_pwd),
+            role=models.RoleEnum.student,
+            is_active=True,
+            is_verified=True,
+        )
+        db.add_all([admin_user, hod_user, teacher_user, student_user])
+        db.flush()
+
+        hod_prof = models.TeacherProfile(
+            user_id=hod_user.id,
+            full_name="Dr. Rajesh Mehta",
+            department="Computer Science",
+        )
+        teacher_prof = models.TeacherProfile(
+            user_id=teacher_user.id,
+            full_name="Mr. Darshan Sharma",
+            department="Computer Science",
+        )
+        student_prof = models.StudentProfile(
+            user_id=student_user.id,
+            full_name="Ronak Agrawal",
+            roll_number="2500650100111",
+            branch="Computer Science",
+            semester=3,
+            section="C",
+            sub_batch="C1",
+            biometric_consent=True,
+        )
+        db.add_all([hod_prof, teacher_prof, student_prof])
+        db.flush()
+
+        if db.query(models.Subject).count() == 0:
+            curriculum = [
+                ("CS301", "Data Structures & Algorithms", "Computer Science", 3),
+                ("CS302", "Database Management Systems", "Computer Science", 3),
+                ("CS303", "Operating Systems", "Computer Science", 3),
+                ("CS304", "Computer Organization & Architecture", "Computer Science", 3),
+                ("CS305", "Discrete Mathematical Structures", "Computer Science", 3),
+            ]
+            subjects = []
+            for code, name, branch, sem in curriculum:
+                sub = models.Subject(code=code, name=name, branch=branch, semester=sem)
+                db.add(sub)
+                subjects.append(sub)
+            db.flush()
+
+            if db.query(models.TimetableSlot).count() == 0 and subjects:
+                days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+                times = [
+                    ("09:00 AM", "10:00 AM"),
+                    ("10:00 AM", "11:00 AM"),
+                    ("11:15 AM", "12:15 PM"),
+                    ("01:15 PM", "02:15 PM"),
+                ]
+                for d_idx, day_name in enumerate(days):
+                    for s_idx, (st, et) in enumerate(times):
+                        subj = subjects[(d_idx + s_idx) % len(subjects)]
+                        db.add(models.TimetableSlot(
+                            branch="Computer Science",
+                            semester=3,
+                            section="C",
+                            day_of_week=day_name,
+                            slot_index=s_idx + 1,
+                            start_time=st,
+                            end_time=et,
+                            subject_id=subj.id,
+                            teacher_id=teacher_prof.id,
+                            room_number=f"LH-{301 + s_idx}",
+                            session_type="lecture",
+                            sub_batch="All",
+                        ))
+
+        if db.query(models.Holiday).count() == 0:
+            db.add_all([
+                models.Holiday(title="Republic Day", date="2026-01-26", department="all", created_by="Registrar Office"),
+                models.Holiday(title="Independence Day", date="2026-08-15", department="all", created_by="Registrar Office"),
+                models.Holiday(title="Mahatma Gandhi Jayanti", date="2026-10-02", department="all", created_by="Registrar Office"),
+                models.Holiday(title="Christmas Day", date="2026-12-25", department="all", created_by="Registrar Office"),
+            ])
+
+        db.commit()
+        print(" [BOOTSTRAP] Cloud core accounts initialized (Admin, HOD, Teacher, Student).")
+    except Exception as e:
+        db.rollback()
+        print(f" [BOOTSTRAP] Note: {e}")
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     seed_database_defaults()

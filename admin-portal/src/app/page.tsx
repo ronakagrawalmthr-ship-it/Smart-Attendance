@@ -66,7 +66,7 @@ export default function AdminLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password: password.trim() })
-      }, { maxRetries: 2, delayMs: 600 });
+      });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));

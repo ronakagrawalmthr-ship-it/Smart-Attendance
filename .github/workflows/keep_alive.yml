@@ -1,0 +1,15 @@
+name: Cloud Backend Keep-Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-render:
+    name: Keep Render Backend Warm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Health Endpoint
+        run: |
+          curl -fsS --max-time 45 https://smart-attendance-api-o49f.onrender.com/health || echo "Wake-up ping sent"

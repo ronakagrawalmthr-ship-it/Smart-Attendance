@@ -45,7 +45,12 @@ async def lifespan(app: FastAPI):
         ensure_sqlite_columns()
         # Hot-path performance indexes (idempotent)
         ensure_perf_indexes()
-        # Production Mode: Automatic dummy seeding disabled. 0 Fake records.
+        # Zero-User Cloud Bootstrap (only populates real core accounts if DB has 0 users)
+        try:
+            from seed_defaults import bootstrap_cloud_core_accounts
+            bootstrap_cloud_core_accounts()
+        except Exception as e:
+            logger.warning("Core account bootstrap note: %s", e)
         asyncio.create_task(background_cron_loop())
     yield
     # Shutdown: nothing to tear down explicitly; cron task is cancelled with the loop.

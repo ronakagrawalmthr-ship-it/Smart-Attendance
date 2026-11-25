@@ -9,10 +9,18 @@ from fastapi import UploadFile, HTTPException
 
 logger = logging.getLogger("smart_attendance.biometrics")
 
-try:
-    import face_recognition as dlib_face_rec
-except ImportError:
-    dlib_face_rec = None
+_dlib_cache = False  # False = uninitialized, None = unavailable, module = loaded
+
+def _get_dlib():
+    """Lazily imports face_recognition/dlib on demand so API startup remains sub-second."""
+    global _dlib_cache
+    if _dlib_cache is False:
+        try:
+            import face_recognition as _fr
+            _dlib_cache = _fr
+        except ImportError:
+            _dlib_cache = None
+    return _dlib_cache
 
 class SmartBiometricEngine:
     """
@@ -121,9 +129,10 @@ class SmartBiometricEngine:
             return []
 
     def face_locations(self, img):
-        if dlib_face_rec is not None:
+        dlib_rec = _get_dlib()
+        if dlib_rec is not None:
             try:
-                locs = dlib_face_rec.face_locations(img, model="hog")
+                locs = dlib_rec.face_locations(img, model="hog")
                 if locs and len(locs) > 0:
                     return locs
             except Exception:
@@ -188,9 +197,10 @@ class SmartBiometricEngine:
         return vector.tolist()
 
     def face_encodings(self, img, locations):
-        if dlib_face_rec is not None:
+        dlib_rec = _get_dlib()
+        if dlib_rec is not None:
             try:
-                encs = dlib_face_rec.face_encodings(img, locations)
+                encs = dlib_rec.face_encodings(img, locations)
                 if encs and len(encs) == len(locations):
                     return [e.tolist() for e in encs]
             except Exception:
@@ -198,9 +208,10 @@ class SmartBiometricEngine:
         return [self.extract_128d_embedding(img, box) for box in locations]
 
     def face_distance(self, known_encodings, live_encoding):
-        if dlib_face_rec is not None:
+        dlib_rec = _get_dlib()
+        if dlib_rec is not None:
             try:
-                return dlib_face_rec.face_distance(np.array(known_encodings), np.array(live_encoding))
+                return dlib_rec.face_distance(np.array(known_encodings), np.array(live_encoding))
             except Exception:
                 pass
         known = np.array(known_encodings, dtype=np.float32)

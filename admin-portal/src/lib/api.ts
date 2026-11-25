@@ -8,15 +8,53 @@ export const VERCEL_PORTAL_URLS: Record<number, string> = {
 
 export const CLOUD_BACKEND_URL = 'https://smart-attendance-api-o49f.onrender.com';
 
-export function getApiBaseUrl(): string {
-  // 1. Explicit environment variable
-  if (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) {
-    return process.env.NEXT_PUBLIC_API_URL.trim().replace(/\/+$/, '');
-  }
+function isStaleOrLocalUrl(url?: string | null): boolean {
+  if (!url) return true;
+  const u = url.toLowerCase();
+  return u.includes('localhost') || u.includes('127.0.0.1') || u.includes('ngrok');
+}
 
-  // 2. Client-side runtime overrides & cloud detection
+let _warmedUp = false;
+export function warmUpCloudBackend(): void {
+  if (_warmedUp || typeof window === 'undefined') return;
+  const base = getApiBaseUrl();
+  if (!base.includes('onrender.com')) return;
+  _warmedUp = true;
+  fetch(`${base}/health`, { method: 'GET', mode: 'cors' }).catch(() => {});
+}
+
+export function getApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+
   if (typeof window !== 'undefined') {
-    const customHost = localStorage.getItem('api_base_url') || localStorage.getItem('custom_backend_url') || localStorage.getItem('api_host');
+    const host = window.location.hostname || '';
+    const protocol = window.location.protocol || 'http:';
+    const isCloudOrigin =
+      host.includes('vercel.app') ||
+      (host !== 'localhost' &&
+        host !== '127.0.0.1' &&
+        !host.startsWith('192.168.') &&
+        !host.startsWith('10.') &&
+        !host.startsWith('172.'));
+
+    if (isCloudOrigin) {
+      const customHost =
+        localStorage.getItem('api_base_url') ||
+        localStorage.getItem('custom_backend_url') ||
+        localStorage.getItem('api_host');
+      if (customHost && !isStaleOrLocalUrl(customHost)) {
+        return customHost.trim().replace(/\/+$/, '');
+      }
+      if (envUrl && !isStaleOrLocalUrl(envUrl)) {
+        return envUrl;
+      }
+      return CLOUD_BACKEND_URL;
+    }
+
+    const customHost =
+      localStorage.getItem('api_base_url') ||
+      localStorage.getItem('custom_backend_url') ||
+      localStorage.getItem('api_host');
     if (customHost && customHost.trim()) {
       return customHost.trim().replace(/\/+$/, '');
     }
@@ -30,30 +68,25 @@ export function getApiBaseUrl(): string {
       } catch {}
     }
 
-    const host = window.location.hostname;
-    const protocol = window.location.protocol || 'http:';
-
-    // 3. When accessed on Vercel, route to live dedicated cloud backend tunnel
-    if (host.includes('vercel.app')) {
-      return CLOUD_BACKEND_URL;
-    }
-
-    // 4. When accessed on local LAN IP, route to same host on port 8000
+    if (envUrl) return envUrl;
     if (host !== 'localhost' && host !== '127.0.0.1') {
       return `${protocol}//${host}:8000`;
     }
+    return 'http://localhost:8000';
   }
 
-  return 'http://localhost:8000';
+  if (envUrl && !isStaleOrLocalUrl(envUrl)) return envUrl;
+  if (process.env.VERCEL === '1' || process.env.NEXT_PUBLIC_VERCEL_ENV) {
+    return CLOUD_BACKEND_URL;
+  }
+  return envUrl || CLOUD_BACKEND_URL;
 }
 
-export const API_BASE_URL = 
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' && window.location?.hostname?.includes('vercel.app')
-    ? CLOUD_BACKEND_URL
-    : (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-        ? `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`
-        : 'http://localhost:8000'));
+if (typeof window !== 'undefined') {
+  setTimeout(() => warmUpCloudBackend(), 50);
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export function getPortalUrl(port: number, path: string = ''): string {
   // If explicitly configured in environment
@@ -135,8 +168,13 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   let finalUrl = url;
   if (!finalUrl.startsWith('http')) {
     finalUrl = `${getApiBaseUrl()}${finalUrl}`;
-  } else if (typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('vercel.app')) {
-    finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, `${window.location.protocol || 'http:'}//${window.location.hostname}:8000`);
+  } else if (typeof window !== 'undefined' && window.location?.hostname) {
+    const h = window.location.hostname;
+    if (h.includes('vercel.app')) {
+      finalUrl = finalUrl.replace(/^https?:\/\/(localhost|127\.0\.0\.1):8000/i, getApiBaseUrl()).replace(/^https?:\/\/[a-z0-9.-]+\.ngrok-free\.(dev|app)/i, getApiBaseUrl());
+    } else if (h !== 'localhost' && h !== '127.0.0.1') {
+      finalUrl = finalUrl.replace(/https?:\/\/(localhost|127\.0\.0\.1):8000/g, `${window.location.protocol || 'http:'}//${h}:8000`);
+    }
   }
 
   const response = await fetch(finalUrl, { ...options, headers });
@@ -193,17 +231,21 @@ export async function authFetchWithRetry(
   options: RequestInit = {},
   retryOptions: RetryOptions = {}
 ): Promise<Response> {
-  const retries = retryOptions.maxRetries ?? retryOptions.retries ?? 3;
-  const backoffMs = retryOptions.delayMs ?? retryOptions.backoffMs ?? 400;
+  const isCloud = getApiBaseUrl().includes('onrender.com');
+  const retries = retryOptions.maxRetries ?? retryOptions.retries ?? (isCloud ? 4 : 3);
+  const backoffMs = retryOptions.delayMs ?? retryOptions.backoffMs ?? (isCloud ? 1500 : 400);
   const retryOnStatus = retryOptions.retryOnStatus ?? [502, 503, 504];
   const onRetry = retryOptions.onRetry;
 
   let lastError: any = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await authFetch(url, options);
+      const reqOptions = !options.signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as any).timeout === 'function'
+        ? { ...options, signal: (AbortSignal as any).timeout(isCloud ? 25000 : 12000) }
+        : options;
+      const res = await authFetch(url, reqOptions);
       if (retryOnStatus.includes(res.status) && attempt < retries) {
-        const delay = backoffMs * Math.pow(1.8, attempt);
+        const delay = Math.min(8000, backoffMs * Math.pow(1.6, attempt));
         if (onRetry) onRetry(attempt + 1, new Error(`Server returned HTTP ${res.status}`));
         await new Promise(r => setTimeout(r, delay));
         continue;
@@ -212,7 +254,7 @@ export async function authFetchWithRetry(
     } catch (err: any) {
       lastError = err;
       if (attempt < retries) {
-        const delay = backoffMs * Math.pow(1.8, attempt);
+        const delay = Math.min(8000, backoffMs * Math.pow(1.6, attempt));
         if (onRetry) onRetry(attempt + 1, err);
         await new Promise(r => setTimeout(r, delay));
       }
@@ -295,6 +337,6 @@ export function formatISTDateTime(dateInput?: string | Date | null): string {
       hour12: true
     }).format(d);
   } catch {
-    return ${d.toLocaleDateString()} ;
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }
 }

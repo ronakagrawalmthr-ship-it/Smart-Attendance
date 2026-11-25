@@ -42,7 +42,7 @@ export default function StudentHome() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: identifier.trim(), password })
-      }, { maxRetries: 2, delayMs: 600 });
+      });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
