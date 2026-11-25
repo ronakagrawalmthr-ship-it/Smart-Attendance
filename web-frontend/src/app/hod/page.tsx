@@ -145,6 +145,7 @@ export default function HODDashboard() {
           day_of_week: slotDay,
           start_time: slotStartTime,
           end_time: slotEndTime,
+          duration_minutes: computeMinutesDiff(slotStartTime, slotEndTime) || undefined,
           custom_subject_name: slotSubject.trim(),
           custom_teacher_name: slotTeacher.trim() || 'Faculty Coordinator',
           room_number: slotRoom.trim() || 'LH-101',
@@ -544,6 +545,18 @@ export default function HODDashboard() {
                 </div>
               </div>
 
+              <TimetableDurationPolicyBar
+                branch={ttBranch}
+                semester={ttSemester}
+                section={ttSection}
+                apiBaseUrl={API_BASE_URL}
+                token={getHodToken()}
+                onApplied={(msg) => {
+                  setAdminNotice(msg);
+                  fetchTimetable();
+                }}
+              />
+
               {/* Day Selection Tabs */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1">
                 {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => {
@@ -603,9 +616,14 @@ export default function HODDashboard() {
                       >
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-mono font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
-                              <Clock size={11} className="text-stone-400" /> {slot.start_time} - {slot.end_time}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[11px] font-mono font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
+                                <Clock size={11} className="text-stone-400" /> {slot.start_time} - {slot.end_time}
+                              </span>
+                              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">
+                                {slot.duration_minutes || 60} min
+                              </span>
+                            </div>
                             <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
                               slot.session_type === 'lab' 
                                 ? 'bg-purple-50 text-purple-700 border border-purple-200'
@@ -799,6 +817,49 @@ export default function HODDashboard() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                  Quick Lecture Duration (Auto-sets End Time)
+                </label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[30, 40, 45, 50, 60, 90, 120].map((mins) => {
+                    const activeDur = computeMinutesDiff(slotStartTime, slotEndTime) === mins;
+                    return (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          const nextEnd = addMinutesToTimeLabel(slotStartTime, mins);
+                          if (nextEnd) setSlotEndTime(nextEnd);
+                        }}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
+                          activeDur
+                            ? 'bg-stone-900 text-white shadow-xs'
+                            : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    );
+                  })}
+                  <div className="inline-flex items-center gap-1 bg-stone-50 border border-stone-200 rounded-xl px-2 py-1">
+                    <input
+                      type="number"
+                      min={10}
+                      max={480}
+                      value={computeMinutesDiff(slotStartTime, slotEndTime) || 60}
+                      onChange={(e) => {
+                        const mins = Math.max(10, Math.min(480, parseInt(e.target.value, 10) || 50));
+                        const nextEnd = addMinutesToTimeLabel(slotStartTime, mins);
+                        if (nextEnd) setSlotEndTime(nextEnd);
+                      }}
+                      className="w-12 bg-white border border-stone-200 rounded px-1 py-0.5 text-[11px] font-bold text-center text-stone-800"
+                    />
+                    <span className="text-[10px] font-bold text-stone-500">min</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">Start Time</label>
@@ -806,7 +867,13 @@ export default function HODDashboard() {
                     type="text"
                     required
                     value={slotStartTime}
-                    onChange={(e) => setSlotStartTime(e.target.value)}
+                    onChange={(e) => {
+                      const prevDur = computeMinutesDiff(slotStartTime, slotEndTime) || 60;
+                      const nextStart = e.target.value;
+                      setSlotStartTime(nextStart);
+                      const nextEnd = addMinutesToTimeLabel(nextStart, prevDur);
+                      if (nextEnd) setSlotEndTime(nextEnd);
+                    }}
                     placeholder="09:00 AM"
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3 py-2 text-xs font-semibold text-stone-800"
                   />
@@ -818,7 +885,7 @@ export default function HODDashboard() {
                     required
                     value={slotEndTime}
                     onChange={(e) => setSlotEndTime(e.target.value)}
-                    placeholder="10:00 AM"
+                    placeholder="09:50 AM"
                     className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-3 py-2 text-xs font-semibold text-stone-800"
                   />
                 </div>
@@ -943,6 +1010,219 @@ export default function HODDashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function parseTimeLabelToMins(tStr: string): number | null {
+  if (!tStr) return null;
+  const s = tStr.trim().toUpperCase();
+  const ampm = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+  if (ampm) {
+    let h = parseInt(ampm[1], 10);
+    const m = parseInt(ampm[2], 10);
+    if (h < 1 || h > 12 || m < 0 || m > 59) return null;
+    if (ampm[3] === 'AM') {
+      if (h === 12) h = 0;
+    } else if (h !== 12) {
+      h += 12;
+    }
+    return h * 60 + m;
+  }
+  const h24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (h24) {
+    const h = parseInt(h24[1], 10);
+    const m = parseInt(h24[2], 10);
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+  }
+  return null;
+}
+
+function addMinutesToTimeLabel(startStr: string, mins: number): string | null {
+  const s = parseTimeLabelToMins(startStr);
+  if (s === null || !Number.isFinite(mins) || mins <= 0) return null;
+  const norm = ((Math.round(s + mins) % 1440) + 1440) % 1440;
+  const h24 = Math.floor(norm / 60);
+  const mm = norm % 60;
+  const mer = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${mer}`;
+}
+
+function computeMinutesDiff(startStr: string, endStr: string): number | null {
+  const s = parseTimeLabelToMins(startStr);
+  const e = parseTimeLabelToMins(endStr);
+  if (s !== null && e !== null && e > s) return e - s;
+  return null;
+}
+
+function TimetableDurationPolicyBar({
+  branch,
+  semester,
+  section,
+  apiBaseUrl,
+  token,
+  onApplied,
+}: {
+  branch: string;
+  semester: number;
+  section: string;
+  apiBaseUrl: string;
+  token: string | null;
+  onApplied: (msg: string) => void;
+}) {
+  const [lectureMins, setLectureMins] = useState<number>(60);
+  const [labMins, setLabMins] = useState<number>(120);
+  const [dayStart, setDayStart] = useState<string>('09:00 AM');
+  const [breakMins, setBreakMins] = useState<number>(0);
+  const [resequence, setResequence] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!branch) return;
+    fetch(`${apiBaseUrl}/timetable/config?branch=${encodeURIComponent(branch)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setLectureMins(Number(cfg.default_lecture_minutes) || 60);
+        setLabMins(Number(cfg.default_lab_minutes) || 120);
+        if (cfg.day_start_time) setDayStart(cfg.day_start_time);
+        setBreakMins(Number(cfg.break_minutes) || 0);
+      })
+      .catch(() => {});
+  }, [apiBaseUrl, branch]);
+
+  const handleApply = async (applyToExisting: boolean) => {
+    setSaving(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${apiBaseUrl}/timetable/config`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          branch: branch || 'default',
+          default_lecture_minutes: Math.max(10, Math.min(360, Number(lectureMins) || 60)),
+          default_lab_minutes: Math.max(15, Math.min(480, Number(labMins) || 120)),
+          default_tutorial_minutes: Math.max(10, Math.min(360, Number(lectureMins) || 60)),
+          day_start_time: dayStart.trim() || '09:00 AM',
+          break_minutes: Math.max(0, Math.min(120, Number(breakMins) || 0)),
+          apply_to_existing_slots: applyToExisting,
+          resequence_times: applyToExisting ? resequence : false,
+          semester: applyToExisting ? semester : null,
+          section: applyToExisting ? section : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        onApplied(`✓ ${data.message || `Default lecture duration set to ${lectureMins} min.`}`);
+      } else {
+        alert(data.detail || 'Could not update lecture duration settings.');
+      }
+    } catch {
+      alert('Network error updating lecture duration settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white/90 border border-stone-200/80 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-xs font-extrabold text-stone-900 flex items-center gap-1.5">
+            <Clock className="h-4 w-4 text-blue-600" />
+            <span>Lecture Duration Policy (Minutes per Lecture)</span>
+          </h3>
+          <p className="text-[11px] text-stone-500 mt-0.5">
+            Set custom lecture duration (40, 45, 50, 60 min or any number) for {branch} and Teacher Portal defaults.
+          </p>
+        </div>
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-stone-900 text-white">
+          Default: {lectureMins} min
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {[30, 40, 45, 50, 60, 75, 90].map((mins) => (
+          <button
+            key={mins}
+            type="button"
+            onClick={() => setLectureMins(mins)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              lectureMins === mins
+                ? 'bg-stone-900 text-white shadow-xs'
+                : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            {mins} min
+          </button>
+        ))}
+        <div className="inline-flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1">
+          <span className="text-[11px] font-bold text-stone-500">Custom:</span>
+          <input
+            type="number"
+            min={10}
+            max={360}
+            value={lectureMins}
+            onChange={(e) => setLectureMins(parseInt(e.target.value, 10) || 50)}
+            className="w-12 bg-white border border-stone-200 rounded-lg px-1.5 py-0.5 text-xs font-bold text-center text-stone-900"
+          />
+          <span className="text-[11px] font-semibold text-stone-500">min</span>
+        </div>
+        <div className="inline-flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1">
+          <span className="text-[11px] font-bold text-stone-500">Start:</span>
+          <input
+            type="text"
+            value={dayStart}
+            onChange={(e) => setDayStart(e.target.value)}
+            className="w-20 bg-white border border-stone-200 rounded-lg px-1.5 py-0.5 text-xs font-bold text-center text-stone-900"
+          />
+        </div>
+        <div className="inline-flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1">
+          <span className="text-[11px] font-bold text-stone-500">Break:</span>
+          <input
+            type="number"
+            min={0}
+            max={120}
+            value={breakMins}
+            onChange={(e) => setBreakMins(parseInt(e.target.value, 10) || 0)}
+            className="w-12 bg-white border border-stone-200 rounded-lg px-1.5 py-0.5 text-xs font-bold text-center text-stone-900"
+          />
+          <span className="text-[11px] font-semibold text-stone-500">m</span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-100">
+        <label className="inline-flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={resequence}
+            onChange={(e) => setResequence(e.target.checked)}
+            className="rounded border-stone-300"
+          />
+          <span>Recalculate existing slot timings from {dayStart} (+{breakMins}m break)</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleApply(false)}
+            className="px-3.5 py-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition disabled:opacity-50"
+          >
+            Save Default Duration
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleApply(true)}
+            className="px-4 py-2 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
+          >
+            {saving ? 'Updating...' : `Apply ${lectureMins}m to Sem ${semester}-${section} Slots`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

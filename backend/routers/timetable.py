@@ -2,13 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 import csv
 import io
 import json
 import os
+import re
 import urllib.request
 import urllib.error
 from jose import jwt, JWTError
@@ -60,7 +61,7 @@ class SlotCreateRequest(BaseModel):
     day_of_week: str
     slot_index: int = 1
     start_time: str
-    end_time: str
+    end_time: Optional[str] = None
     duration_minutes: Optional[int] = None
     credit_weight: Optional[int] = None
     subject_id: Optional[int] = None
@@ -69,7 +70,19 @@ class SlotCreateRequest(BaseModel):
     custom_teacher_name: Optional[str] = None
     room_number: str = "LH-101"
     session_type: str = "lecture"
-    sub_batch: Optional[str] = "All" 
+    sub_batch: Optional[str] = "All"
+
+class TimetableConfigPayload(BaseModel):
+    branch: str = "default"
+    default_lecture_minutes: int = 60
+    default_lab_minutes: int = 120
+    default_tutorial_minutes: int = 60
+    day_start_time: str = "09:00 AM"
+    break_minutes: int = 0
+    apply_to_existing_slots: bool = False
+    resequence_times: bool = False
+    semester: Optional[int] = None
+    section: Optional[str] = None
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'model'
@@ -95,6 +108,107 @@ def parse_time_str_to_minutes(t_str: str) -> Optional[int]:
         return dt.hour * 60 + dt.minute
     except Exception:
         return None
+
+
+def format_minutes_to_time_str(total_mins: int) -> str:
+    """Converts minutes from midnight into '09:50 AM' format."""
+    norm = int(total_mins) % (24 * 60)
+    hour24, minute = divmod(norm, 60)
+    return datetime(2000, 1, 1, hour24, minute).strftime("%I:%M %p")
+
+
+def _resolve_slot_timing(
+    start_time: str,
+    end_time: Optional[str],
+    duration_minutes: Optional[int],
+    credit_weight: Optional[int],
+    session_type: str,
+    default_lecture_minutes: int = 60,
+    default_lab_minutes: int = 120,
+    default_tutorial_minutes: int = 60,
+) -> tuple[int, int, str]:
+    """Resolves validated (duration_minutes, credit_weight, end_time) consistently."""
+    sess_norm = (session_type or "lecture").strip().lower()
+    is_lab = sess_norm in ("lab", "practical", "laboratory")
+    fallback_dur = (
+        default_lab_minutes if is_lab
+        else (default_tutorial_minutes if sess_norm == "tutorial" else default_lecture_minutes)
+    )
+
+    s_min = parse_time_str_to_minutes(start_time)
+    e_min = parse_time_str_to_minutes(end_time or "")
+    calc_dur = (e_min - s_min) if (e_min is not None and s_min is not None and e_min > s_min) else None
+
+    if duration_minutes is not None:
+        if duration_minutes < 10 or duration_minutes > 480:
+            raise HTTPException(status_code=400, detail="Lecture duration must be between 10 and 480 minutes.")
+        final_dur = int(duration_minutes)
+    elif calc_dur is not None:
+        final_dur = int(calc_dur)
+    else:
+        final_dur = int(fallback_dur)
+
+    if s_min is not None and (not end_time or not end_time.strip() or (duration_minutes is not None and (e_min is None or e_min <= s_min))):
+        resolved_end = format_minutes_to_time_str(s_min + final_dur)
+    elif end_time and end_time.strip():
+        resolved_end = end_time.strip()
+    elif s_min is not None:
+        resolved_end = format_minutes_to_time_str(s_min + final_dur)
+    else:
+        resolved_end = "10:00 AM"
+
+    final_credit = credit_weight or (
+        3 if is_lab and final_dur >= 180 else
+        2 if is_lab and final_dur >= 100 else 1
+    )
+    return final_dur, int(final_credit), resolved_end
+
+
+DEFAULT_TIMETABLE_CONFIG: Dict[str, Any] = {
+    "default_lecture_minutes": 60,
+    "default_lab_minutes": 120,
+    "default_tutorial_minutes": 60,
+    "day_start_time": "09:00 AM",
+    "break_minutes": 0,
+}
+
+
+def _timetable_config_key(branch: Optional[str]) -> str:
+    b = (branch or "").strip()
+    if not b or b.lower() in ("default", "all"):
+        return "timetable_config_default"
+    slug = re.sub(r"[^a-z0-9]+", "_", b.lower()).strip("_")
+    return f"timetable_config_{slug or 'default'}"
+
+
+def _load_timetable_config(db: Session, branch: Optional[str] = None) -> Dict[str, Any]:
+    keys_to_try = [_timetable_config_key(branch)]
+    if keys_to_try[0] != "timetable_config_default":
+        keys_to_try.append("timetable_config_default")
+
+    for k in keys_to_try:
+        row = db.query(models.SystemSetting).filter(models.SystemSetting.key == k).first()
+        if row and row.value:
+            try:
+                parsed = json.loads(row.value)
+                merged = dict(DEFAULT_TIMETABLE_CONFIG)
+                merged.update({kk: parsed[kk] for kk in DEFAULT_TIMETABLE_CONFIG if kk in parsed})
+                merged["branch"] = (branch or "default").strip() or "default"
+                return merged
+            except Exception:
+                pass
+    cfg = dict(DEFAULT_TIMETABLE_CONFIG)
+    cfg["branch"] = (branch or "default").strip() or "default"
+    return cfg
+
+
+def _save_timetable_config(db: Session, key: str, data: Dict[str, Any]) -> None:
+    payload_str = json.dumps(data)
+    row = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+    if row:
+        row.value = payload_str
+    else:
+        db.add(models.SystemSetting(key=key, value=payload_str))
 
 # ==============================================================================
 # 1. WEEKLY TIMETABLE RETRIEVAL & CRUD
@@ -281,13 +395,16 @@ def create_or_update_slot(
     if current_user.role not in [models.RoleEnum.hod, models.RoleEnum.admin, models.RoleEnum.teacher]:
         raise HTTPException(status_code=403, detail="Faculty or HOD authorization required.")
 
-    s_min = parse_time_str_to_minutes(payload.start_time)
-    e_min = parse_time_str_to_minutes(payload.end_time)
-    calc_dur = (e_min - s_min) if (e_min and s_min and e_min > s_min) else 60
-    final_dur = payload.duration_minutes or calc_dur
-    final_credit = payload.credit_weight or (
-        3 if payload.session_type == 'practical' and final_dur >= 180 else
-        2 if payload.session_type == 'practical' and final_dur >= 100 else 1
+    cfg = _load_timetable_config(db, payload.branch)
+    final_dur, final_credit, resolved_end = _resolve_slot_timing(
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        duration_minutes=payload.duration_minutes,
+        credit_weight=payload.credit_weight,
+        session_type=payload.session_type,
+        default_lecture_minutes=int(cfg.get("default_lecture_minutes", 60)),
+        default_lab_minutes=int(cfg.get("default_lab_minutes", 120)),
+        default_tutorial_minutes=int(cfg.get("default_tutorial_minutes", 60)),
     )
 
     slot = models.TimetableSlot(
@@ -297,7 +414,7 @@ def create_or_update_slot(
         day_of_week=payload.day_of_week,
         slot_index=payload.slot_index,
         start_time=payload.start_time,
-        end_time=payload.end_time,
+        end_time=resolved_end,
         duration_minutes=final_dur,
         credit_weight=final_credit,
         subject_id=payload.subject_id,
@@ -312,7 +429,7 @@ def create_or_update_slot(
     db.commit()
     db.refresh(slot)
 
-    return {"success": True, "slot_id": slot.id, "message": "Timetable slot saved successfully."}
+    return {"success": True, "slot_id": slot.id, "duration_minutes": final_dur, "end_time": resolved_end, "message": "Timetable slot saved successfully."}
 
 @router.put("/slot/{slot_id}")
 def update_existing_slot(
@@ -331,13 +448,16 @@ def update_existing_slot(
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found.")
 
-    s_min = parse_time_str_to_minutes(payload.start_time)
-    e_min = parse_time_str_to_minutes(payload.end_time)
-    calc_dur = (e_min - s_min) if (e_min and s_min and e_min > s_min) else 60
-    final_dur = payload.duration_minutes or calc_dur
-    final_credit = payload.credit_weight or (
-        3 if payload.session_type == 'practical' and final_dur >= 180 else
-        2 if payload.session_type == 'practical' and final_dur >= 100 else 1
+    cfg = _load_timetable_config(db, payload.branch)
+    final_dur, final_credit, resolved_end = _resolve_slot_timing(
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        duration_minutes=payload.duration_minutes,
+        credit_weight=payload.credit_weight,
+        session_type=payload.session_type,
+        default_lecture_minutes=int(cfg.get("default_lecture_minutes", 60)),
+        default_lab_minutes=int(cfg.get("default_lab_minutes", 120)),
+        default_tutorial_minutes=int(cfg.get("default_tutorial_minutes", 60)),
     )
 
     slot.branch = payload.branch
@@ -346,7 +466,7 @@ def update_existing_slot(
     slot.day_of_week = payload.day_of_week
     slot.slot_index = payload.slot_index
     slot.start_time = payload.start_time
-    slot.end_time = payload.end_time
+    slot.end_time = resolved_end
     slot.duration_minutes = final_dur
     slot.credit_weight = final_credit
     slot.subject_id = payload.subject_id
@@ -359,7 +479,7 @@ def update_existing_slot(
 
     db.commit()
     db.refresh(slot)
-    return {"success": True, "slot_id": slot.id, "message": "Slot updated with flexible timing."}
+    return {"success": True, "slot_id": slot.id, "duration_minutes": final_dur, "end_time": resolved_end, "message": "Slot updated with flexible timing."}
 
 @router.delete("/slot/{slot_id}")
 def delete_slot(
@@ -384,6 +504,109 @@ def delete_slot(
     return {"success": True, "message": "Slot deleted successfully."}
 
 # ==============================================================================
+# 1B. LECTURE DURATION & BELL SCHEDULE POLICY
+# ==============================================================================
+
+@router.get("/config")
+def get_timetable_config(
+    branch: Optional[str] = None,
+    db: Session = Depends(database.get_db)
+):
+    """Returns configured lecture/lab/tutorial durations and bell start defaults."""
+    cfg = _load_timetable_config(db, branch)
+    return {"success": True, **cfg}
+
+
+@router.put("/config")
+def update_timetable_config(
+    payload: TimetableConfigPayload,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Persists department or institution-wide default lecture durations (e.g. 40, 45, 50, 60 min)
+    and optionally updates existing timetable slots to match the new duration.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if current_user.role not in [models.RoleEnum.hod, models.RoleEnum.admin]:
+        raise HTTPException(status_code=403, detail="HOD or Admin permission required.")
+
+    if not (10 <= payload.default_lecture_minutes <= 360):
+        raise HTTPException(status_code=400, detail="Default lecture duration must be between 10 and 360 minutes.")
+    if not (15 <= payload.default_lab_minutes <= 480):
+        raise HTTPException(status_code=400, detail="Default lab duration must be between 15 and 480 minutes.")
+    if not (10 <= payload.default_tutorial_minutes <= 360):
+        raise HTTPException(status_code=400, detail="Default tutorial duration must be between 10 and 360 minutes.")
+    if not (0 <= payload.break_minutes <= 120):
+        raise HTTPException(status_code=400, detail="Break duration must be between 0 and 120 minutes.")
+
+    stored = {
+        "default_lecture_minutes": int(payload.default_lecture_minutes),
+        "default_lab_minutes": int(payload.default_lab_minutes),
+        "default_tutorial_minutes": int(payload.default_tutorial_minutes),
+        "day_start_time": (payload.day_start_time or "09:00 AM").strip(),
+        "break_minutes": int(payload.break_minutes),
+    }
+    _save_timetable_config(db, _timetable_config_key(payload.branch), stored)
+
+    updated_slots = 0
+    if payload.apply_to_existing_slots:
+        q = db.query(models.TimetableSlot)
+        b_clean = (payload.branch or "").strip()
+        if b_clean and b_clean.lower() not in ("default", "all"):
+            q = q.filter(models.TimetableSlot.branch == b_clean)
+        if payload.semester is not None:
+            q = q.filter(models.TimetableSlot.semester == int(payload.semester))
+        if payload.section and payload.section.strip().lower() != "all":
+            q = q.filter(models.TimetableSlot.section == payload.section.strip().upper())
+
+        slots = q.all()
+        grouped_days: Dict[tuple, List[models.TimetableSlot]] = {}
+        for slot in slots:
+            key = (slot.branch, slot.semester, slot.section, slot.day_of_week)
+            grouped_days.setdefault(key, []).append(slot)
+
+        base_start_min = parse_time_str_to_minutes(stored["day_start_time"]) or (9 * 60)
+        for day_slots in grouped_days.values():
+            day_slots.sort(key=lambda x: (x.slot_index or 0, parse_time_str_to_minutes(x.start_time or "") or 0, x.id))
+            cursor = base_start_min
+            for slot in day_slots:
+                stype = (slot.session_type or "lecture").strip().lower()
+                is_lab = stype in ("lab", "practical", "laboratory")
+                target_dur = (
+                    stored["default_lab_minutes"] if is_lab
+                    else (stored["default_tutorial_minutes"] if stype == "tutorial" else stored["default_lecture_minutes"])
+                )
+                slot.duration_minutes = target_dur
+                slot.credit_weight = (
+                    3 if is_lab and target_dur >= 180 else
+                    2 if is_lab and target_dur >= 100 else 1
+                )
+                if payload.resequence_times:
+                    slot.start_time = format_minutes_to_time_str(cursor)
+                    slot.end_time = format_minutes_to_time_str(cursor + target_dur)
+                    cursor += target_dur + stored["break_minutes"]
+                else:
+                    s_min = parse_time_str_to_minutes(slot.start_time or "")
+                    if s_min is not None:
+                        slot.end_time = format_minutes_to_time_str(s_min + target_dur)
+                updated_slots += 1
+
+    db.commit()
+    return {
+        "success": True,
+        "branch": (payload.branch or "default").strip() or "default",
+        **stored,
+        "updated_slots": updated_slots,
+        "message": (
+            f"Lecture duration set to {stored['default_lecture_minutes']} min and updated {updated_slots} timetable slots."
+            if payload.apply_to_existing_slots
+            else f"Default lecture duration saved as {stored['default_lecture_minutes']} minutes."
+        ),
+    }
+
+# ==============================================================================
 # 2. BULK CSV TIMETABLE IMPORT & TEMPLATE DOWNLOAD
 # ==============================================================================
 
@@ -395,7 +618,7 @@ def download_timetable_template(
     Downloads standardized CSV template for HODs to easily bulk upload departmental timetables.
     Dynamically pulls registered subjects and teachers where available.
     """
-    headers = ["day_of_week", "slot_index", "start_time", "end_time", "subject_name", "teacher_name", "room_number", "session_type"]
+    headers = ["day_of_week", "slot_index", "start_time", "end_time", "subject_name", "teacher_name", "room_number", "session_type", "duration_minutes"]
     
     db_subjects = [s.name for s in db.query(models.Subject).limit(4).all()]
     db_teachers = [t.full_name for t in db.query(models.TeacherProfile).limit(3).all()]
@@ -407,11 +630,11 @@ def download_timetable_template(
     t2 = db_teachers[1] if len(db_teachers) > 1 else "Faculty Member 2"
 
     sample_rows = [
-        ["Monday", "1", "09:00 AM", "10:00 AM", sub1, t1, "LH-101", "lecture"],
-        ["Monday", "2", "10:15 AM", "11:15 AM", sub2, t2, "LH-101", "lecture"],
-        ["Monday", "3", "11:30 AM", "12:30 PM", sub3, t1, "LH-101", "lecture"],
-        ["Monday", "4", "01:30 PM", "03:30 PM", f"{sub1} Practical", t2, "Lab-1", "practical"],
-        ["Tuesday", "1", "09:00 AM", "10:00 AM", sub2, t1, "LH-101", "lecture"],
+        ["Monday", "1", "09:00 AM", "09:50 AM", sub1, t1, "LH-101", "lecture", "50"],
+        ["Monday", "2", "09:50 AM", "10:40 AM", sub2, t2, "LH-101", "lecture", "50"],
+        ["Monday", "3", "10:50 AM", "11:40 AM", sub3, t1, "LH-101", "lecture", "50"],
+        ["Monday", "4", "01:30 PM", "03:30 PM", f"{sub1} Practical", t2, "Lab-1", "practical", "120"],
+        ["Tuesday", "1", "09:00 AM", "09:50 AM", sub2, t1, "LH-101", "lecture", "50"],
     ]
 
     out = io.StringIO()
@@ -446,20 +669,34 @@ async def upload_bulk_timetable_csv(
     decoded = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(decoded))
 
+    cfg = _load_timetable_config(db, branch)
     imported_count = 0
     for row in reader:
         day = (row.get("day_of_week") or "").strip().capitalize()
         if day not in DAYS_ORDER:
             continue
 
-        start_t = (row.get("start_time") or "09:00 AM").strip()
-        end_t = (row.get("end_time") or "10:00 AM").strip()
+        start_t = (row.get("start_time") or cfg.get("day_start_time") or "09:00 AM").strip()
+        raw_end = (row.get("end_time") or "").strip() or None
+        raw_dur_str = (row.get("duration_minutes") or "").strip()
+        raw_dur = int(raw_dur_str) if raw_dur_str.isdigit() else None
         subj_name = (row.get("subject_name") or "Core Class").strip()
         teacher_name = (row.get("teacher_name") or "").strip()
         room = (row.get("room_number") or "LH-101").strip()
         sess_type = (row.get("session_type") or "lecture").strip().lower()
         slot_idx = int(row.get("slot_index") or (imported_count + 1))
         sub_batch = (row.get("sub_batch") or "All").strip() or "All"
+
+        final_dur, final_credit, resolved_end = _resolve_slot_timing(
+            start_time=start_t,
+            end_time=raw_end,
+            duration_minutes=raw_dur,
+            credit_weight=None,
+            session_type=sess_type,
+            default_lecture_minutes=int(cfg.get("default_lecture_minutes", 60)),
+            default_lab_minutes=int(cfg.get("default_lab_minutes", 120)),
+            default_tutorial_minutes=int(cfg.get("default_tutorial_minutes", 60)),
+        )
 
         # Check for subject match in DB
         matched_sub = db.query(models.Subject).filter(models.Subject.name.ilike(f"%{subj_name}%")).first()
@@ -471,7 +708,9 @@ async def upload_bulk_timetable_csv(
             day_of_week=day,
             slot_index=slot_idx,
             start_time=start_t,
-            end_time=end_t,
+            end_time=resolved_end,
+            duration_minutes=final_dur,
+            credit_weight=final_credit,
             subject_id=matched_sub.id if matched_sub else None,
             custom_subject_name=subj_name,
             custom_teacher_name=teacher_name,

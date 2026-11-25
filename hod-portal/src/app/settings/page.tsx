@@ -326,9 +326,17 @@ export default function HODSettingsPage() {
           {/* Card 2: Department Defaulter Policy & Alerts */}
           <div className="rounded-3xl border border-stone-200/80 bg-white/85 p-6 shadow-sm backdrop-blur-xl flex flex-col justify-between">
             <div>
-              <div className="flex items-center space-x-2.5 mb-5 pb-4 border-b border-stone-200/80">
-                <Sliders className="h-5 w-5 text-teal-600" />
-                <h2 className="text-base font-extrabold text-stone-900">Department Defaulter Policies</h2>
+              <div className="flex items-center justify-between mb-5 pb-4 border-b border-stone-200/80">
+                <div className="flex items-center space-x-2.5">
+                  <Sliders className="h-5 w-5 text-teal-600" />
+                  <h2 className="text-base font-extrabold text-stone-900">Department Defaulter Policies</h2>
+                </div>
+                <Link
+                  href="/timetable"
+                  className="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-xl hover:bg-teal-100 transition"
+                >
+                  Set Lecture Duration & Timetable →
+                </Link>
               </div>
 
               <div className="space-y-6">

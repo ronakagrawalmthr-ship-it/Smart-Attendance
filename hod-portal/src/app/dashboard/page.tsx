@@ -497,13 +497,21 @@ export default function HODDashboard() {
             <h2 className="text-sm font-bold text-stone-900">{departmentName || 'Department'} Semester Turnout Breakdown</h2>
             <p className="text-xs text-stone-400 mt-0.5">Classroom & Lab performance by batch coordinator</p>
           </div>
-          <Link
-            href="/classes"
-            className="text-xs font-semibold text-teal-700 hover:text-teal-900 flex items-center space-x-1"
-          >
-            <span>View All Classes</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          <div className="flex items-center space-x-3">
+            <Link
+              href="/timetable"
+              className="text-xs font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 border border-teal-200/80 px-3 py-1 rounded-full transition"
+            >
+              Timetable & Duration
+            </Link>
+            <Link
+              href="/classes"
+              className="text-xs font-semibold text-teal-700 hover:text-teal-900 flex items-center space-x-1"
+            >
+              <span>View All Classes</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
 
         {semesterStats.length === 0 ? (

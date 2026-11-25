@@ -233,6 +233,7 @@ export default function AppleDeluxeShell({
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Timetable', href: '/timetable', icon: Calendar },
     { label: 'Classes', href: '/classes', icon: Calendar },
     { label: 'Students', href: '/students', icon: Users },
     { label: 'Faculty', href: '/faculty', icon: GraduationCap },
