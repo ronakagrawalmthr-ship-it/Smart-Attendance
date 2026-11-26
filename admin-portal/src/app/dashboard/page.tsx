@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { 
   Building2, 
@@ -50,6 +51,21 @@ export default function AdminDashboard() {
   const [greetingIcon, setGreetingIcon] = useState<string>(initialGreeting.icon);
   const [activeSchedule, setActiveSchedule] = useState<string>('Campus Lectures');
   const [isAchieversModalOpen, setIsAchieversModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isAchieversModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isAchieversModalOpen]);
   const [matrices, setMatrices] = useState<any[]>([]);
 
   const [stats, setStats] = useState({
@@ -568,70 +584,74 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* 🏅 Top Achievers Merit List Modal */}
-      {isAchieversModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-stone-200/80 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-stone-100 flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="h-9 w-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Trophy className="h-5 w-5" />
+      {/* 🏅 Top Achievers Merit List Modal (Portalled to document.body) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        isAchieversModalOpen ? (
+          <div className="fixed inset-0 z-[9999] bg-stone-950/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0" onClick={() => setIsAchieversModalOpen(false)} />
+            <div className="relative z-10 bg-white rounded-3xl border border-stone-200/80 shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-5 border-b border-stone-100 flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                    <Trophy className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-stone-900">College Attendance Merit List</h3>
+                    <p className="text-xs text-stone-400">Top ranked students by overall attendance percentage</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-stone-900">College Attendance Merit List</h3>
-                  <p className="text-xs text-stone-400">Top ranked students by overall attendance percentage</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAchieversModalOpen(false)}
-                className="h-8 w-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto space-y-2">
-              {(kpiStats?.topAchievers || []).map((st: any, i: number) => (
-                <div 
-                  key={st.id || st.roll_number}
-                  className="flex items-center justify-between p-3.5 rounded-2xl hover:bg-stone-50 transition border border-stone-100"
+                <button
+                  type="button"
+                  onClick={() => setIsAchieversModalOpen(false)}
+                  className="h-8 w-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
                 >
-                  <div className="flex items-center space-x-3">
-                    <span className="text-sm font-black w-7 text-center text-stone-400">
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
-                    </span>
-                    <div className="h-9 w-9 rounded-full overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center border border-stone-200">
-                      {st.photo_thumbnail ? (
-                        <img src={st.photo_thumbnail} alt={st.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-xs font-bold text-stone-500">{st.name?.charAt(0)}</span>
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-stone-900">{st.name}</div>
-                      <div className="text-[10px] text-stone-400">{st.roll_number} • {st.branch} (Sem {st.semester}-{st.section})</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-black text-amber-600">{st.attendance_percentage}%</div>
-                    <div className="text-[10px] text-stone-400">{st.attended_classes}/{st.total_classes} classes</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
 
-            <div className="p-4 bg-stone-50 border-t border-stone-100 text-center">
-              <button
-                type="button"
-                onClick={() => setIsAchieversModalOpen(false)}
-                className="px-5 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition cursor-pointer"
-              >
-                Close Merit List
-              </button>
+              <div className="p-4 overflow-y-auto space-y-2">
+                {(kpiStats?.topAchievers || []).map((st: any, i: number) => (
+                  <div 
+                    key={st.id || st.roll_number}
+                    className="flex items-center justify-between p-3.5 rounded-2xl hover:bg-stone-50 transition border border-stone-100"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <span className="text-sm font-black w-7 text-center text-stone-400">
+                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                      </span>
+                      <div className="h-9 w-9 rounded-full overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center border border-stone-200">
+                        {st.photo_thumbnail ? (
+                          <img src={st.photo_thumbnail} alt={st.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-xs font-bold text-stone-500">{st.name?.charAt(0)}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-stone-900">{st.name}</div>
+                        <div className="text-[10px] text-stone-400">{st.roll_number} • {st.branch} (Sem {st.semester}-{st.section})</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-black text-amber-600">{st.attendance_percentage}%</div>
+                      <div className="text-[10px] text-stone-400">{st.attended_classes}/{st.total_classes} classes</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-4 bg-stone-50 border-t border-stone-100 text-center">
+                <button
+                  type="button"
+                  onClick={() => setIsAchieversModalOpen(false)}
+                  className="px-5 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition cursor-pointer"
+                >
+                  Close Merit List
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null,
+        document.body
       )}
       {/* 📋 Student Live-Feed Table Card (Exact match to Reference Image) */}
       <div className="rounded-3xl bg-white border border-stone-200/80 p-6 shadow-xs space-y-4">

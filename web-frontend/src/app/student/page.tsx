@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Clock, AlertCircle, ShieldCheck, MessageSquare, ChevronRight, RefreshCw, Settings, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
@@ -16,6 +17,22 @@ export default function StudentPortal() {
   const [standaloneUrl, setStandaloneUrl] = useState(getStudentPortalUrl());
 
   const [showAllLogs, setShowAllLogs] = useState(false);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (showGrievanceForm) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showGrievanceForm]);
 
   const [studentData, setStudentData] = useState<{
     name: string;
@@ -49,7 +66,7 @@ export default function StudentPortal() {
         const overall = data.metrics?.overall_percentage != null ? `${data.metrics.overall_percentage}%` : null;
         const sName = data.profile?.name || (typeof window !== 'undefined' ? localStorage.getItem('student_name') || '' : '');
         const sRoll = data.profile?.roll_number || (typeof window !== 'undefined' ? localStorage.getItem('student_roll') || '' : '');
-        
+
         if (typeof window !== 'undefined' && data.profile) {
           if (data.profile.name) localStorage.setItem('student_name', data.profile.name);
           if (data.profile.roll_number) localStorage.setItem('student_roll', data.profile.roll_number);
@@ -129,7 +146,7 @@ export default function StudentPortal() {
       </div>
 
       <div className="max-w-5xl mx-auto space-y-6">
-        
+
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
           <Link
@@ -180,8 +197,8 @@ export default function StudentPortal() {
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Overall Attendance</h3>
             <p className="text-4xl font-black text-stone-900">{studentData.overallAttendance ?? '0.0%'}</p>
             <div className="mt-4 w-full bg-stone-100 rounded-full h-2">
-              <div 
-                className="bg-emerald-500 h-2 rounded-full" 
+              <div
+                className="bg-emerald-500 h-2 rounded-full"
                 style={{ width: studentData.overallAttendance || '0%' }}
               />
             </div>
@@ -193,8 +210,8 @@ export default function StudentPortal() {
             <p className="text-xs text-stone-500 mt-2">Above 75% threshold requirement</p>
           </motion.div>
 
-          <motion.div 
-            whileHover={{ y: -3 }} 
+          <motion.div
+            whileHover={{ y: -3 }}
             onClick={() => setShowGrievanceForm(true)}
             className="bg-white/90 border border-stone-200/80 p-6 rounded-3xl shadow-sm relative overflow-hidden cursor-pointer hover:border-stone-300 transition-all"
           >
@@ -217,7 +234,7 @@ export default function StudentPortal() {
               </h2>
               <p className="text-xs text-stone-500 mt-0.5">Showing {showAllLogs ? studentData.recentLogs.length : Math.min(3, studentData.recentLogs.length)} of {studentData.recentLogs.length} verified sessions</p>
             </div>
-            <button 
+            <button
               onClick={() => setShowAllLogs(!showAllLogs)}
               className="px-3 py-1.5 rounded-2xl border border-stone-200 bg-stone-50 text-xs text-stone-700 hover:text-stone-900 hover:bg-stone-100 transition font-bold shadow-sm"
             >
@@ -239,11 +256,10 @@ export default function StudentPortal() {
                       <p className="text-[11px] text-stone-500">{log.date}</p>
                     </div>
                   </div>
-                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    log.status === 'Present' 
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
-                  }`}>
+                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${log.status === 'Present'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    }`}>
                     {log.status}
                   </div>
                 </div>
@@ -252,70 +268,74 @@ export default function StudentPortal() {
           </div>
         </div>
 
-        {/* Grievance Modal Overlay */}
-        <AnimatePresence>
-          {showGrievanceForm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
-              <motion.div 
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative space-y-4"
-              >
-                <h2 className="text-lg font-bold flex items-center text-stone-900">
-                  <AlertCircle className="mr-2 text-stone-700 h-5 w-5" /> Submit Grievance
-                </h2>
-                <p className="text-xs text-stone-500 leading-relaxed">If you believe you were falsely marked absent, please state your reason. It will be sent to the department faculty.</p>
-                
-                <form className="space-y-4" onSubmit={handleGrievanceSubmit}>
-                  {grievanceFeedback && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl">
-                      {grievanceFeedback}
+        {/* Grievance Modal Overlay (Portalled to document.body) */}
+        {mounted && typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {showGrievanceForm && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+                <div className="fixed inset-0" onClick={() => setShowGrievanceForm(false)} />
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative z-10 space-y-4"
+                >
+                  <h2 className="text-lg font-bold flex items-center text-stone-900">
+                    <AlertCircle className="mr-2 text-stone-700 h-5 w-5" /> Submit Grievance
+                  </h2>
+                  <p className="text-xs text-stone-500 leading-relaxed">If you believe you were falsely marked absent, please state your reason. It will be sent to the department faculty.</p>
+                  
+                  <form className="space-y-4" onSubmit={handleGrievanceSubmit}>
+                    {grievanceFeedback && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl">
+                        {grievanceFeedback}
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Session Date & Subject</label>
+                      <select 
+                        required 
+                        value={selectedSessionId}
+                        onChange={(e) => setSelectedSessionId(e.target.value)}
+                        className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white"
+                      >
+                        {studentData.recentLogs.length === 0 ? (
+                          <option value="">No past sessions found to dispute</option>
+                        ) : (
+                          studentData.recentLogs.map((l: any) => (
+                            <option key={l.session_id || l.id} value={l.session_id || l.id}>
+                              {l.date} - {l.subject} ({l.status})
+                            </option>
+                          ))
+                        )}
+                      </select>
                     </div>
-                  )}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Session Date & Subject</label>
-                    <select 
-                      required 
-                      value={selectedSessionId}
-                      onChange={(e) => setSelectedSessionId(e.target.value)}
-                      className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white"
-                    >
-                      {studentData.recentLogs.length === 0 ? (
-                        <option value="">No past sessions found to dispute</option>
-                      ) : (
-                        studentData.recentLogs.map((l: any) => (
-                          <option key={l.session_id || l.id} value={l.session_id || l.id}>
-                            {l.date} - {l.subject} ({l.status})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Reason / Explanation</label>
-                    <textarea 
-                      required 
-                      rows={3} 
-                      value={grievanceReason}
-                      onChange={(e) => setGrievanceReason(e.target.value)}
-                      className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white" 
-                      placeholder="State your reason (e.g. Present in class, device/network sync issue, duty leave)..."
-                    />
-                  </div>
-                  <div className="flex justify-end space-x-2.5 pt-2">
-                    <button type="button" onClick={() => setShowGrievanceForm(false)} className="px-4 py-2.5 text-xs font-bold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-2xl transition">
-                      Cancel
-                    </button>
-                    <button type="submit" disabled={isSubmittingGrievance} className="px-5 py-2.5 text-xs font-bold bg-stone-900 hover:bg-stone-800 text-white rounded-2xl transition shadow-sm">
-                      {isSubmittingGrievance ? 'Submitting...' : 'Submit Request'}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1">Reason / Explanation</label>
+                      <textarea 
+                        required 
+                        rows={3} 
+                        value={grievanceReason}
+                        onChange={(e) => setGrievanceReason(e.target.value)}
+                        className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white" 
+                        placeholder="State your reason (e.g. Present in class, device/network sync issue, duty leave)..."
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2.5 pt-2">
+                      <button type="button" onClick={() => setShowGrievanceForm(false)} className="px-4 py-2.5 text-xs font-bold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-2xl transition">
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={isSubmittingGrievance} className="px-5 py-2.5 text-xs font-bold bg-stone-900 hover:bg-stone-800 text-white rounded-2xl transition shadow-sm">
+                        {isSubmittingGrievance ? 'Submitting...' : 'Submit Request'}
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
       </div>
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { 
   Building2, 
@@ -99,6 +100,22 @@ export default function AllDepartmentsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteForce, setDeleteForce] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isModalOpen || deleteTarget) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isModalOpen, deleteTarget]);
 
   const fetchDepartmentsSummary = async () => {
     try {
@@ -572,335 +589,344 @@ export default function AllDepartmentsPage() {
         )}
 
         {/* ------------------------------------------------------------------ */}
-        {/* ADD / EDIT DEPARTMENT MODAL                                        */}
+        {/* ADD / EDIT DEPARTMENT MODAL (Portalled to document.body)            */}
         {/* ------------------------------------------------------------------ */}
-        <AnimatePresence>
-          {isModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="w-full max-w-xl bg-white rounded-3xl border border-stone-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-              >
-                {/* Modal Header */}
-                <div className="px-6 py-5 border-b border-stone-100 flex items-center justify-between">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="h-9 w-9 rounded-xl bg-stone-900 text-white flex items-center justify-center">
-                      <Building2 className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-bold text-stone-900">
-                        {isEditMode ? 'Edit Academic Department' : 'Register New Department'}
-                      </h2>
-                      <p className="text-[11px] text-stone-500">
-                        {isEditMode ? 'Modify department settings, total years, and semesters.' : 'Create a new department with custom duration and semesters.'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition cursor-pointer"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-
-                {/* Modal Form Body */}
-                <form onSubmit={handleFormSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
-                  {modalError && (
-                    <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{modalError}</span>
-                    </div>
-                  )}
-
-                  {modalSuccess && (
-                    <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center space-x-2">
-                      <Check className="h-4 w-4 shrink-0" />
-                      <span>{modalSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Department Name */}
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className="font-semibold text-stone-700">Department / Branch Name *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Bachelor of Business Administration"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      />
-                    </div>
-
-                    {/* Department Code */}
-                    <div className="space-y-1">
-                      <label className="font-semibold text-stone-700">Code / Abbr *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. BBA"
-                        value={formData.code}
-                        onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                        className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 uppercase font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Degree Program & Duration Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="font-semibold text-stone-700">Degree Level</label>
-                      <select
-                        value={formData.degree_type}
-                        onChange={(e) => setFormData({ ...formData, degree_type: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      >
-                        {DEGREE_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="font-semibold text-stone-700">Duration (Years)</label>
-                      <select
-                        value={formData.duration_years}
-                        onChange={(e) => handleDurationChange(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      >
-                        <option value={1}>1 Year (e.g. PG Diploma)</option>
-                        <option value={2}>2 Years (e.g. MBA, MTech)</option>
-                        <option value={3}>3 Years (e.g. BBA, BCA, BSc)</option>
-                        <option value={4}>4 Years (e.g. BTech, BPharm)</option>
-                        <option value={5}>5 Years (e.g. MBBS, BArch)</option>
-                        <option value={6}>6 Years (e.g. Dual PhD)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="font-semibold text-stone-700">Total Semesters</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={16}
-                        required
-                        value={formData.total_semesters}
-                        onChange={(e) => setFormData({ ...formData, total_semesters: Number(e.target.value) })}
-                        className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Dynamic Sections Configuration */}
-                  <div className="space-y-2 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80">
-                    <div className="flex items-center justify-between">
-                      <label className="font-semibold text-stone-700 text-xs">Active Class Sections</label>
-                      <span className="text-[11px] text-stone-400">Click a preset or type custom sections</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: 'A (1 Sec)', val: 'A' },
-                        { label: 'A, B (2 Sec)', val: 'A, B' },
-                        { label: 'A, B, C (3 Sec)', val: 'A, B, C' },
-                        { label: 'A to D (4 Sec)', val: 'A, B, C, D' },
-                        { label: 'A to E (5 Sec)', val: 'A, B, C, D, E' },
-                        { label: 'A to F (6 Sec)', val: 'A, B, C, D, E, F' }
-                      ].map(preset => (
-                        <button
-                          key={preset.val}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, sections: preset.val })}
-                          className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition ${
-                            formData.sections === preset.val
-                              ? 'bg-stone-900 text-white border-stone-900'
-                              : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. A, B, C, D or custom names"
-                      value={formData.sections}
-                      onChange={(e) => setFormData({ ...formData, sections: e.target.value })}
-                      className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-200 text-stone-900 text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-stone-400 transition"
-                    />
-                  </div>
-
-                  {/* Appointed HOD Details */}
-                  <div className="border-t border-stone-100 pt-3 space-y-3">
-                    <span className="text-[11px] font-bold uppercase text-stone-400 tracking-wider block">
-                      Appointed Leadership & Contact
-                    </span>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-stone-600 font-medium">HOD Name</label>
-                        <input
-                          type="text"
-                          placeholder="Prof. Rajesh Sharma"
-                          value={formData.hod_name}
-                          onChange={(e) => setFormData({ ...formData, hod_name: e.target.value })}
-                          className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                        />
+        {mounted && typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {isModalOpen && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+                <div className="fixed inset-0" onClick={() => setIsModalOpen(false)} />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="relative z-10 w-full max-w-xl bg-white rounded-3xl border border-stone-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+                >
+                  {/* Modal Header */}
+                  <div className="px-6 py-5 border-b border-stone-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="h-9 w-9 rounded-xl bg-stone-900 text-white flex items-center justify-center">
+                        <Building2 className="h-5 w-5" />
                       </div>
-
-                      <div className="space-y-1">
-                        <label className="text-stone-600 font-medium">HOD Email</label>
-                        <input
-                          type="email"
-                          placeholder="hod.bba@campus.edu"
-                          value={formData.hod_email}
-                          onChange={(e) => setFormData({ ...formData, hod_email: e.target.value })}
-                          className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-stone-600 font-medium">HOD Phone</label>
-                        <input
-                          type="text"
-                          placeholder="+91 98765 43210"
-                          value={formData.hod_phone}
-                          onChange={(e) => setFormData({ ...formData, hod_phone: e.target.value })}
-                          className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                        />
+                      <div>
+                        <h2 className="text-base font-bold text-stone-900">
+                          {isEditMode ? 'Edit Academic Department' : 'Register New Department'}
+                        </h2>
+                        <p className="text-[11px] text-stone-500">
+                          {isEditMode ? 'Modify department settings, total years, and semesters.' : 'Create a new department with custom duration and semesters.'}
+                        </p>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Rank & Overview */}
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-stone-600 font-medium">Accreditation / Department Status</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Tier 1 (NBA Accredited) or UGC Recognized"
-                        value={formData.rank}
-                        onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-stone-600 font-medium">Department Description (Optional)</label>
-                      <textarea
-                        rows={2}
-                        placeholder="Key academic focuses, specialized laboratory facilities, or curriculum notes..."
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition resize-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Modal Footer Actions */}
-                  <div className="border-t border-stone-100 pt-4 flex items-center justify-end space-x-2.5">
                     <button
                       type="button"
-                      disabled={modalLoading}
                       onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 rounded-2xl text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition font-medium cursor-pointer"
+                      className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Form Body */}
+                  <form onSubmit={handleFormSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+                    {modalError && (
+                      <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center space-x-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{modalError}</span>
+                      </div>
+                    )}
+
+                    {modalSuccess && (
+                      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center space-x-2">
+                        <Check className="h-4 w-4 shrink-0" />
+                        <span>{modalSuccess}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {/* Department Name */}
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="font-semibold text-stone-700">Department / Branch Name *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Bachelor of Business Administration"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        />
+                      </div>
+
+                      {/* Department Code */}
+                      <div className="space-y-1">
+                        <label className="font-semibold text-stone-700">Code / Abbr *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. BBA"
+                          value={formData.code}
+                          onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                          className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 uppercase font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Degree Program & Duration Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-stone-700">Degree Level</label>
+                        <select
+                          value={formData.degree_type}
+                          onChange={(e) => setFormData({ ...formData, degree_type: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        >
+                          {DEGREE_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-stone-700">Duration (Years)</label>
+                        <select
+                          value={formData.duration_years}
+                          onChange={(e) => handleDurationChange(Number(e.target.value))}
+                          className="w-full px-3 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        >
+                          <option value={1}>1 Year (e.g. PG Diploma)</option>
+                          <option value={2}>2 Years (e.g. MBA, MTech)</option>
+                          <option value={3}>3 Years (e.g. BBA, BCA, BSc)</option>
+                          <option value={4}>4 Years (e.g. BTech, BPharm)</option>
+                          <option value={5}>5 Years (e.g. MBBS, BArch)</option>
+                          <option value={6}>6 Years (e.g. Dual PhD)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-stone-700">Total Semesters</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={16}
+                          required
+                          value={formData.total_semesters}
+                          onChange={(e) => setFormData({ ...formData, total_semesters: Number(e.target.value) })}
+                          className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dynamic Sections Configuration */}
+                    <div className="space-y-2 p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80">
+                      <div className="flex items-center justify-between">
+                        <label className="font-semibold text-stone-700 text-xs">Active Class Sections</label>
+                        <span className="text-[11px] text-stone-400">Click a preset or type custom sections</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: 'A (1 Sec)', val: 'A' },
+                          { label: 'A, B (2 Sec)', val: 'A, B' },
+                          { label: 'A, B, C (3 Sec)', val: 'A, B, C' },
+                          { label: 'A to D (4 Sec)', val: 'A, B, C, D' },
+                          { label: 'A to E (5 Sec)', val: 'A, B, C, D, E' },
+                          { label: 'A to F (6 Sec)', val: 'A, B, C, D, E, F' }
+                        ].map(preset => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, sections: preset.val })}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition ${
+                              formData.sections === preset.val
+                                ? 'bg-stone-900 text-white border-stone-900'
+                                : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="e.g. A, B, C, D or custom names"
+                        value={formData.sections}
+                        onChange={(e) => setFormData({ ...formData, sections: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-200 text-stone-900 text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-stone-400 transition"
+                      />
+                    </div>
+
+                    {/* Appointed HOD Details */}
+                    <div className="border-t border-stone-100 pt-3 space-y-3">
+                      <span className="text-[11px] font-bold uppercase text-stone-400 tracking-wider block">
+                        Appointed Leadership & Contact
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-stone-600 font-medium">HOD Name</label>
+                          <input
+                            type="text"
+                            placeholder="Prof. Rajesh Sharma"
+                            value={formData.hod_name}
+                            onChange={(e) => setFormData({ ...formData, hod_name: e.target.value })}
+                            className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-stone-600 font-medium">HOD Email</label>
+                          <input
+                            type="email"
+                            placeholder="hod.bba@campus.edu"
+                            value={formData.hod_email}
+                            onChange={(e) => setFormData({ ...formData, hod_email: e.target.value })}
+                            className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-stone-600 font-medium">HOD Phone</label>
+                          <input
+                            type="text"
+                            placeholder="+91 98765 43210"
+                            value={formData.hod_phone}
+                            onChange={(e) => setFormData({ ...formData, hod_phone: e.target.value })}
+                            className="w-full px-3 py-2 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rank & Overview */}
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-stone-600 font-medium">Accreditation / Department Status</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Tier 1 (NBA Accredited) or UGC Recognized"
+                          value={formData.rank}
+                          onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-stone-600 font-medium">Department Description (Optional)</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Key academic focuses, specialized laboratory facilities, or curriculum notes..."
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-stone-400 focus:bg-white transition resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Modal Footer Actions */}
+                    <div className="border-t border-stone-100 pt-4 flex items-center justify-end space-x-2.5">
+                      <button
+                        type="button"
+                        disabled={modalLoading}
+                        onClick={() => setIsModalOpen(false)}
+                        className="px-4 py-2 rounded-2xl text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition font-medium cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={modalLoading}
+                        className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-2xl bg-stone-900 hover:bg-black text-white font-semibold shadow-sm transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {modalLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                        <span>{isEditMode ? 'Save Changes' : 'Create Department'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* DELETE CONFIRMATION DIALOG (Portalled to document.body)            */}
+        {/* ------------------------------------------------------------------ */}
+        {mounted && typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {deleteTarget && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+                <div className="fixed inset-0" onClick={() => { setDeleteTarget(null); setDeleteError(null); }} />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="relative z-10 w-full max-w-md bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 space-y-4"
+                >
+                  <div className="flex items-center space-x-3 text-rose-600">
+                    <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-100">
+                      <Trash2 className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-stone-900">Delete Department</h3>
+                      <p className="text-xs text-stone-500">{deleteTarget.name} ({deleteTarget.code})</p>
+                    </div>
+                  </div>
+
+                  {deleteError && (
+                    <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start space-x-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{deleteError}</span>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Are you sure you want to delete this department? This will remove the branch configuration from institutional lists and attendance portals.
+                  </p>
+
+                  {(deleteTarget.students > 0 || deleteError) && (
+                    <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
+                      <p className="text-xs font-semibold text-amber-800">
+                        Warning: {deleteTarget.students} student(s) currently registered under this department.
+                      </p>
+                      <label className="flex items-center space-x-2 text-xs text-amber-900 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={deleteForce}
+                          onChange={(e) => setDeleteForce(e.target.checked)}
+                          className="rounded text-amber-600 focus:ring-amber-500"
+                        />
+                        <span>Force delete anyway (students will remain in database with archived branch tag)</span>
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex items-center justify-end space-x-2.5">
+                    <button
+                      type="button"
+                      disabled={deleteLoading}
+                      onClick={() => {
+                        setDeleteTarget(null);
+                        setDeleteError(null);
+                      }}
+                      className="px-4 py-2 rounded-2xl text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition text-xs font-medium cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
-                      type="submit"
-                      disabled={modalLoading}
-                      className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-2xl bg-stone-900 hover:bg-black text-white font-semibold shadow-sm transition disabled:opacity-50 cursor-pointer"
+                      type="button"
+                      disabled={deleteLoading || (deleteTarget.students > 0 && !deleteForce)}
+                      onClick={handleDeleteConfirm}
+                      className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition disabled:opacity-50 cursor-pointer"
                     >
-                      {modalLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                      <span>{isEditMode ? 'Save Changes' : 'Create Department'}</span>
+                      {deleteLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Confirm Delete</span>
                     </button>
                   </div>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* DELETE CONFIRMATION DIALOG                                         */}
-        {/* ------------------------------------------------------------------ */}
-        <AnimatePresence>
-          {deleteTarget && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-md bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 space-y-4"
-              >
-                <div className="flex items-center space-x-3 text-rose-600">
-                  <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-100">
-                    <Trash2 className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-stone-900">Delete Department</h3>
-                    <p className="text-xs text-stone-500">{deleteTarget.name} ({deleteTarget.code})</p>
-                  </div>
-                </div>
-
-                {deleteError && (
-                  <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start space-x-2">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{deleteError}</span>
-                  </div>
-                )}
-
-                <p className="text-xs text-stone-600 leading-relaxed">
-                  Are you sure you want to delete this department? This will remove the branch configuration from institutional lists and attendance portals.
-                </p>
-
-                {(deleteTarget.students > 0 || deleteError) && (
-                  <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
-                    <p className="text-xs font-semibold text-amber-800">
-                      Warning: {deleteTarget.students} student(s) currently registered under this department.
-                    </p>
-                    <label className="flex items-center space-x-2 text-xs text-amber-900 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={deleteForce}
-                        onChange={(e) => setDeleteForce(e.target.checked)}
-                        className="rounded text-amber-600 focus:ring-amber-500"
-                      />
-                      <span>Force delete anyway (students will remain in database with archived branch tag)</span>
-                    </label>
-                  </div>
-                )}
-
-                <div className="pt-2 flex items-center justify-end space-x-2.5">
-                  <button
-                    type="button"
-                    disabled={deleteLoading}
-                    onClick={() => {
-                      setDeleteTarget(null);
-                      setDeleteError(null);
-                    }}
-                    className="px-4 py-2 rounded-2xl text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition text-xs font-medium cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deleteLoading || (deleteTarget.students > 0 && !deleteForce)}
-                    onClick={handleDeleteConfirm}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition disabled:opacity-50 cursor-pointer"
-                  >
-                    {deleteLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                    <span>Confirm Delete</span>
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
       </div>
     </AppleDeluxeShell>
   );

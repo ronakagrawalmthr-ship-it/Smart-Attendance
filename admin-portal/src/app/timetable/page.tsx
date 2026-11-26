@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import {
   Clock,
@@ -112,6 +113,22 @@ export default function AdminTimetablePage() {
   const [isCsvModalOpen, setIsCsvModalOpen] = useState<boolean>(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [uploadingCsv, setUploadingCsv] = useState<boolean>(false);
+
+  const [mounted, setMounted] = useState<boolean>(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isSlotModalOpen || isCsvModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isSlotModalOpen, isCsvModalOpen]);
 
   const showNotice = (type: 'success' | 'error', text: string) => {
     setNotice({ type, text });
@@ -760,9 +777,11 @@ export default function AdminTimetablePage() {
         </div>
       </div>
 
-      {isSlotModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full p-6 max-h-[92vh] overflow-y-auto">
+      {mounted && typeof document !== 'undefined' && createPortal(
+        isSlotModalOpen ? (
+          <div className="fixed inset-0 z-[9999] bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0" onClick={() => setIsSlotModalOpen(false)} />
+            <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-stone-100">
               <h3 className="font-extrabold text-stone-900 text-sm flex items-center gap-2">
                 <Clock className="h-4 w-4 text-blue-600" />
@@ -942,56 +961,62 @@ export default function AdminTimetablePage() {
             </form>
           </div>
         </div>
-      )}
+      ) : null,
+      document.body
+    )}
 
-      {isCsvModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full p-6">
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <h3 className="font-extrabold text-stone-900 text-sm flex items-center gap-2">
-                <Upload className="h-4 w-4 text-emerald-600" />
-                <span>Bulk Timetable Import (CSV)</span>
-              </h3>
-              <button type="button" onClick={() => setIsCsvModalOpen(false)} className="text-stone-400 hover:text-stone-700 p-1 rounded-lg">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCsvUpload} className="space-y-4 pt-4">
-              <div className="text-[11px] text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-200 space-y-1">
-                <p><strong>Target:</strong> {selectedBranch} — Sem {selectedSemester} (Sec {selectedSection})</p>
-                <p className="text-[10px] text-stone-500">
-                  Columns: <code className="bg-white px-1 py-0.5 rounded border border-stone-200">day_of_week,slot_index,start_time,end_time,subject_name,teacher_name,room_number,session_type,duration_minutes</code>
-                </p>
+      {mounted && typeof document !== 'undefined' && createPortal(
+        isCsvModalOpen ? (
+          <div className="fixed inset-0 z-[9999] bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0" onClick={() => setIsCsvModalOpen(false)} />
+            <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full p-6">
+              <div className="flex items-center justify-between pb-4 border-b border-stone-100">
+                <h3 className="font-extrabold text-stone-900 text-sm flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-emerald-600" />
+                  <span>Bulk Timetable Import (CSV)</span>
+                </h3>
+                <button type="button" onClick={() => setIsCsvModalOpen(false)} className="text-stone-400 hover:text-stone-700 p-1 rounded-lg">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <input
-                type="file"
-                accept=".csv"
-                required
-                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                className="w-full text-xs text-stone-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-stone-900 file:text-white bg-stone-50 rounded-2xl p-2 border border-stone-200"
-              />
-              <div className="flex items-center justify-between pt-2">
-                <a
-                  href={`${API_BASE_URL}/timetable/template-csv`}
-                  download="department_timetable_template.csv"
-                  className="text-xs font-bold text-blue-700 hover:underline flex items-center gap-1"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download Template CSV</span>
-                </a>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setIsCsvModalOpen(false)} className="px-3 py-2 text-xs font-bold text-stone-600 hover:text-stone-900">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={uploadingCsv} className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50">
-                    {uploadingCsv ? 'Importing...' : 'Upload & Sync'}
-                  </button>
+
+              <form onSubmit={handleCsvUpload} className="space-y-4 pt-4">
+                <div className="text-[11px] text-stone-600 bg-stone-50 p-3 rounded-2xl border border-stone-200 space-y-1">
+                  <p><strong>Target:</strong> {selectedBranch} — Sem {selectedSemester} (Sec {selectedSection})</p>
+                  <p className="text-[10px] text-stone-500">
+                    Columns: <code className="bg-white px-1 py-0.5 rounded border border-stone-200">day_of_week,slot_index,start_time,end_time,subject_name,teacher_name,room_number,session_type,duration_minutes</code>
+                  </p>
                 </div>
-              </div>
-            </form>
+                <input
+                  type="file"
+                  accept=".csv"
+                  required
+                  onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-stone-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-stone-900 file:text-white bg-stone-50 rounded-2xl p-2 border border-stone-200"
+                />
+                <div className="flex items-center justify-between pt-2">
+                  <a
+                    href={`${API_BASE_URL}/timetable/template-csv`}
+                    download="department_timetable_template.csv"
+                    className="text-xs font-bold text-blue-700 hover:underline flex items-center gap-1"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download Template CSV</span>
+                  </a>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setIsCsvModalOpen(false)} className="px-3 py-2 text-xs font-bold text-stone-600 hover:text-stone-900">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={uploadingCsv} className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50">
+                      {uploadingCsv ? 'Importing...' : 'Upload & Sync'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        ) : null,
+        document.body
       )}
     </AppleDeluxeShell>
   );

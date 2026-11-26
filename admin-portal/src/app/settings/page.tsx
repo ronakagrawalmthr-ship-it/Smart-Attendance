@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { 
   Building2, 
@@ -53,6 +54,22 @@ export default function AdminSettingsPage() {
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetAdminPassword, setResetAdminPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (showWipeModal || showResetModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showWipeModal, showResetModal]);
 
   // System Infrastructure Health (from backend)
   const [resendStatus, setResendStatus] = useState('Operational');
@@ -642,117 +659,123 @@ export default function AdminSettingsPage() {
         </div>
       </form>
 
-      {/* Wipe Demo Data Modal */}
-      {showWipeModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
-          <div className="fixed inset-0" onClick={() => setShowWipeModal(false)} />
-          <div className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl relative z-10">
-            <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
-              <Database className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-stone-900">Confirm Demo Data Wipe</h3>
-              <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-                This will delete all sample student records and attendance logs. Faculty and administrator accounts will be preserved.
-              </p>
-            </div>
-            <form onSubmit={handleWipeDemoData} className="space-y-4 text-xs">
+      {/* Wipe Demo Data Modal (Portalled to document.body) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        showWipeModal ? (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+            <div className="fixed inset-0" onClick={() => setShowWipeModal(false)} />
+            <div className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl relative z-10">
+              <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
+                <Database className="h-6 w-6" />
+              </div>
               <div>
-                <label className="block text-stone-700 font-bold mb-1.5">
-                  Type <span className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-amber-900">CLEAN-DEMO-DATA</span> to confirm:
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={wipeConfirmText}
-                  onChange={(e) => setWipeConfirmText(e.target.value)}
-                  placeholder="CLEAN-DEMO-DATA"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
+                <h3 className="text-base font-bold text-stone-900">Confirm Demo Data Wipe</h3>
+                <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+                  This will delete all sample student records and attendance logs. Faculty and administrator accounts will be preserved.
+                </p>
               </div>
-              <div className="flex justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowWipeModal(false)}
-                  className="px-4 py-2 rounded-xl bg-stone-100 text-stone-600 font-semibold hover:bg-stone-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isWiping || wipeConfirmText.trim() !== 'CLEAN-DEMO-DATA'}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold transition disabled:opacity-50 flex items-center space-x-1.5"
-                >
-                  {isWiping ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
-                  <span>{isWiping ? 'Wiping...' : 'Confirm Purge'}</span>
-                </button>
-              </div>
-            </form>
+              <form onSubmit={handleWipeDemoData} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-stone-700 font-bold mb-1.5">
+                    Type <span className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-amber-900">CLEAN-DEMO-DATA</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={wipeConfirmText}
+                    onChange={(e) => setWipeConfirmText(e.target.value)}
+                    placeholder="CLEAN-DEMO-DATA"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowWipeModal(false)}
+                    className="px-4 py-2 rounded-xl bg-stone-100 text-stone-600 font-semibold hover:bg-stone-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isWiping || wipeConfirmText.trim() !== 'CLEAN-DEMO-DATA'}
+                    className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold transition disabled:opacity-50 flex items-center space-x-1.5"
+                  >
+                    {isWiping ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
+                    <span>{isWiping ? 'Wiping...' : 'Confirm Purge'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        ) : null,
+        document.body
       )}
 
-      {/* Factory Reset Modal */}
-      {showResetModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
-          <div className="fixed inset-0" onClick={() => setShowResetModal(false)} />
-          <div className="bg-white border border-rose-200 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl relative z-10">
-            <div className="h-12 w-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700">
-              <Lock className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-stone-900">⚠️ Factory Reset System</h3>
-              <p className="text-xs text-stone-500 mt-1 leading-relaxed">
-                This will erase all students, teachers, classes, and logs, returning this system to Day-0 initialization.
-              </p>
-            </div>
-            <form onSubmit={handleFactoryReset} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-stone-700 font-bold mb-1">
-                  Enter Administrator Master Password:
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={resetAdminPassword}
-                  onChange={(e) => setResetAdminPassword(e.target.value)}
-                  placeholder="Master password"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
+      {/* Factory Reset Modal (Portalled to document.body) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        showResetModal ? (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+            <div className="fixed inset-0" onClick={() => setShowResetModal(false)} />
+            <div className="bg-white border border-rose-200 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl relative z-10">
+              <div className="h-12 w-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700">
+                <Lock className="h-6 w-6" />
               </div>
               <div>
-                <label className="block text-stone-700 font-bold mb-1">
-                  Type <span className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-rose-900">RESET-ENTIRE-DATABASE</span>:
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={resetConfirmText}
-                  onChange={(e) => setResetConfirmText(e.target.value)}
-                  placeholder="RESET-ENTIRE-DATABASE"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
+                <h3 className="text-base font-bold text-stone-900">⚠️ Factory Reset System</h3>
+                <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+                  This will erase all students, teachers, classes, and logs, returning this system to Day-0 initialization.
+                </p>
               </div>
-              <div className="flex justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowResetModal(false)}
-                  className="px-4 py-2 rounded-xl bg-stone-100 text-stone-600 font-semibold hover:bg-stone-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isResetting || resetConfirmText.trim() !== 'RESET-ENTIRE-DATABASE' || !resetAdminPassword}
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition disabled:opacity-50 flex items-center space-x-1.5"
-                >
-                  {isResetting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
-                  <span>{isResetting ? 'Resetting...' : 'Execute Factory Reset'}</span>
-                </button>
-              </div>
-            </form>
+              <form onSubmit={handleFactoryReset} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-stone-700 font-bold mb-1">
+                    Enter Administrator Master Password:
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={resetAdminPassword}
+                    onChange={(e) => setResetAdminPassword(e.target.value)}
+                    placeholder="Master password"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-stone-700 font-bold mb-1">
+                    Type <span className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-rose-900">RESET-ENTIRE-DATABASE</span>:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={resetConfirmText}
+                    onChange={(e) => setResetConfirmText(e.target.value)}
+                    placeholder="RESET-ENTIRE-DATABASE"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetModal(false)}
+                    className="px-4 py-2 rounded-xl bg-stone-100 text-stone-600 font-semibold hover:bg-stone-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isResetting || resetConfirmText.trim() !== 'RESET-ENTIRE-DATABASE' || !resetAdminPassword}
+                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition disabled:opacity-50 flex items-center space-x-1.5"
+                  >
+                    {isResetting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}
+                    <span>{isResetting ? 'Resetting...' : 'Execute Factory Reset'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        ) : null,
+        document.body
       )}
       </div>
     </AppleDeluxeShell>

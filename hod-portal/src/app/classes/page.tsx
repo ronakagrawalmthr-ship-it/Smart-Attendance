@@ -2,6 +2,7 @@
 
 import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import {
   Calendar,
@@ -229,6 +230,22 @@ export default function ClassAttendancePage() {
   const [overrideSubmitting, setOverrideSubmitting] = useState<boolean>(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [overrideSuccessMsg, setOverrideSuccessMsg] = useState<string | null>(null);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (selectedSessionModal || overrideTarget) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedSessionModal, overrideTarget]);
 
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1197,16 +1214,18 @@ export default function ClassAttendancePage() {
           </div>
         )}
 
-        {/* Roster Drilldown Modal in Apple Style */}
-        <AnimatePresence>
-          {selectedSessionModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
-              <motion.div
-
-
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white/95 border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
-              >
+        {/* Roster Drilldown Modal in Apple Style (Portalled to document.body) */}
+        {mounted && typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {selectedSessionModal && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+                <div className="fixed inset-0" onClick={() => setSelectedSessionModal(null)} />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="relative z-10 w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white/95 border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
+                >
                 {/* Modal Header */}
                 <div className="p-6 border-b border-stone-200 flex justify-between items-start">
                   <div className="space-y-1">
@@ -1316,16 +1335,21 @@ export default function ClassAttendancePage() {
               </motion.div>
             </div>
           )}
-        </AnimatePresence>
-        {/* HOD Attendance Condonation & Override Modal */}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* HOD Attendance Condonation & Override Modal (Portalled to document.body) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {overrideTarget && (
-            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md">
+              <div className="fixed inset-0" onClick={() => setOverrideTarget(null)} />
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-5"
+                className="relative z-10 w-full max-w-lg rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-5"
               >
                 <div className="flex justify-between items-start border-b border-stone-100 pb-4">
                   <div>
@@ -1434,7 +1458,9 @@ export default function ClassAttendancePage() {
               </motion.div>
             </div>
           )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
       </div>
     </AppleDeluxeShell>
   );

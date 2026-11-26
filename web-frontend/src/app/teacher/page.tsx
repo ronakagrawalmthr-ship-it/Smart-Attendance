@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import AppleSelect from '@/components/AppleSelect';
 import {
@@ -265,6 +266,11 @@ export default function TeacherAttendancePage() {
   ]);
   const [copilotInput, setCopilotInput] = useState('');
   const [copilotLoading, setCopilotLoading] = useState(false);
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSendCopilotMessage = async (customPrompt?: string) => {
     const query = (customPrompt || copilotInput).trim();
@@ -621,6 +627,17 @@ export default function TeacherAttendancePage() {
   const [qrTotalExpected, setQrTotalExpected] = useState<number>(0);
   const [qrRecentCheckins, setQrRecentCheckins] = useState<Array<{ id: number; roll_number: string; name: string; time: string }>>([]);
   const [isQrStarting, setIsQrStarting] = useState(false);
+
+  useEffect(() => {
+    if (isReviewOpen || submissionSuccess || isKioskModalOpen || isExitChallengeOpen || isQrModalOpen || isTodaySessionsModalOpen || correctionTarget || isCopilotOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isReviewOpen, submissionSuccess, isKioskModalOpen, isExitChallengeOpen, isQrModalOpen, isTodaySessionsModalOpen, correctionTarget, isCopilotOpen]);
 
   // Dynamic QR 10-Second Auto-Rotation Loop
   useEffect(() => {
@@ -1687,10 +1704,13 @@ export default function TeacherAttendancePage() {
         </div>
       </div>
 
-      {/* Review & Confirmation Modal */}
-      <AnimatePresence>
-        {isReviewOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+      {/* Modals & Portals (Attached directly to document.body for instant zero-scroll centering) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Review & Confirmation Modal */}
+          <AnimatePresence>
+            {isReviewOpen && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
 
 
@@ -1777,7 +1797,7 @@ export default function TeacherAttendancePage() {
       {/* Submission Success Screen Modal */}
       <AnimatePresence>
         {submissionSuccess && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
 
 
@@ -1835,7 +1855,7 @@ export default function TeacherAttendancePage() {
       {/* Kiosk Configuration Modal */}
       <AnimatePresence>
         {isKioskModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
 
 
@@ -1959,7 +1979,7 @@ export default function TeacherAttendancePage() {
       {/* Kiosk Exit Challenge Modal */}
       <AnimatePresence>
         {isExitChallengeOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
 
 
@@ -2029,7 +2049,7 @@ export default function TeacherAttendancePage() {
       {/* ⚡ Dynamic 10-Second QR Attendance Broadcast Modal */}
       <AnimatePresence>
         {isQrModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/85 backdrop-blur-xl overflow-y-auto">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-stone-950/85 backdrop-blur-xl overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2267,7 +2287,7 @@ export default function TeacherAttendancePage() {
       {/* Today's Conducted Sessions (Same-Day Grace Corrections Desk) */}
       <AnimatePresence>
         {isTodaySessionsModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -2462,7 +2482,7 @@ export default function TeacherAttendancePage() {
       {/* Single Student Correction Prompt Modal */}
       <AnimatePresence>
         {correctionTarget && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -2575,7 +2595,7 @@ export default function TeacherAttendancePage() {
       {/* Teacher AI Copilot Modal */}
       <AnimatePresence>
         {isCopilotOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2686,6 +2706,9 @@ export default function TeacherAttendancePage() {
           </div>
         )}
       </AnimatePresence>
+        </>,
+        document.body
+      )}
 
       {/* Platform Credit Footer */}
       <footer className="mt-12 border-t border-stone-200/80 pt-6 pb-6 text-xs text-stone-500 flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto px-4">
