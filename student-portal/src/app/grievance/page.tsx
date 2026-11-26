@@ -355,13 +355,33 @@ export default function GrievanceDesk() {
                         </a>
                       </div>
                     )}
-                  </div>
-                ))
+
+                    <div className="space-y-4">
+                      {pastGrievances.length === 0 ? (
+                        <p className="text-xs text-stone-400 text-center py-6">No previous grievances lodged.</p>
+                      ) : (
+                        pastGrievances.map((item) => (
+                          <div key={item.id} className="p-4 rounded-2xl bg-stone-50/80 border border-stone-200/70 space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="font-mono text-[10px] text-stone-400 font-semibold">{item.ticket_id || item.id}</span>
+                                <h3 className="font-bold text-xs text-stone-900">{item.subject}</h3>
+                              </div>
+                              <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${item.status?.toLowerCase().includes('granted') || item.status?.toLowerCase().includes('approved')
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : item.status?.toLowerCase().includes('rejected')
+                                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}>
+                                {item.status}
+                              </span>
+                            </div>
+                            ))
               )}
-            </div>
+                          </div>
           </div>
-        </div>
+                  </div>
       </div>
-    </AppleDeluxeShell>
-  );
+          </AppleDeluxeShell>
+          );
 }

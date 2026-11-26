@@ -654,22 +654,22 @@ export default function ClassAttendancePage() {
               />
             </div>
 
-          {/* Teacher Conductor Filter */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Conducted By (Faculty)</label>
-            <AppleSelect
-              value={selectedTeacher}
-              onChange={(val) => setSelectedTeacher(String(val))}
-              options={[
-                { value: 'all', label: 'All Conductor Teachers', badge: 'All' },
-                ...availableTeachers.map((t: any) => ({
-                  value: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
-                  label: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
-                  badge: 'Faculty'
-                }))
-              ]}
-            />
-          </div>
+            {/* Teacher Conductor Filter */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Conducted By (Faculty)</label>
+              <AppleSelect
+                value={selectedTeacher}
+                onChange={(val) => setSelectedTeacher(String(val))}
+                options={[
+                  { value: 'all', label: 'All Conductor Teachers', badge: 'All' },
+                  ...availableTeachers.map((t: any) => ({
+                    value: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
+                    label: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
+                    badge: 'Faculty'
+                  }))
+                ]}
+              />
+            </div>
 
             {/* Custom Date Input */}
             <div>
