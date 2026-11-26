@@ -276,7 +276,7 @@ export default function AppleDeluxeShell({
     { label: 'Attendance', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Campus Copilot', href: '/copilot', icon: Sparkles },
     { label: 'Scan QR', href: '/scan', icon: QrCode },
-    { label: 'Face ID Enroll', href: '/enroll', icon: ScanFace },
+    { label: 'Face Enrollment', href: '/enroll', icon: ScanFace },
     { label: 'Grievance Desk', href: '/grievance', icon: FileCheck2 },
     { label: 'Student Profile', href: '/profile', icon: User },
     { label: 'Settings', href: '/settings', icon: Settings },
@@ -288,7 +288,7 @@ export default function AppleDeluxeShell({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-stone-900 flex flex-col items-center py-6 px-3 sm:px-6 relative">
       
-      {/* 🏝️ Apple Dynamic Island Notification Capsule */}
+      {/* 🏝️ System Alert Notification Capsule */}
       <div className="fixed top-3.5 z-50 pointer-events-none flex justify-center w-full px-4">
         <motion.div
           layout
@@ -312,14 +312,14 @@ export default function AppleDeluxeShell({
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2 }}
                 className="flex items-center space-x-2.5 py-0.5"
-                title="Dynamic Island • Click to preview biometric status"
+                title="Biometric Status Capsule"
               >
                 <div className="relative flex items-center justify-center">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                   <span className="w-3.5 h-3.5 rounded-full bg-emerald-400/30 animate-ping absolute"></span>
                 </div>
                 <span className="text-[11px] font-semibold text-stone-200 tracking-wider uppercase">
-                  Face ID Active
+                  Biometric Active
                 </span>
                 <Radio className="h-3 w-3 text-blue-400/80 animate-pulse" />
               </motion.div>

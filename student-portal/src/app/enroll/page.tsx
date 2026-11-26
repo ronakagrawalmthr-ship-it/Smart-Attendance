@@ -19,7 +19,7 @@ export default function StudentEnrollment() {
     semester: '1',
     section: 'A',
   });
-  
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -29,6 +29,7 @@ export default function StudentEnrollment() {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
 
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
@@ -71,7 +72,7 @@ export default function StudentEnrollment() {
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Dynamically adapt valid semesters to student's enrolled course (e.g. BBA -> 1-6, MBBS -> 1-10, MBA -> 1-4)
@@ -128,8 +129,8 @@ export default function StudentEnrollment() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -137,7 +138,7 @@ export default function StudentEnrollment() {
       }
     } catch (err) {
       console.error("Camera access error:", err);
-      alert("Could not access camera. Please grant browser camera permissions.");
+      setErrorMessage("Could not access camera. Please grant browser camera permissions.");
     }
   };
 
@@ -170,7 +171,7 @@ export default function StudentEnrollment() {
 
   const handleSendOtp = async () => {
     if (!formData.email || !formData.email.includes('@')) {
-      alert("Please enter a valid official email address first.");
+      setErrorMessage("Please enter a valid official email address first.");
       return;
     }
     try {
@@ -189,7 +190,7 @@ export default function StudentEnrollment() {
       if (data.otp) setOtp(data.otp);
       setOtpMessage(data.message || `Verification code sent to ${formData.email}. Valid for 10 minutes.`);
     } catch (err: any) {
-      alert(err.message || "Failed to send OTP.");
+      setErrorMessage(err.message || "Failed to send OTP.");
     } finally {
       setIsSendingOtp(false);
     }
@@ -198,7 +199,7 @@ export default function StudentEnrollment() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capturedImage) {
-      alert("Please capture your face photo before submitting.");
+      setErrorMessage("Please capture your face photo before submitting.");
       return;
     }
 
@@ -248,6 +249,11 @@ export default function StudentEnrollment() {
         throw new Error(detailMsg);
       }
 
+      const genPassword = response.headers.get('X-Generated-Password') || response.headers.get('x-generated-password');
+      if (genPassword) {
+        setGeneratedPassword(genPassword);
+      }
+
       const createdStudent = await response.json();
 
       // Store student details locally for instant seamless experience
@@ -261,7 +267,7 @@ export default function StudentEnrollment() {
       // Auto-authenticate student so they can navigate directly to the dashboard
       try {
         const loginIdentifier = formData.email?.trim().toLowerCase() || formData.rollNumber.trim().toUpperCase();
-        const loginPwd = formData.password?.trim() || formData.rollNumber.trim().toUpperCase();
+        const loginPwd = formData.password?.trim() || genPassword || `student1845`;
         const loginRes = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -300,366 +306,373 @@ export default function StudentEnrollment() {
   return (
     <AppleDeluxeShell studentName={formData.fullName || 'Student'} rollNumber={formData.rollNumber || 'ROLL-NEW'}>
       <div className="w-full space-y-6">
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-stone-200/70 border border-stone-300/60 text-stone-800 text-xs font-semibold">
-          <ScanFace className="h-3.5 w-3.5 text-stone-700" />
-          <span>Biometric Self-Onboarding</span>
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-stone-200/70 border border-stone-300/60 text-stone-800 text-xs font-semibold">
+            <ScanFace className="h-3.5 w-3.5 text-stone-700" />
+            <span>Biometric Self-Onboarding</span>
+          </div>
+          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Student Face Enrollment</h1>
+          <p className="text-xs text-stone-500 max-w-xl mx-auto">
+            Self-register directly into the college database. Categorized automatically by department, semester, and section.
+          </p>
         </div>
-        <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Student Face Enrollment</h1>
-        <p className="text-xs text-stone-500 max-w-xl mx-auto">
-          Self-register directly into the college database. Categorized automatically by department, semester, and section.
-        </p>
-      </div>
 
-      {status === 'success' ? (
-        <motion.div 
-          className="rounded-[2.5rem] bg-white/80 border border-stone-200/80 p-10 text-center space-y-6 backdrop-blur-xl shadow-sm"
-        >
-          <div className="h-16 w-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
-            <CheckCircle2 className="h-8 w-8" />
-          </div>
-          <div className="space-y-1.5">
-            <h2 className="text-xl font-bold text-stone-900">Enrollment Successfully Completed!</h2>
-            <p className="text-stone-500 text-xs max-w-md mx-auto">
-              Your biometric face profile for <strong>{formData.rollNumber.toUpperCase()}</strong> is directly registered in the database under <strong>{formData.branch} (Semester {formData.semester} - Section {formData.section})</strong>.
-            </p>
-          </div>
+        {status === 'success' ? (
+          <motion.div
+            className="rounded-[2.5rem] bg-white/80 border border-stone-200/80 p-10 text-center space-y-6 backdrop-blur-xl shadow-sm"
+          >
+            <div className="h-16 w-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-bold text-stone-900">Enrollment Successfully Completed!</h2>
+              <p className="text-stone-500 text-xs max-w-md mx-auto">
+                Your biometric face profile for <strong>{formData.rollNumber.toUpperCase()}</strong> is directly registered in the database under <strong>{formData.branch} (Semester {formData.semester} - Section {formData.section})</strong>.
+              </p>
+            </div>
 
-          {/* Credentials Card */}
-          <div className="max-w-md mx-auto p-4 rounded-2xl bg-stone-50 border border-stone-200/80 text-left space-y-2">
-            <div className="text-[11px] font-bold text-stone-600 uppercase tracking-wider">Your Official Login Credentials</div>
-            <div className="flex justify-between text-xs text-stone-600">
-              <span>Full Name:</span>
-              <span className="font-semibold text-stone-900">{formData.fullName}</span>
+            {/* Credentials Card */}
+            <div className="max-w-md mx-auto p-4 rounded-2xl bg-stone-50 border border-stone-200/80 text-left space-y-2.5">
+              <div className="text-[11px] font-bold text-stone-600 uppercase tracking-wider">Your Official Login Credentials</div>
+              <div className="flex justify-between text-xs text-stone-600">
+                <span>Full Name:</span>
+                <span className="font-semibold text-stone-900">{formData.fullName}</span>
+              </div>
+              <div className="flex justify-between text-xs text-stone-600">
+                <span>Roll Number / ID:</span>
+                <span className="font-mono font-bold text-stone-900">{formData.rollNumber.toUpperCase()}</span>
+              </div>
+              <div className="flex justify-between text-xs text-stone-600">
+                <span>Department & Class:</span>
+                <span className="font-semibold text-stone-800">{formData.branch} (Sem {formData.semester}, Sec {formData.section})</span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-stone-600">
+                <span>Account Login Password:</span>
+                <span className="font-mono font-bold text-amber-900 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200">
+                  {generatedPassword || formData.password || 'student1845'}
+                </span>
+              </div>
+              {generatedPassword && (
+                <p className="text-[11px] text-amber-800 bg-amber-50/60 p-2 rounded-xl border border-amber-200/60">
+                  Please save this password securely. You can use it with your roll number (<strong>{formData.rollNumber.toUpperCase()}</strong>) to log in.
+                </p>
+              )}
             </div>
-            <div className="flex justify-between text-xs text-stone-600">
-              <span>Roll Number / ID:</span>
-              <span className="font-mono font-bold text-stone-900">{formData.rollNumber.toUpperCase()}</span>
-            </div>
-            <div className="flex justify-between text-xs text-stone-600">
-              <span>Department & Class:</span>
-              <span className="font-semibold text-stone-800">{formData.branch} (Sem {formData.semester}, Sec {formData.section})</span>
-            </div>
-            <div className="flex justify-between text-xs text-stone-600">
-              <span>Default Password:</span>
-              <span className="font-mono font-semibold text-stone-900">Provided upon registration</span>
-            </div>
-          </div>
 
-          <div className="pt-2 flex justify-center gap-4">
-            <Link
-              href="/dashboard"
-              className="px-6 py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-medium text-xs shadow-sm transition flex items-center space-x-2"
-            >
-              <span>Go to Attendance Dashboard</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          {/* Form Column */}
-          <div className="rounded-3xl bg-white/80 border border-stone-200/80 p-8 backdrop-blur-xl space-y-6 shadow-sm">
-            <h2 className="text-base font-bold text-stone-900 flex items-center space-x-2">
-              <User className="h-4 w-4 text-stone-700" />
-              <span>Academic Details</span>
-            </h2>
+            <div className="pt-2 flex justify-center gap-4">
+              <Link
+                href="/dashboard"
+                className="px-6 py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-medium text-xs shadow-sm transition flex items-center space-x-2"
+              >
+                <span>Go to Attendance Dashboard</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            {/* Form Column */}
+            <div className="rounded-3xl bg-white/80 border border-stone-200/80 p-8 backdrop-blur-xl space-y-6 shadow-sm">
+              <h2 className="text-base font-bold text-stone-900 flex items-center space-x-2">
+                <User className="h-4 w-4 text-stone-700" />
+                <span>Academic Details</span>
+              </h2>
 
-            {status === 'error' && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
-                <div className="flex items-start space-x-3">
-                  <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-semibold text-rose-950">Registration Notice</p>
-                    <p className="text-rose-800 leading-relaxed">{errorMessage}</p>
+              {status === 'error' && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-rose-950">Registration Notice</p>
+                      <p className="text-rose-800 leading-relaxed">{errorMessage}</p>
+                    </div>
                   </div>
-                </div>
-                {isDuplicate && (
-                  <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between">
-                    <span className="text-[11px] text-rose-700">Already have an institutional account?</span>
-                    <Link
-                      href="/login"
-                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] transition inline-flex items-center space-x-1.5 shadow-xs"
-                    >
-                      <LogIn className="h-3 w-3" />
-                      <span>Sign In Now</span>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} id="enroll-form" className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  name="fullName"
-                  id="fullName"
-                  autoComplete="name"
-                  required
-                  placeholder="e.g. Student Full Name"
-                  value={formData.fullName}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-2">
-                  University Roll Number
-                </label>
-                <input
-                  type="text"
-                  name="rollNumber"
-                  id="rollNumber"
-                  autoComplete="username"
-                  required
-                  placeholder="e.g. University Roll Number"
-                  value={formData.rollNumber}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition font-mono uppercase"
-                />
-              </div>
-
-              {/* Department / Branch */}
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-2">
-                  Department / Branch
-                </label>
-                <AppleSelect
-                  value={formData.branch}
-                  onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
-                  options={availableBranches.map((b) => ({
-                    value: b,
-                    label: b,
-                    badge: b.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
-                  }))}
-                />
-              </div>
-
-              {/* Semester & Section */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Class / Semester
-                  </label>
-                  <AppleSelect
-                    value={formData.semester}
-                    onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
-                    options={availableSemesters.map((s) => ({
-                      value: String(s),
-                      label: `Semester ${s}`,
-                      badge: `Sem ${s}`
-                    }))}
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-semibold text-stone-600">
-                      Section
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = !isCustomSection;
-                        setIsCustomSection(next);
-                        if (next) setFormData(prev => ({ ...prev, section: '' }));
-                        else setFormData(prev => ({ ...prev, section: availableSections[0] || 'A' }));
-                      }}
-                      className="text-[11px] font-semibold text-stone-500 hover:text-stone-900 transition"
-                    >
-                      {isCustomSection ? '← Choose from List' : '+ Custom Section'}
-                    </button>
-                  </div>
-                  {isCustomSection ? (
-                    <input
-                      type="text"
-                      placeholder="e.g. D, E, F or Batch 1"
-                      value={formData.section}
-                      onChange={(e) => setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase() }))}
-                      className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-semibold focus:outline-none focus:bg-white focus:border-stone-400 transition"
-                    />
-                  ) : (
-                    <AppleSelect
-                      value={formData.section}
-                      onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
-                      options={availableSections.map((sec) => ({
-                        value: sec,
-                        label: `Section ${sec}`,
-                        badge: `Sec ${sec}`
-                      }))}
-                    />
+                  {isDuplicate && (
+                    <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between">
+                      <span className="text-[11px] text-rose-700">Already have an institutional account?</span>
+                      <Link
+                        href="/login"
+                        className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] transition inline-flex items-center space-x-1.5 shadow-xs"
+                      >
+                        <LogIn className="h-3 w-3" />
+                        <span>Sign In Now</span>
+                      </Link>
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-2">
-                  Official Student Email * (OTP Verification Required)
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  id="email"
-                  autoComplete="email"
-                  placeholder="e.g. student@university.edu"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition mb-2"
-                />
-                <div className="flex items-center gap-2 mb-3">
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={isSendingOtp || !formData.email}
-                    className="px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold transition"
-                  >
-                    {isSendingOtp ? 'Sending OTP...' : otpSent ? 'Resend OTP' : 'Send Verification OTP'}
-                  </button>
-                  {otpSent && <span className="text-[11px] text-emerald-600 font-medium">OTP Sent to inbox!</span>}
-                </div>
-                {otpMessage && (
-                  <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded-xl border border-emerald-200 mb-2">
-                    {otpMessage}
-                  </p>
-                )}
-                <div className="p-3 rounded-2xl bg-stone-100/70 border border-stone-200/70">
-                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Enter 6-Digit Email OTP Code <span className="text-emerald-600">*</span>
+              <form onSubmit={handleSubmit} id="enroll-form" className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-2">
+                    Full Name
                   </label>
                   <input
                     type="text"
-                    maxLength={6}
-                    placeholder="e.g. 123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.trim())}
-                    className="w-full px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-900 text-xs font-mono tracking-widest text-center font-bold placeholder-stone-300 focus:outline-none focus:border-emerald-500 transition"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Create Password
-                  </label>
-                  <input
-                    type="password"
-                    name="password"
-                    id="password"
-                    autoComplete="new-password"
-                    placeholder="Custom login password"
-                    value={formData.password}
+                    name="fullName"
+                    id="fullName"
+                    autoComplete="name"
+                    required
+                    placeholder="e.g. Student Full Name"
+                    value={formData.fullName}
                     onChange={handleInputChange}
                     className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-stone-600 mb-2">
-                    Confirm Password
+                    University Roll Number
                   </label>
                   <input
-                    type="password"
-                    name="confirmPassword"
-                    id="confirmPassword"
-                    autoComplete="new-password"
-                    placeholder="Re-enter password"
-                    value={formData.confirmPassword}
+                    type="text"
+                    name="rollNumber"
+                    id="rollNumber"
+                    autoComplete="username"
+                    required
+                    placeholder="e.g. University Roll Number"
+                    value={formData.rollNumber}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                    className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition font-mono uppercase"
                   />
                 </div>
-              </div>
-            </form>
-          </div>
 
-          {/* Camera Viewfinder Column */}
-          <div className="rounded-3xl bg-white/80 border border-stone-200/80 p-8 backdrop-blur-xl space-y-6 shadow-sm">
-            <h2 className="text-base font-bold text-stone-900 flex items-center space-x-2">
-              <Camera className="h-4 w-4 text-stone-700" />
-              <span>Facial Biometric Viewport</span>
-            </h2>
-
-            <div className="relative aspect-video rounded-3xl bg-stone-900 overflow-hidden border border-stone-800 flex items-center justify-center">
-              {capturedImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
-              ) : (
-                <>
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className={`w-full h-full object-cover ${streamActive ? 'block' : 'hidden'}`} 
+                {/* Department / Branch */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-2">
+                    Department / Branch
+                  </label>
+                  <AppleSelect
+                    value={formData.branch}
+                    onChange={(val) => setFormData(prev => ({ ...prev, branch: val }))}
+                    options={availableBranches.map((b) => ({
+                      value: b,
+                      label: b,
+                      badge: b.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+                    }))}
                   />
-                  {!streamActive && (
-                    <div className="text-center p-6 space-y-3">
-                      <ScanFace className="h-10 w-10 text-stone-500 mx-auto" />
-                      <p className="text-xs text-stone-400">Camera is idle. Click below to start live stream.</p>
+                </div>
+
+                {/* Semester & Section */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-2">
+                      Class / Semester
+                    </label>
+                    <AppleSelect
+                      value={formData.semester}
+                      onChange={(val) => setFormData(prev => ({ ...prev, semester: val }))}
+                      options={availableSemesters.map((s) => ({
+                        value: String(s),
+                        label: `Semester ${s}`,
+                        badge: `Sem ${s}`
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-xs font-semibold text-stone-600">
+                        Section
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isCustomSection;
+                          setIsCustomSection(next);
+                          if (next) setFormData(prev => ({ ...prev, section: '' }));
+                          else setFormData(prev => ({ ...prev, section: availableSections[0] || 'A' }));
+                        }}
+                        className="text-[11px] font-semibold text-stone-500 hover:text-stone-900 transition"
+                      >
+                        {isCustomSection ? '← Choose from List' : '+ Custom Section'}
+                      </button>
                     </div>
+                    {isCustomSection ? (
+                      <input
+                        type="text"
+                        placeholder="e.g. D, E, F or Batch 1"
+                        value={formData.section}
+                        onChange={(e) => setFormData(prev => ({ ...prev, section: e.target.value.toUpperCase() }))}
+                        className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-semibold focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                      />
+                    ) : (
+                      <AppleSelect
+                        value={formData.section}
+                        onChange={(val) => setFormData(prev => ({ ...prev, section: val }))}
+                        options={availableSections.map((sec) => ({
+                          value: sec,
+                          label: `Section ${sec}`,
+                          badge: `Sec ${sec}`
+                        }))}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-2">
+                    Official Student Email * (OTP Verification Required)
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    id="email"
+                    autoComplete="email"
+                    placeholder="e.g. student@university.edu"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition mb-2"
+                  />
+                  <div className="flex items-center gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={isSendingOtp || !formData.email}
+                      className="px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold transition"
+                    >
+                      {isSendingOtp ? 'Sending OTP...' : otpSent ? 'Resend OTP' : 'Send Verification OTP'}
+                    </button>
+                    {otpSent && <span className="text-[11px] text-emerald-600 font-medium">OTP Sent to inbox!</span>}
+                  </div>
+                  {otpMessage && (
+                    <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded-xl border border-emerald-200 mb-2">
+                      {otpMessage}
+                    </p>
                   )}
-                  {streamActive && (
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                      <div className="w-40 h-52 border-2 border-dashed border-emerald-400/90 rounded-[45px] animate-pulse" />
-                    </div>
-                  )}
-                </>
-              )}
+                  <div className="p-3 rounded-2xl bg-stone-100/70 border border-stone-200/70">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Enter 6-Digit Email OTP Code <span className="text-emerald-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="e.g. 123456"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.trim())}
+                      className="w-full px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-900 text-xs font-mono tracking-widest text-center font-bold placeholder-stone-300 focus:outline-none focus:border-emerald-500 transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-2">
+                      Create Password
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      id="password"
+                      autoComplete="new-password"
+                      placeholder="Custom login password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-2">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      name="confirmPassword"
+                      id="confirmPassword"
+                      autoComplete="new-password"
+                      placeholder="Re-enter password"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-2.5 rounded-2xl bg-stone-50/80 border border-stone-200/80 text-stone-900 text-xs font-medium placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-400 transition"
+                    />
+                  </div>
+                </div>
+              </form>
             </div>
 
-            <canvas ref={canvasRef} className="hidden" />
+            {/* Camera Viewfinder Column */}
+            <div className="rounded-3xl bg-white/80 border border-stone-200/80 p-8 backdrop-blur-xl space-y-6 shadow-sm">
+              <h2 className="text-base font-bold text-stone-900 flex items-center space-x-2">
+                <Camera className="h-4 w-4 text-stone-700" />
+                <span>Facial Biometric Viewport</span>
+              </h2>
 
-            <div className="flex gap-3">
-              {!streamActive && !capturedImage && (
-                <button
-                  type="button"
-                  onClick={startCamera}
-                  className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center justify-center space-x-2 border border-stone-200/80 shadow-xs"
-                >
-                  <Camera className="h-4 w-4" />
-                  <span>Start Camera</span>
-                </button>
-              )}
+              <div className="relative aspect-video rounded-3xl bg-stone-900 overflow-hidden border border-stone-800 flex items-center justify-center">
+                {capturedImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover ${streamActive ? 'block' : 'hidden'}`}
+                    />
+                    {!streamActive && (
+                      <div className="text-center p-6 space-y-3">
+                        <ScanFace className="h-10 w-10 text-stone-500 mx-auto" />
+                        <p className="text-xs text-stone-400">Camera is idle. Click below to start live stream.</p>
+                      </div>
+                    )}
+                    {streamActive && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div className="w-40 h-52 border-2 border-dashed border-emerald-400/90 rounded-[45px] animate-pulse" />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-              {streamActive && (
-                <button
-                  type="button"
-                  onClick={capturePhoto}
-                  className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-900 hover:bg-stone-800 text-white shadow-sm transition flex items-center justify-center space-x-2"
-                >
-                  <ScanFace className="h-4 w-4" />
-                  <span>Capture & Analyze Face</span>
-                </button>
-              )}
+              <canvas ref={canvasRef} className="hidden" />
 
-              {capturedImage && (
-                <button
-                  type="button"
-                  onClick={resetCapture}
-                  className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center justify-center space-x-2 border border-stone-200/80 shadow-xs"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span>Retake Photo</span>
-                </button>
-              )}
+              <div className="flex gap-3">
+                {!streamActive && !capturedImage && (
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center justify-center space-x-2 border border-stone-200/80 shadow-xs"
+                  >
+                    <Camera className="h-4 w-4" />
+                    <span>Start Camera</span>
+                  </button>
+                )}
+
+                {streamActive && (
+                  <button
+                    type="button"
+                    onClick={capturePhoto}
+                    className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-900 hover:bg-stone-800 text-white shadow-sm transition flex items-center justify-center space-x-2"
+                  >
+                    <ScanFace className="h-4 w-4" />
+                    <span>Capture & Analyze Face</span>
+                  </button>
+                )}
+
+                {capturedImage && (
+                  <button
+                    type="button"
+                    onClick={resetCapture}
+                    className="w-full py-2.5 px-4 rounded-2xl font-medium text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center justify-center space-x-2 border border-stone-200/80 shadow-xs"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Retake Photo</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                form="enroll-form"
+                disabled={isSubmitting || !capturedImage}
+                className="w-full py-3 px-4 rounded-2xl font-semibold text-xs bg-stone-900 hover:bg-stone-800 text-white shadow-sm transition duration-200 flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                <span>{isSubmitting ? 'Verifying Liveness & Saving to Database...' : 'Register Directly into College Database'}</span>
+              </button>
             </div>
-
-            <button
-              type="submit"
-              form="enroll-form"
-              disabled={isSubmitting || !capturedImage}
-              className="w-full py-3 px-4 rounded-2xl font-semibold text-xs bg-stone-900 hover:bg-stone-800 text-white shadow-sm transition duration-200 flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <ShieldCheck className="h-4 w-4" />
-              <span>{isSubmitting ? 'Verifying Liveness & Saving to Database...' : 'Register Directly into College Database'}</span>
-            </button>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </AppleDeluxeShell>
   );

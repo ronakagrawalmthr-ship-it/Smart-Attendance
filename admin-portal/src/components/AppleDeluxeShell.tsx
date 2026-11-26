@@ -260,7 +260,7 @@ export default function AppleDeluxeShell({
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2 }}
                 className="flex items-center space-x-2.5 py-0.5"
-                title="Dynamic Island • Click to preview latest notification"
+                title="Campus Alert Capsule • Click to preview latest notification"
               >
                 <div className="relative flex items-center justify-center">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>

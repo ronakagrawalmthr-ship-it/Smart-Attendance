@@ -37,11 +37,14 @@ export default function GovernancePage() {
       const res = await authFetch(`${API_BASE_URL}/management/holiday?holiday_date=${holidayDate}&reason=${encodeURIComponent(holidayReason)}`, {
         method: 'POST'
       });
-
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not declare holiday.');
+      }
       const data = await res.json();
-      setHolidayNotice(data.message || `Holiday recorded. Live email notification broadcasted via Resend API.`);
-    } catch {
-      setHolidayNotice(`Emergency Holiday broadcasted for ${holidayDate} via Resend Cloud.`);
+      setHolidayNotice(data.message || `Holiday recorded and queued.`);
+    } catch (err: any) {
+      setHolidayNotice(`Error: ${err?.message || 'Failed to declare holiday. Please check connection.'}`);
     } finally {
       setIsSubmittingHoliday(false);
     }
@@ -59,11 +62,14 @@ export default function GovernancePage() {
       const res = await authFetch(`${API_BASE_URL}/management/archive`, {
         method: 'POST'
       });
-
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not archive semester.');
+      }
       const data = await res.json();
       setArchiveNotice(data.message || 'Semester lifecycle archived. Records locked in institutional database.');
-    } catch {
-      setArchiveNotice('Semester records successfully frozen and archived.');
+    } catch (err: any) {
+      setArchiveNotice(`Error: ${err?.message || 'Failed to archive semester.'}`);
     } finally {
       setIsArchiving(false);
     }

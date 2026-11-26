@@ -54,8 +54,8 @@ export default function HodForgotPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 4) {
-      setErrorMessage('Password must be at least 4 characters.');
+    if (newPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters long.');
       return;
     }
 

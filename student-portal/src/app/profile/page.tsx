@@ -223,8 +223,8 @@ export default function StudentProfilePage() {
         setSaveError('New password and confirmation do not match.');
         return;
       }
-      if (newPassword.length < 6) {
-        setSaveError('New password must be at least 6 characters in length.');
+      if (newPassword.length < 8) {
+        setSaveError('New password must be at least 8 characters in length.');
         return;
       }
     }
@@ -248,13 +248,17 @@ export default function StudentProfilePage() {
         localStorage.setItem('student_custom_settings', JSON.stringify(payload));
       }
 
-      await authFetch(`${API_BASE_URL}/portal/profile`, {
+      const res = await authFetch(`${API_BASE_URL}/portal/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to update profile.');
+      }
 
       if (typeof window !== 'undefined' && academicInfo.fullName.trim()) {
         localStorage.setItem('student_name', academicInfo.fullName.trim());
@@ -265,8 +269,8 @@ export default function StudentProfilePage() {
       setConfirmPassword('');
       setTimeout(() => setSaveSuccess(null), 4000);
     } catch (err: any) {
-      setSaveSuccess('Profile changes saved locally in browser session!');
-      setTimeout(() => setSaveSuccess(null), 4000);
+      setSaveError(err.message || 'Failed to save changes. Please try again.');
+      setTimeout(() => setSaveError(null), 4000);
     } finally {
       setSaving(false);
     }

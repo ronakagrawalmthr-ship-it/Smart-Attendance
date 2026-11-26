@@ -521,8 +521,8 @@ export default function AllDepartmentsPage() {
                   <div className="pt-3 border-t border-stone-100 space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-stone-500 font-medium">Department Turnout</span>
-                      <span className={`font-bold ${dept.turnoutToday === null ? 'text-stone-400' : isHealthy ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {dept.turnoutToday !== null ? `${dept.turnoutToday.toFixed(1)}%` : 'No sessions today'}
+                      <span className={`font-bold ${!dept.turnoutToday || dept.turnoutToday === 0 ? 'text-stone-400' : isHealthy ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {dept.turnoutToday && dept.turnoutToday > 0 ? `${dept.turnoutToday.toFixed(1)}%` : 'No sessions today'}
                       </span>
                     </div>
                     <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">

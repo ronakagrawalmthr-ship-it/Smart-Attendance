@@ -1187,6 +1187,70 @@ export default function StudentDashboard() {
           )}
         </div>
 
+        {/* 📅 Day-Wise Attendance History */}
+        {studentData.dayWise && studentData.dayWise.length > 0 && (
+          <div className="rounded-[28px] bg-white p-6 sm:p-7 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-stone-900 tracking-tight flex items-center space-x-2">
+                  <Calendar className="h-4 w-4 text-stone-700" />
+                  <span>Day-Wise Attendance Record</span>
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">Attendance records grouped by academic day.</p>
+              </div>
+              <span className="text-xs font-bold text-stone-600 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                {studentData.dayWise.length} Days Recorded
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {studentData.dayWise.slice(0, 9).map((d) => (
+                <div key={d.date} className="p-4 rounded-2xl bg-stone-50/70 border border-stone-200/70 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-stone-900">{d.day_name}, {d.formatted_date || d.date}</p>
+                    <p className="text-[11px] text-stone-500">{d.attended_lectures} of {d.total_lectures} attended</p>
+                  </div>
+                  <span className={`text-xs font-extrabold px-2.5 py-1 rounded-full border ${
+                    d.turnout_pct >= 75
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {d.turnout_pct.toFixed(0)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 Special Guest Lectures & Industry Seminars */}
+        {studentData.guestLectures && studentData.guestLectures.total > 0 && (
+          <div className="rounded-[28px] bg-white p-6 sm:p-7 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-stone-900 tracking-tight flex items-center space-x-2">
+                  <Award className="h-4 w-4 text-amber-600" />
+                  <span>Special Guest Lectures & Industry Seminars</span>
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">Extra-curricular academic sessions and guest talks attended.</p>
+              </div>
+              <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+                {studentData.guestLectures.attended} / {studentData.guestLectures.total} Attended ({studentData.guestLectures.pct.toFixed(0)}%)
+              </span>
+            </div>
+
+            {studentData.guestLectures.topics && studentData.guestLectures.topics.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {studentData.guestLectures.topics.map((t, idx) => (
+                  <span key={idx} className="px-3 py-1.5 rounded-xl bg-amber-50/70 border border-amber-200/70 text-xs font-semibold text-amber-900">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 📋 Student Live Verification Feed Table (Exact Match to Image Format) */}
         <div className="rounded-[28px] bg-white p-6 sm:p-7 border border-stone-200/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">

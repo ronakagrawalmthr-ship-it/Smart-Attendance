@@ -395,11 +395,6 @@ export default function DirectoryManagementPage() {
 
       if (res.ok) {
         showToast(modalMode === 'create' ? `Successfully added new record to ${activeTab.toUpperCase()}!` : `Updated record successfully!`);
-        if (activeTab === 'hods' && formData.full_name) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('admin_name', formData.full_name);
-          }
-        }
         closeModal();
         fetchAllData();
       } else {

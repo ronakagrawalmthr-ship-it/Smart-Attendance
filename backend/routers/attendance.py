@@ -954,6 +954,8 @@ class QRSessionInitRequest(BaseModel):
     conducted_by_name: Optional[str] = None
     custom_subject_name: Optional[str] = None
     notes: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    credit_weight: Optional[float] = 1.0
 
 class QRVerifyStudentRequest(BaseModel):
     token: Optional[str] = None

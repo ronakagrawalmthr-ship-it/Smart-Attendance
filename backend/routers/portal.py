@@ -638,6 +638,11 @@ def update_student_profile(
     if payload.emergency_contact is not None:
         student.emergency_contact = payload.emergency_contact.strip()
         updated_fields.append("emergency_contact")
+
+    # Update Parent Email
+    if payload.parent_email is not None:
+        student.parent_email = payload.parent_email.strip()
+        updated_fields.append("parent_email")
         
     # Update Password if requested
     if payload.new_password:
@@ -667,6 +672,7 @@ def update_student_profile(
             "email": current_user.email,
             "phone": student.phone or "",
             "emergency_contact": student.emergency_contact or "",
+            "parent_email": student.parent_email or "",
             "has_face_enrolled": bool(student.face_encoding),
             "photo_thumbnail": student.photo_thumbnail
         }

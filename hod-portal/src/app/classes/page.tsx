@@ -3,18 +3,18 @@
 import AppleSelect from '@/components/AppleSelect';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { 
-  Calendar, 
-  Search, 
-  Download, 
-  Filter, 
-  ArrowUpDown, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  FileSpreadsheet, 
-  Layers, 
-  RefreshCw, 
+import {
+  Calendar,
+  Search,
+  Download,
+  Filter,
+  ArrowUpDown,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  FileSpreadsheet,
+  Layers,
+  RefreshCw,
   ArrowLeft,
   Sparkles,
   BookOpen,
@@ -121,7 +121,7 @@ interface AttendanceRecord {
 
 export default function ClassAttendancePage() {
   const todayStr = getTodayISTString();
-  
+
   // View Modes: 'sessions' (Conducted Lectures History) | 'students' (Cumulative Ledger) | 'records' (Individual Scan Logs)
   const [viewMode, setViewMode] = useState<'sessions' | 'students' | 'records'>('sessions');
 
@@ -131,14 +131,14 @@ export default function ClassAttendancePage() {
   const [sessionsLog, setSessionsLog] = useState<SessionLogItem[]>([]);
   const [studentSummary, setStudentSummary] = useState<StudentSummaryItem[]>([]);
   const [rawRecords, setRawRecords] = useState<AttendanceRecord[]>([]);
-  
+
   // Filter Options & States
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
   const [branchPrograms, setBranchPrograms] = useState<Record<string, any>>({});
   const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<string[]>([]);
+  const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
   const [summaryStats, setSummaryStats] = useState<any>({
     total_lectures_conducted: 0,
     guest_lectures_conducted: 0,
@@ -183,7 +183,7 @@ export default function ClassAttendancePage() {
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Update available semesters dynamically based on the selected course/branch
@@ -313,7 +313,7 @@ export default function ClassAttendancePage() {
 
       const params = new URLSearchParams();
       params.append('branch', selectedBranch);
-      
+
       const dateToFetch = selectedDate === 'custom' ? customDate : selectedDate;
       if (dateToFetch !== 'all') {
         params.append('target_date', dateToFetch);
@@ -371,7 +371,7 @@ export default function ClassAttendancePage() {
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessionsLog;
     const q = searchQuery.toLowerCase();
-    return sessionsLog.filter(s => 
+    return sessionsLog.filter(s =>
       s.subject_name.toLowerCase().includes(q) ||
       s.conducted_by.toLowerCase().includes(q) ||
       s.subject_code.toLowerCase().includes(q) ||
@@ -384,7 +384,7 @@ export default function ClassAttendancePage() {
     let list = studentSummary;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = studentSummary.filter(st => 
+      list = studentSummary.filter(st =>
         st.name.toLowerCase().includes(q) ||
         st.roll_number.toLowerCase().includes(q)
       );
@@ -397,7 +397,7 @@ export default function ClassAttendancePage() {
     let list = rawRecords;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = rawRecords.filter(r => 
+      list = rawRecords.filter(r =>
         r.student_name.toLowerCase().includes(q) ||
         r.roll_number.toLowerCase().includes(q) ||
         r.subject_name.toLowerCase().includes(q) ||
@@ -410,7 +410,8 @@ export default function ClassAttendancePage() {
   // Excel / CSV Export
   const downloadExcelSheet = () => {
     if (rawRecords.length === 0) {
-      alert("No attendance records to export for the selected filters.");
+      setFetchError("No attendance records to export for the selected filters.");
+      setTimeout(() => setFetchError(null), 4000);
       return;
     }
 
@@ -451,7 +452,7 @@ export default function ClassAttendancePage() {
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\r\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const semLabel = selectedSemester === 'all' ? 'AllSem' : `Sem${selectedSemester}`;
     const secLabel = selectedSection === 'all' ? 'AllSec' : `Sec${selectedSection}`;
     const fileName = `Department_Attendance_Report_${semLabel}_${secLabel}_${todayStr}.csv`;
@@ -468,193 +469,190 @@ export default function ClassAttendancePage() {
   return (
     <AppleDeluxeShell>
       <div className="w-full space-y-6">
-      {/* Page Header */}
-      <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <Link 
-              href="/dashboard"
-              className="p-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-900 transition mr-2"
-              title="Return to Dashboard"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+        {/* Page Header */}
+        <header className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 sm:p-8 backdrop-blur-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <Link
+                href="/dashboard"
+                className="p-2 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-900 transition mr-2"
+                title="Return to Dashboard"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
 
-            <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Department Attendance Explorer</h1>
-          </div>
-          <p className="text-xs text-stone-500 mt-1 font-medium">
-            Track which teacher took each lecture (regular faculty, 2nd lecture of the day, proxy, or guest lecture) alongside Total vs Subject-Specific attendance.
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-3 w-full sm:w-auto">
-          <button 
-            onClick={() => fetchAttendanceData()}
-            className="p-2.5 rounded-2xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-sm transition"
-            title="Refresh Attendance Data"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
-          </button>
-          
-          <button
-            onClick={downloadExcelSheet}
-            className="py-2.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center space-x-2"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            <span>Export Full Register (CSV)</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Apple Deluxe Pastel Summary Tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="rounded-3xl bg-purple-50/70 border border-purple-200/80 p-4 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-purple-800">Total Lectures Held</div>
-          <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.total_lectures_conducted || 0}</div>
-          <div className="text-[10px] text-purple-700 mt-0.5 font-medium">Across all faculty</div>
-        </div>
-
-        <div className="rounded-3xl bg-amber-50/70 border border-amber-200/80 p-4 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-amber-800 flex items-center space-x-1">
-            <Sparkles className="h-3 w-3 text-amber-600" />
-            <span>Guest Lectures</span>
-          </div>
-          <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.guest_lectures_conducted || 0}</div>
-          <div className="text-[10px] text-amber-700 mt-0.5 font-medium">Invited / Special Sessions</div>
-        </div>
-
-        <div className="rounded-3xl bg-emerald-50/70 border border-emerald-200/80 p-4 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-emerald-800">Average Turnout</div>
-          <div className="text-2xl font-extrabold text-emerald-700 mt-1">{summaryStats.average_turnout_percentage || 0}%</div>
-          <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">Classroom attendance</div>
-        </div>
-
-        <div className="rounded-3xl bg-sky-50/70 border border-sky-200/80 p-4 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-sky-800">Enrolled Students</div>
-          <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.total_students || 0}</div>
-          <div className="text-[10px] text-sky-700 mt-0.5 font-medium">Active roster</div>
-        </div>
-
-        <div className="rounded-3xl bg-rose-50/70 border border-rose-200/80 p-4 shadow-sm col-span-2 md:col-span-1">
-          <div className="text-[10px] uppercase font-bold text-rose-800">Defaulters (&lt;75%)</div>
-          <div className="text-2xl font-extrabold text-rose-600 mt-1">{summaryStats.defaulters_count || 0}</div>
-          <div className="text-[10px] text-rose-700 mt-0.5 font-medium">Require HOD warning</div>
-        </div>
-      </div>
-
-      {/* Control Panel: Filters for Class, Subject, Teacher & Date */}
-      <div className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 backdrop-blur-xl shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-stone-200/80 pb-4">
-          <div className="flex items-center space-x-2 text-sm font-extrabold text-stone-900">
-            <Filter className="h-4 w-4 text-emerald-600" />
-            <span>Classroom Query & Attended Conductor Filters</span>
+              <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Department Attendance Explorer</h1>
+            </div>
+            <p className="text-xs text-stone-500 mt-1 font-medium">
+              Track which teacher took each lecture (regular faculty, 2nd lecture of the day, proxy, or guest lecture) alongside Total vs Subject-Specific attendance.
+            </p>
           </div>
 
-          {/* Quick Date Presets */}
-          <div className="flex items-center space-x-1.5 bg-stone-100 p-1 rounded-full border border-stone-200">
+          <div className="flex items-center space-x-3 w-full sm:w-auto">
             <button
-              onClick={() => setSelectedDate('today')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${
-                selectedDate === 'today'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-900'
-              }`}
+              onClick={() => fetchAttendanceData()}
+              className="p-2.5 rounded-2xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-sm transition"
+              title="Refresh Attendance Data"
             >
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-              <span>Live Today</span>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-emerald-600' : ''}`} />
             </button>
 
             <button
-              onClick={() => setSelectedDate('all')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition ${
-                selectedDate === 'all'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-900'
-              }`}
+              onClick={downloadExcelSheet}
+              className="py-2.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center space-x-2"
             >
-              All History
+              <FileSpreadsheet className="h-4 w-4" />
+              <span>Export Full Register (CSV)</span>
             </button>
+          </div>
+        </header>
 
-            <button
-              onClick={() => setSelectedDate('custom')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition ${
-                selectedDate === 'custom'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-900'
-              }`}
-            >
-              Custom Date
-            </button>
+        {/* Apple Deluxe Pastel Summary Tiles */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="rounded-3xl bg-purple-50/70 border border-purple-200/80 p-4 shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-purple-800">Total Lectures Held</div>
+            <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.total_lectures_conducted || 0}</div>
+            <div className="text-[10px] text-purple-700 mt-0.5 font-medium">Across all faculty</div>
+          </div>
+
+          <div className="rounded-3xl bg-amber-50/70 border border-amber-200/80 p-4 shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-amber-800 flex items-center space-x-1">
+              <Sparkles className="h-3 w-3 text-amber-600" />
+              <span>Guest Lectures</span>
+            </div>
+            <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.guest_lectures_conducted || 0}</div>
+            <div className="text-[10px] text-amber-700 mt-0.5 font-medium">Invited / Special Sessions</div>
+          </div>
+
+          <div className="rounded-3xl bg-emerald-50/70 border border-emerald-200/80 p-4 shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-emerald-800">Average Turnout</div>
+            <div className="text-2xl font-extrabold text-emerald-700 mt-1">{summaryStats.average_turnout_percentage || 0}%</div>
+            <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">Classroom attendance</div>
+          </div>
+
+          <div className="rounded-3xl bg-sky-50/70 border border-sky-200/80 p-4 shadow-sm">
+            <div className="text-[10px] uppercase font-bold text-sky-800">Enrolled Students</div>
+            <div className="text-2xl font-extrabold text-stone-900 mt-1">{summaryStats.total_students || 0}</div>
+            <div className="text-[10px] text-sky-700 mt-0.5 font-medium">Active roster</div>
+          </div>
+
+          <div className="rounded-3xl bg-rose-50/70 border border-rose-200/80 p-4 shadow-sm col-span-2 md:col-span-1">
+            <div className="text-[10px] uppercase font-bold text-rose-800">Defaulters (&lt;75%)</div>
+            <div className="text-2xl font-extrabold text-rose-600 mt-1">{summaryStats.defaulters_count || 0}</div>
+            <div className="text-[10px] text-rose-700 mt-0.5 font-medium">Require HOD warning</div>
           </div>
         </div>
 
-        {/* Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 text-xs">
-          {/* Department / Branch Selector */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Department</label>
-            <AppleSelect
-              value={selectedBranch}
-              onChange={(val) => setSelectedBranch(String(val))}
-              options={availableBranches.map((b) => ({
-                value: b,
-                label: b,
-                badge: 'Dept'
-              }))}
-            />
+        {/* Control Panel: Filters for Class, Subject, Teacher & Date */}
+        <div className="rounded-3xl bg-white/85 border border-stone-200/80 p-6 backdrop-blur-xl shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-stone-200/80 pb-4">
+            <div className="flex items-center space-x-2 text-sm font-extrabold text-stone-900">
+              <Filter className="h-4 w-4 text-emerald-600" />
+              <span>Classroom Query & Attended Conductor Filters</span>
+            </div>
+
+            {/* Quick Date Presets */}
+            <div className="flex items-center space-x-1.5 bg-stone-100 p-1 rounded-full border border-stone-200">
+              <button
+                onClick={() => setSelectedDate('today')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${selectedDate === 'today'
+                  ? 'bg-white text-stone-900 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-900'
+                  }`}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+                <span>Live Today</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedDate('all')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition ${selectedDate === 'all'
+                  ? 'bg-white text-stone-900 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-900'
+                  }`}
+              >
+                All History
+              </button>
+
+              <button
+                onClick={() => setSelectedDate('custom')}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition ${selectedDate === 'custom'
+                  ? 'bg-white text-stone-900 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-900'
+                  }`}
+              >
+                Custom Date
+              </button>
+            </div>
           </div>
 
-          {/* Semester Selector */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Semester</label>
-            <AppleSelect
-              value={selectedSemester}
-              onChange={(val) => setSelectedSemester(String(val))}
-              options={[
-                { value: 'all', label: 'All Semesters', badge: 'All' },
-                ...availableSemesters.map(s => ({
-                  value: String(s),
-                  label: `Semester ${s}`,
-                  badge: `Sem ${s}`
-                }))
-              ]}
-            />
-          </div>
+          {/* Filters Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 text-xs">
+            {/* Department / Branch Selector */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Department</label>
+              <AppleSelect
+                value={selectedBranch}
+                onChange={(val) => setSelectedBranch(String(val))}
+                options={availableBranches.map((b) => ({
+                  value: b,
+                  label: b,
+                  badge: 'Dept'
+                }))}
+              />
+            </div>
 
-          {/* Section Selector */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Class Section</label>
-            <AppleSelect
-              value={selectedSection}
-              onChange={(val) => setSelectedSection(String(val))}
-              options={[
-                { value: 'all', label: 'All Sections', badge: 'All' },
-                ...availableSections.map(sec => ({
-                  value: sec,
-                  label: `Section ${sec}`,
-                  badge: `Sec ${sec}`
-                }))
-              ]}
-            />
-          </div>
+            {/* Semester Selector */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Semester</label>
+              <AppleSelect
+                value={selectedSemester}
+                onChange={(val) => setSelectedSemester(String(val))}
+                options={[
+                  { value: 'all', label: 'All Semesters', badge: 'All' },
+                  ...availableSemesters.map(s => ({
+                    value: String(s),
+                    label: `Semester ${s}`,
+                    badge: `Sem ${s}`
+                  }))
+                ]}
+              />
+            </div>
 
-          {/* Subject Filter */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Subject Scope</label>
-            <AppleSelect
-              value={selectedSubject}
-              onChange={(val) => setSelectedSubject(String(val))}
-              options={[
-                { value: 'all', label: 'All Lectures (Cumulative Total)', badge: 'All' },
-                { value: 'GUEST', label: '🌟 Guest Lectures Only', badge: 'Guest' },
-                ...availableSubjects.map(subj => ({
-                  value: subj,
-                  label: subj,
-                  badge: 'Subject'
-                }))
-              ]}
-            />
-          </div>
+            {/* Section Selector */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Class Section</label>
+              <AppleSelect
+                value={selectedSection}
+                onChange={(val) => setSelectedSection(String(val))}
+                options={[
+                  { value: 'all', label: 'All Sections', badge: 'All' },
+                  ...availableSections.map(sec => ({
+                    value: sec,
+                    label: `Section ${sec}`,
+                    badge: `Sec ${sec}`
+                  }))
+                ]}
+              />
+            </div>
+
+            {/* Subject Filter */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Subject Scope</label>
+              <AppleSelect
+                value={selectedSubject}
+                onChange={(val) => setSelectedSubject(String(val))}
+                options={[
+                  { value: 'all', label: 'All Lectures (Cumulative Total)', badge: 'All' },
+                  { value: 'GUEST', label: '🌟 Guest Lectures Only', badge: 'Guest' },
+                  ...availableSubjects.map(subj => ({
+                    value: subj,
+                    label: subj,
+                    badge: 'Subject'
+                  }))
+                ]}
+              />
+            </div>
 
           {/* Teacher Conductor Filter */}
           <div>
@@ -664,787 +662,779 @@ export default function ClassAttendancePage() {
               onChange={(val) => setSelectedTeacher(String(val))}
               options={[
                 { value: 'all', label: 'All Conductor Teachers', badge: 'All' },
-                ...availableTeachers.map(t => ({
-                  value: t,
-                  label: t,
+                ...availableTeachers.map((t: any) => ({
+                  value: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
+                  label: typeof t === 'string' ? t : (t?.full_name || t?.name || String(t)),
                   badge: 'Faculty'
                 }))
               ]}
             />
           </div>
 
-          {/* Custom Date Input */}
-          <div>
-            <label className="block text-stone-600 font-bold mb-1.5">Target Date</label>
+            {/* Custom Date Input */}
+            <div>
+              <label className="block text-stone-600 font-bold mb-1.5">Target Date</label>
+              <input
+                type="date"
+                value={customDate}
+                disabled={selectedDate !== 'custom'}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium disabled:opacity-40 focus:bg-white focus:outline-none focus:border-emerald-500 transition"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Main View Mode Selector Tabs */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex rounded-full bg-stone-100 p-1 border border-stone-200/80 shadow-sm">
+            <button
+              onClick={() => setViewMode('sessions')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${viewMode === 'sessions'
+                ? 'bg-white text-stone-900 shadow-sm'
+                : 'text-stone-500 hover:text-stone-900'
+                }`}
+            >
+              <Layers className="h-4 w-4 text-emerald-600" />
+              <span>Conducted Lectures Log ({sessionsLog.length})</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('students')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${viewMode === 'students'
+                ? 'bg-white text-stone-900 shadow-sm'
+                : 'text-stone-500 hover:text-stone-900'
+                }`}
+            >
+              <GraduationCap className="h-4 w-4 text-purple-600" />
+              <span>Total Student Attendance ({studentSummary.length})</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('records')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${viewMode === 'records'
+                ? 'bg-white text-stone-900 shadow-sm'
+                : 'text-stone-500 hover:text-stone-900'
+                }`}
+            >
+              <Clock className="h-4 w-4 text-sky-600" />
+              <span>Raw Scan Logs ({rawRecords.length})</span>
+            </button>
+          </div>
+
+          {/* Search Filter */}
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
             <input
-              type="date"
-              value={customDate}
-              disabled={selectedDate !== 'custom'}
-              onChange={(e) => setCustomDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-900 font-medium disabled:opacity-40 focus:bg-white focus:outline-none focus:border-emerald-500 transition"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search topic, conductor, roll..."
+              className="w-full pl-10 pr-4 py-2 rounded-2xl bg-white border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-emerald-500 transition shadow-sm"
             />
           </div>
         </div>
-      </div>
 
-      {/* Main View Mode Selector Tabs */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex rounded-full bg-stone-100 p-1 border border-stone-200/80 shadow-sm">
-          <button
-            onClick={() => setViewMode('sessions')}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${
-              viewMode === 'sessions'
-                ? 'bg-white text-stone-900 shadow-sm'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            <Layers className="h-4 w-4 text-emerald-600" />
-            <span>Conducted Lectures Log ({sessionsLog.length})</span>
-          </button>
+        {/* VIEW MODE 1: CONDUCTED LECTURES LOG */}
+        {viewMode === 'sessions' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                Conducted Classroom Sessions & Conductor Attribution
+              </h2>
+              <span className="text-xs text-stone-400 font-medium">
+                Showing {filteredSessions.length} sessions
+              </span>
+            </div>
 
-          <button
-            onClick={() => setViewMode('students')}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${
-              viewMode === 'students'
-                ? 'bg-white text-stone-900 shadow-sm'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            <GraduationCap className="h-4 w-4 text-purple-600" />
-            <span>Total Student Attendance ({studentSummary.length})</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode('records')}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center space-x-1.5 ${
-              viewMode === 'records'
-                ? 'bg-white text-stone-900 shadow-sm'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            <Clock className="h-4 w-4 text-sky-600" />
-            <span>Raw Scan Logs ({rawRecords.length})</span>
-          </button>
-        </div>
-
-        {/* Search Filter */}
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search topic, conductor, roll..."
-            className="w-full pl-10 pr-4 py-2 rounded-2xl bg-white border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-emerald-500 transition shadow-sm"
-          />
-        </div>
-      </div>
-
-      {/* VIEW MODE 1: CONDUCTED LECTURES LOG */}
-      {viewMode === 'sessions' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center px-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
-              Conducted Classroom Sessions & Conductor Attribution
-            </h2>
-            <span className="text-xs text-stone-400 font-medium">
-              Showing {filteredSessions.length} sessions
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2 text-xs text-stone-400 font-medium pb-1">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
-                <span>Loading conducted lectures from department database...</span>
-              </div>
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="rounded-3xl p-6 bg-white/80 border border-stone-200/80 shadow-sm animate-pulse flex flex-col md:flex-row justify-between gap-4">
-                  <div className="space-y-2.5">
-                    <div className="h-4 w-48 bg-stone-200/80 rounded-md"></div>
-                    <div className="h-3 w-32 bg-stone-100 rounded-md"></div>
-                    <div className="h-3 w-64 bg-stone-100 rounded-md"></div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="h-8 w-20 bg-stone-200/70 rounded-full"></div>
-                    <div className="h-8 w-28 bg-stone-200/70 rounded-2xl"></div>
-                  </div>
+            {loading ? (
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2 text-xs text-stone-400 font-medium pb-1">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                  <span>Loading conducted lectures from department database...</span>
                 </div>
-              ))}
-            </div>
-          ) : fetchError ? (
-            <div className="py-12 px-6 text-center space-y-4 rounded-3xl bg-rose-50/70 border border-rose-200/80">
-              <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-                <AlertCircle className="h-6 w-6" />
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="rounded-3xl p-6 bg-white/80 border border-stone-200/80 shadow-sm animate-pulse flex flex-col md:flex-row justify-between gap-4">
+                    <div className="space-y-2.5">
+                      <div className="h-4 w-48 bg-stone-200/80 rounded-md"></div>
+                      <div className="h-3 w-32 bg-stone-100 rounded-md"></div>
+                      <div className="h-3 w-64 bg-stone-100 rounded-md"></div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="h-8 w-20 bg-stone-200/70 rounded-full"></div>
+                      <div className="h-8 w-28 bg-stone-200/70 rounded-2xl"></div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="max-w-md mx-auto space-y-1">
-                <h3 className="text-sm font-bold text-rose-900">Department Attendance Service Disconnected</h3>
-                <p className="text-xs text-rose-700">{fetchError}</p>
+            ) : fetchError ? (
+              <div className="py-12 px-6 text-center space-y-4 rounded-3xl bg-rose-50/70 border border-rose-200/80">
+                <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1">
+                  <h3 className="text-sm font-bold text-rose-900">Department Attendance Service Disconnected</h3>
+                  <p className="text-xs text-rose-700">{fetchError}</p>
+                </div>
+                <button
+                  onClick={() => fetchAttendanceData(true)}
+                  disabled={retrying}
+                  className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-2 shadow-xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`} />
+                  <span>{retrying ? 'Re-syncing Records...' : 'Retry Connection'}</span>
+                </button>
               </div>
-              <button
-                onClick={() => fetchAttendanceData(true)}
-                disabled={retrying}
-                className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-2 shadow-xs disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`} />
-                <span>{retrying ? 'Re-syncing Records...' : 'Retry Connection'}</span>
-              </button>
-            </div>
-          ) : filteredSessions.length === 0 ? (
-            <div className="py-16 text-center text-stone-400 bg-white/80 rounded-3xl border border-stone-200 shadow-sm space-y-2">
-              <Layers className="h-8 w-8 mx-auto text-stone-300" />
-              <p className="text-sm font-bold text-stone-700">No conducted lecture sessions found.</p>
-              <p className="text-xs text-stone-400">Try adjusting your semester, section, or conductor filter parameters above.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredSessions.map((sess) => {
-                const isGuest = sess.is_guest_lecture;
-                return (
-                  <motion.div
-                    key={sess.session_id}
-                    layout
-                    className={`rounded-3xl p-6 border backdrop-blur-xl transition-all shadow-sm ${
-                      isGuest 
+            ) : filteredSessions.length === 0 ? (
+              <div className="py-16 text-center text-stone-400 bg-white/80 rounded-3xl border border-stone-200 shadow-sm space-y-2">
+                <Layers className="h-8 w-8 mx-auto text-stone-300" />
+                <p className="text-sm font-bold text-stone-700">No conducted lecture sessions found.</p>
+                <p className="text-xs text-stone-400">Try adjusting your semester, section, or conductor filter parameters above.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredSessions.map((sess) => {
+                  const isGuest = sess.is_guest_lecture;
+                  return (
+                    <motion.div
+                      key={sess.session_id}
+                      layout
+                      className={`rounded-3xl p-6 border backdrop-blur-xl transition-all shadow-sm ${isGuest
                         ? 'bg-purple-50/40 border-purple-200 hover:border-purple-300'
                         : 'bg-white/85 border-stone-200/80 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                      {/* Left: Session Identification */}
-                      <div className="space-y-2 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isGuest ? (
-                            <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-bold flex items-center space-x-1">
-                              <Sparkles className="h-3 w-3 text-amber-500" />
-                              <span>Guest Lecture</span>
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
-                              Theory Lecture
-                            </span>
-                          )}
-
-                          <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[11px] font-mono font-semibold border border-stone-200">
-                            {sess.subject_code}
-                          </span>
-
-                          <span className="text-xs text-stone-500 font-medium">
-                            {sess.branch} • Sem {sess.semester} • Sec {sess.section}
-                          </span>
-                        </div>
-
-                        {/* Subject Title */}
-                        <h3 className="text-lg font-extrabold text-stone-900 tracking-tight">
-                          {sess.subject_name}
-                        </h3>
-
-                        {/* Conductor & Details */}
-                        <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs">
-                          {/* Who conducted the class */}
-                          <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-stone-50 border border-stone-200">
-                            <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                            <span className="text-stone-500 font-medium">Conducted By:</span>
-                            <span className="font-extrabold text-stone-900">{sess.conducted_by}</span>
-                          </div>
-
-                          {/* Date & Time */}
-                          <div className="flex items-center space-x-1 text-stone-500 font-medium">
-                            <Calendar className="h-3.5 w-3.5 text-stone-400" />
-                            <span>{sess.date}</span>
-                            <span>•</span>
-                            <Clock className="h-3.5 w-3.5 text-stone-400" />
-                            <span>{sess.time}</span>
-                          </div>
-
-                          {/* Notes if present */}
-                          {sess.notes && (
-                            <div className="text-stone-500 italic bg-stone-50 px-2.5 py-0.5 rounded-full border border-stone-200">
-                              "{sess.notes}"
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Turnout Gauge & Inspect Button */}
-                      <div className="flex items-center space-x-5 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-stone-200">
-                        <div className="text-right">
-                          <div className="text-[10px] uppercase font-bold text-stone-500">Turnout Ratio</div>
-                          <div className="text-xl font-extrabold text-emerald-700">
-                            {sess.present_count} <span className="text-xs text-stone-400 font-normal">/ {sess.total_enrolled}</span>
-                          </div>
-                          <div className="text-[11px] font-bold text-indigo-600">{sess.turnout_percentage}% Present</div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSessionModal(sess)}
-                          className="px-4 py-2.5 rounded-2xl bg-white hover:bg-stone-100 border border-stone-200 text-xs font-bold text-stone-800 shadow-sm transition flex items-center space-x-1.5"
-                        >
-                          <Eye className="h-4 w-4 text-emerald-600" />
-                          <span>Inspect Roster</span>
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VIEW MODE 2: TOTAL CUMULATIVE STUDENT ATTENDANCE */}
-      {viewMode === 'students' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 px-1">
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
-                Student Cumulative Attendance (Total & Subject-Specific Ratios)
-              </h2>
-              <p className="text-xs text-stone-400 font-medium">
-                Evaluating attendance across <span className="text-stone-800 font-bold">{selectedSubject === 'all' ? 'ALL Lectures & Teachers' : selectedSubject}</span>
-              </p>
-            </div>
-            
-            <div className="text-xs text-stone-400 font-medium">
-              Showing {filteredStudents.length} students
-            </div>
-          </div>
-
-          <div className="rounded-3xl bg-white/85 border border-stone-200/80 overflow-hidden backdrop-blur-xl shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="px-6 py-4">Student Details</th>
-                    <th className="px-6 py-4">Class</th>
-                    <th className="px-6 py-4 text-center">Lectures Held</th>
-                    <th className="px-6 py-4 text-center">Attended</th>
-                    <th className="px-6 py-4 text-center">Overall %</th>
-                    <th className="px-6 py-4">Subject & Conductor Breakdown</th>
-                    <th className="px-6 py-4 text-right">Standing</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700">
-                  {loading ? (
-                    <>
-                      {[...Array(5)].map((_, i) => (
-                        <tr key={i} className="animate-pulse">
-                          <td className="px-6 py-4">
-                            <div className="h-4 w-32 bg-stone-200/80 rounded mb-1.5"></div>
-                            <div className="h-3 w-20 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="h-3.5 w-16 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="h-5 w-12 bg-stone-200/70 rounded-full mx-auto"></div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="h-3 w-40 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="h-5 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
-                          </td>
-                        </tr>
-                      ))}
-                    </>
-                  ) : fetchError ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center">
-                        <div className="max-w-md mx-auto space-y-3">
-                          <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
-                          <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
-                          <button
-                            onClick={() => fetchAttendanceData(true)}
-                            disabled={retrying}
-                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
-                          >
-                            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
-                            <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-stone-400 font-medium">
-                        No student attendance records matching query.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map((st) => {
-                      const isDefaulter = st.is_defaulter;
-                      return (
-                        <tr key={st.student_id} className="hover:bg-stone-50/80 transition">
-                          {/* Student Details */}
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-stone-900 text-sm">{st.name}</div>
-                            <div className="font-mono text-[11px] text-indigo-600 font-semibold">{st.roll_number}</div>
-                          </td>
-
-                          {/* Class */}
-                          <td className="px-6 py-4 text-stone-600">
-                            <div className="font-medium">Sem {st.semester}</div>
-                            <div className="text-stone-400">Sec {st.section}</div>
-                          </td>
-
-                          {/* Lectures Held */}
-                          <td className="px-6 py-4 text-center font-bold text-stone-800 text-sm">
-                            {st.total_lectures}
-                          </td>
-
-                          {/* Attended */}
-                          <td className="px-6 py-4 text-center font-extrabold text-emerald-700 text-sm">
-                            {st.total_attended}
-                          </td>
-
-                          {/* Percentage */}
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2.5 py-1 rounded-full font-extrabold text-xs inline-block border ${
-                              isDefaulter
-                                ? 'bg-rose-50 border-rose-200 text-rose-700'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                            }`}>
-                              {st.overall_percentage}%
-                            </span>
-                          </td>
-
-                          {/* Breakdown preview */}
-                          <td className="px-6 py-4">
-                            <div className="space-y-1">
-                              {/* Guest lectures pill */}
-                              {st.guest_lectures && st.guest_lectures.total > 0 && (
-                                <div className="text-[11px] text-purple-700 font-medium flex items-center space-x-1">
-                                  <Sparkles className="h-3 w-3 text-amber-500" />
-                                  <span>Guest: {st.guest_lectures.attended}/{st.guest_lectures.total} ({st.guest_lectures.percentage}%)</span>
-                                </div>
-                              )}
-
-                              {/* Subjects overview */}
-                              <div className="flex flex-wrap gap-1 text-[10px]">
-                                {Object.values(st.subject_breakdown).slice(0, 3).map(sb => (
-                                  <span key={sb.subject_code} className="px-2 py-0.5 rounded-full bg-stone-100 border border-stone-200 text-stone-600 font-medium">
-                                    {sb.subject_code}: {sb.attended}/{sb.total}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Standing */}
-                          <td className="px-6 py-4 text-right">
-                            {isDefaulter ? (
-                              <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">
-                                Defaulter
+                        }`}
+                    >
+                      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                        {/* Left: Session Identification */}
+                        <div className="space-y-2 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {isGuest ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 text-[11px] font-bold flex items-center space-x-1">
+                                <Sparkles className="h-3 w-3 text-amber-500" />
+                                <span>Guest Lecture</span>
                               </span>
                             ) : (
-                              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
-                                Eligible
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                                Theory Lecture
                               </span>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* VIEW MODE 3: RAW SCAN RECORDS */}
-      {viewMode === 'records' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center px-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
-              Individual Attendance Logs & Verification Timestamps
-            </h2>
-            <span className="text-xs text-stone-400 font-medium">
-              Showing {filteredRawRecords.length} records
-            </span>
-          </div>
+                            <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 text-[11px] font-mono font-semibold border border-stone-200">
+                              {sess.subject_code}
+                            </span>
 
-          <div className="rounded-3xl bg-white/85 border border-stone-200/80 overflow-hidden backdrop-blur-xl shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="px-6 py-4">Student</th>
-                    <th className="px-6 py-4">Subject / Guest Topic</th>
-                    <th className="px-6 py-4">Conducted By</th>
-                    <th className="px-6 py-4">Class</th>
-                    <th className="px-6 py-4">Date & Time</th>
-                    <th className="px-6 py-4 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700">
-                  {loading ? (
-                    <>
-                      {[...Array(5)].map((_, i) => (
-                        <tr key={i} className="animate-pulse">
-                          <td className="px-6 py-3.5">
-                            <div className="h-4 w-32 bg-stone-200/80 rounded mb-1"></div>
-                            <div className="h-3 w-20 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-3.5">
-                            <div className="h-3.5 w-28 bg-stone-200/70 rounded mb-1"></div>
-                            <div className="h-3 w-16 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-3.5">
-                            <div className="h-3.5 w-24 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-3.5">
-                            <div className="h-3.5 w-20 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-3.5">
-                            <div className="h-3.5 w-20 bg-stone-100 rounded mb-1"></div>
-                            <div className="h-3 w-12 bg-stone-100 rounded"></div>
-                          </td>
-                          <td className="px-6 py-3.5 text-right">
-                            <div className="h-6 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
-                          </td>
-                        </tr>
-                      ))}
-                    </>
-                  ) : fetchError ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center">
-                        <div className="max-w-md mx-auto space-y-3">
-                          <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
-                          <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
+                            <span className="text-xs text-stone-500 font-medium">
+                              {sess.branch} • Sem {sess.semester} • Sec {sess.section}
+                            </span>
+                          </div>
+
+                          {/* Subject Title */}
+                          <h3 className="text-lg font-extrabold text-stone-900 tracking-tight">
+                            {sess.subject_name}
+                          </h3>
+
+                          {/* Conductor & Details */}
+                          <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs">
+                            {/* Who conducted the class */}
+                            <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-stone-50 border border-stone-200">
+                              <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
+                              <span className="text-stone-500 font-medium">Conducted By:</span>
+                              <span className="font-extrabold text-stone-900">{sess.conducted_by}</span>
+                            </div>
+
+                            {/* Date & Time */}
+                            <div className="flex items-center space-x-1 text-stone-500 font-medium">
+                              <Calendar className="h-3.5 w-3.5 text-stone-400" />
+                              <span>{sess.date}</span>
+                              <span>•</span>
+                              <Clock className="h-3.5 w-3.5 text-stone-400" />
+                              <span>{sess.time}</span>
+                            </div>
+
+                            {/* Notes if present */}
+                            {sess.notes && (
+                              <div className="text-stone-500 italic bg-stone-50 px-2.5 py-0.5 rounded-full border border-stone-200">
+                                "{sess.notes}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right: Turnout Gauge & Inspect Button */}
+                        <div className="flex items-center space-x-5 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-stone-200">
+                          <div className="text-right">
+                            <div className="text-[10px] uppercase font-bold text-stone-500">Turnout Ratio</div>
+                            <div className="text-xl font-extrabold text-emerald-700">
+                              {sess.present_count} <span className="text-xs text-stone-400 font-normal">/ {sess.total_enrolled}</span>
+                            </div>
+                            <div className="text-[11px] font-bold text-indigo-600">{sess.turnout_percentage}% Present</div>
+                          </div>
+
                           <button
-                            onClick={() => fetchAttendanceData(true)}
-                            disabled={retrying}
-                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
+                            type="button"
+                            onClick={() => setSelectedSessionModal(sess)}
+                            className="px-4 py-2.5 rounded-2xl bg-white hover:bg-stone-100 border border-stone-200 text-xs font-bold text-stone-800 shadow-sm transition flex items-center space-x-1.5"
                           >
-                            <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
-                            <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
+                            <Eye className="h-4 w-4 text-emerald-600" />
+                            <span>Inspect Roster</span>
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  ) : filteredRawRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-stone-400 font-medium">
-                        No raw logs found for current filter.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRawRecords.map((rec) => (
-                      <tr key={rec.log_id} className="hover:bg-stone-50/80 transition">
-                        <td className="px-6 py-3.5">
-                          <div className="font-bold text-stone-900">{rec.student_name}</div>
-                          <div className="font-mono text-[11px] text-stone-500">{rec.roll_number}</div>
-                        </td>
-                        <td className="px-6 py-3.5">
-                          <div className="font-semibold text-stone-800">{rec.subject_name}</div>
-                          <div className="text-[11px] text-stone-400 font-mono">{rec.subject_code}</div>
-                        </td>
-                        <td className="px-6 py-3.5 font-medium text-indigo-700">
-                          {rec.conducted_by || rec.teacher_name}
-                        </td>
-                        <td className="px-6 py-3.5 text-stone-500">
-                          Sem {rec.semester} • Sec {rec.section}
-                        </td>
-                        <td className="px-6 py-3.5 text-stone-500">
-                          <div>{rec.date}</div>
-                          <div className="text-[11px] text-stone-400">{rec.time}</div>
-                        </td>
-                        <td className="px-6 py-3.5 text-right">
-                          <div className="flex items-center justify-end space-x-2">
-                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                              rec.is_present
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }`}>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-                              {rec.status_tag || rec.status}
-                            </span>
-                            {rec.student_id && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOverrideTarget({
-                                    student_id: rec.student_id!,
-                                    student_name: rec.student_name,
-                                    roll_number: rec.roll_number,
-                                    session_id: rec.session_id,
-                                    current_status: rec.status_tag || (rec.is_present ? 'PRESENT' : 'ABSENT'),
-                                    current_present: rec.is_present
-                                  });
-                                  setOverrideTag(rec.is_present ? 'ABSENT' : 'PRESENT');
-                                  setOverrideReason('');
-                                  setOverrideError(null);
-                                  setOverrideSuccessMsg(null);
-                                }}
-                                className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
-                                title="HOD Attendance Override"
-                              >
-                                <Edit3 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
+        {/* VIEW MODE 2: TOTAL CUMULATIVE STUDENT ATTENDANCE */}
+        {viewMode === 'students' && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 px-1">
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                  Student Cumulative Attendance (Total & Subject-Specific Ratios)
+                </h2>
+                <p className="text-xs text-stone-400 font-medium">
+                  Evaluating attendance across <span className="text-stone-800 font-bold">{selectedSubject === 'all' ? 'ALL Lectures & Teachers' : selectedSubject}</span>
+                </p>
+              </div>
+
+              <div className="text-xs text-stone-400 font-medium">
+                Showing {filteredStudents.length} students
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white/85 border border-stone-200/80 overflow-hidden backdrop-blur-xl shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="px-6 py-4">Student Details</th>
+                      <th className="px-6 py-4">Class</th>
+                      <th className="px-6 py-4 text-center">Lectures Held</th>
+                      <th className="px-6 py-4 text-center">Attended</th>
+                      <th className="px-6 py-4 text-center">Overall %</th>
+                      <th className="px-6 py-4">Subject & Conductor Breakdown</th>
+                      <th className="px-6 py-4 text-right">Standing</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 text-stone-700">
+                    {loading ? (
+                      <>
+                        {[...Array(5)].map((_, i) => (
+                          <tr key={i} className="animate-pulse">
+                            <td className="px-6 py-4">
+                              <div className="h-4 w-32 bg-stone-200/80 rounded mb-1.5"></div>
+                              <div className="h-3 w-20 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="h-3.5 w-16 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="h-4 w-8 bg-stone-200/70 rounded mx-auto"></div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="h-5 w-12 bg-stone-200/70 rounded-full mx-auto"></div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="h-3 w-40 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="h-5 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    ) : fetchError ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center">
+                          <div className="max-w-md mx-auto space-y-3">
+                            <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
+                            <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
+                            <button
+                              onClick={() => fetchAttendanceData(true)}
+                              disabled={retrying}
+                              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
+                            >
+                              <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+                              <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-stone-400 font-medium">
+                          No student attendance records matching query.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredStudents.map((st) => {
+                        const isDefaulter = st.is_defaulter;
+                        return (
+                          <tr key={st.student_id} className="hover:bg-stone-50/80 transition">
+                            {/* Student Details */}
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-stone-900 text-sm">{st.name}</div>
+                              <div className="font-mono text-[11px] text-indigo-600 font-semibold">{st.roll_number}</div>
+                            </td>
+
+                            {/* Class */}
+                            <td className="px-6 py-4 text-stone-600">
+                              <div className="font-medium">Sem {st.semester}</div>
+                              <div className="text-stone-400">Sec {st.section}</div>
+                            </td>
+
+                            {/* Lectures Held */}
+                            <td className="px-6 py-4 text-center font-bold text-stone-800 text-sm">
+                              {st.total_lectures}
+                            </td>
+
+                            {/* Attended */}
+                            <td className="px-6 py-4 text-center font-extrabold text-emerald-700 text-sm">
+                              {st.total_attended}
+                            </td>
+
+                            {/* Percentage */}
+                            <td className="px-6 py-4 text-center">
+                              <span className={`px-2.5 py-1 rounded-full font-extrabold text-xs inline-block border ${isDefaulter
+                                ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                }`}>
+                                {st.overall_percentage}%
+                              </span>
+                            </td>
+
+                            {/* Breakdown preview */}
+                            <td className="px-6 py-4">
+                              <div className="space-y-1">
+                                {/* Guest lectures pill */}
+                                {st.guest_lectures && st.guest_lectures.total > 0 && (
+                                  <div className="text-[11px] text-purple-700 font-medium flex items-center space-x-1">
+                                    <Sparkles className="h-3 w-3 text-amber-500" />
+                                    <span>Guest: {st.guest_lectures.attended}/{st.guest_lectures.total} ({st.guest_lectures.percentage}%)</span>
+                                  </div>
+                                )}
+
+                                {/* Subjects overview */}
+                                <div className="flex flex-wrap gap-1 text-[10px]">
+                                  {Object.values(st.subject_breakdown).slice(0, 3).map(sb => (
+                                    <span key={sb.subject_code} className="px-2 py-0.5 rounded-full bg-stone-100 border border-stone-200 text-stone-600 font-medium">
+                                      {sb.subject_code}: {sb.attended}/{sb.total}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Standing */}
+                            <td className="px-6 py-4 text-right">
+                              {isDefaulter ? (
+                                <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">
+                                  Defaulter
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                                  Eligible
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Roster Drilldown Modal in Apple Style */}
-      <AnimatePresence>
-        {selectedSessionModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
-            <motion.div
-              
-              
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white/95 border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
-            >
-              {/* Modal Header */}
-              <div className="p-6 border-b border-stone-200 flex justify-between items-start">
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    {selectedSessionModal.is_guest_lecture ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-bold flex items-center space-x-1">
-                        <Sparkles className="h-3 w-3 text-amber-500" />
-                        <span>Guest Lecture</span>
-                      </span>
+        {/* VIEW MODE 3: RAW SCAN RECORDS */}
+        {viewMode === 'records' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                Individual Attendance Logs & Verification Timestamps
+              </h2>
+              <span className="text-xs text-stone-400 font-medium">
+                Showing {filteredRawRecords.length} records
+              </span>
+            </div>
+
+            <div className="rounded-3xl bg-white/85 border border-stone-200/80 overflow-hidden backdrop-blur-xl shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-stone-50/80 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="px-6 py-4">Student</th>
+                      <th className="px-6 py-4">Subject / Guest Topic</th>
+                      <th className="px-6 py-4">Conducted By</th>
+                      <th className="px-6 py-4">Class</th>
+                      <th className="px-6 py-4">Date & Time</th>
+                      <th className="px-6 py-4 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 text-stone-700">
+                    {loading ? (
+                      <>
+                        {[...Array(5)].map((_, i) => (
+                          <tr key={i} className="animate-pulse">
+                            <td className="px-6 py-3.5">
+                              <div className="h-4 w-32 bg-stone-200/80 rounded mb-1"></div>
+                              <div className="h-3 w-20 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <div className="h-3.5 w-28 bg-stone-200/70 rounded mb-1"></div>
+                              <div className="h-3 w-16 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <div className="h-3.5 w-24 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <div className="h-3.5 w-20 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <div className="h-3.5 w-20 bg-stone-100 rounded mb-1"></div>
+                              <div className="h-3 w-12 bg-stone-100 rounded"></div>
+                            </td>
+                            <td className="px-6 py-3.5 text-right">
+                              <div className="h-6 w-16 bg-stone-200/70 rounded-full ml-auto"></div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    ) : fetchError ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center">
+                          <div className="max-w-md mx-auto space-y-3">
+                            <AlertCircle className="h-6 w-6 text-rose-500 mx-auto" />
+                            <p className="text-xs font-semibold text-rose-800">{fetchError}</p>
+                            <button
+                              onClick={() => fetchAttendanceData(true)}
+                              disabled={retrying}
+                              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition inline-flex items-center space-x-1.5 shadow-xs disabled:opacity-50"
+                            >
+                              <RefreshCw className={`h-3 w-3 ${retrying ? 'animate-spin' : ''}`} />
+                              <span>{retrying ? 'Re-syncing...' : 'Retry'}</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredRawRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-stone-400 font-medium">
+                          No raw logs found for current filter.
+                        </td>
+                      </tr>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        Theory Class
-                      </span>
+                      filteredRawRecords.map((rec) => (
+                        <tr key={rec.log_id} className="hover:bg-stone-50/80 transition">
+                          <td className="px-6 py-3.5">
+                            <div className="font-bold text-stone-900">{rec.student_name}</div>
+                            <div className="font-mono text-[11px] text-stone-500">{rec.roll_number}</div>
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <div className="font-semibold text-stone-800">{rec.subject_name}</div>
+                            <div className="text-[11px] text-stone-400 font-mono">{rec.subject_code}</div>
+                          </td>
+                          <td className="px-6 py-3.5 font-medium text-indigo-700">
+                            {rec.conducted_by || rec.teacher_name}
+                          </td>
+                          <td className="px-6 py-3.5 text-stone-500">
+                            Sem {rec.semester} • Sec {rec.section}
+                          </td>
+                          <td className="px-6 py-3.5 text-stone-500">
+                            <div>{rec.date}</div>
+                            <div className="text-[11px] text-stone-400">{rec.time}</div>
+                          </td>
+                          <td className="px-6 py-3.5 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${rec.is_present
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}>
+
+                                {rec.status_tag || rec.status}
+                              </span>
+                              {rec.student_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOverrideTarget({
+                                      student_id: rec.student_id!,
+                                      student_name: rec.student_name,
+                                      roll_number: rec.roll_number,
+                                      session_id: rec.session_id,
+                                      current_status: rec.status_tag || (rec.is_present ? 'PRESENT' : 'ABSENT'),
+                                      current_present: rec.is_present
+                                    });
+                                    setOverrideTag(rec.is_present ? 'ABSENT' : 'PRESENT');
+                                    setOverrideReason('');
+                                    setOverrideError(null);
+                                    setOverrideSuccessMsg(null);
+                                  }}
+                                  className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
+                                  title="HOD Attendance Override"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                     )}
-                    <span className="text-xs text-stone-500 font-medium">
-                      {selectedSessionModal.branch} • Sem {selectedSessionModal.semester} • Sec {selectedSessionModal.section}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-extrabold text-stone-900">
-                    {selectedSessionModal.subject_name}
-                  </h3>
-                  <div className="text-xs text-stone-500 flex items-center space-x-2 font-medium">
-                    <span>Conducted By: <strong className="text-stone-900">{selectedSessionModal.conducted_by}</strong></span>
-                    <span>•</span>
-                    <span>{selectedSessionModal.date} ({selectedSessionModal.time})</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSelectedSessionModal(null)}
-                  className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-900 transition"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                  </tbody>
+                </table>
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Roster Search Bar */}
-              <div className="px-6 py-3 bg-stone-50/80 border-b border-stone-200 flex justify-between items-center gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
-                  <input
-                    type="text"
-                    value={rosterSearch}
-                    onChange={(e) => setRosterSearch(e.target.value)}
-                    placeholder="Search student in this session..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-2xl bg-white border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-emerald-500 shadow-sm"
-                  />
+        {/* Roster Drilldown Modal in Apple Style */}
+        <AnimatePresence>
+          {selectedSessionModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
+              <motion.div
+
+
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-2xl max-h-[85vh] rounded-3xl bg-white/95 border border-stone-200 shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl"
+              >
+                {/* Modal Header */}
+                <div className="p-6 border-b border-stone-200 flex justify-between items-start">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      {selectedSessionModal.is_guest_lecture ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-bold flex items-center space-x-1">
+                          <Sparkles className="h-3 w-3 text-amber-500" />
+                          <span>Guest Lecture</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          Theory Class
+                        </span>
+                      )}
+                      <span className="text-xs text-stone-500 font-medium">
+                        {selectedSessionModal.branch} • Sem {selectedSessionModal.semester} • Sec {selectedSessionModal.section}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-extrabold text-stone-900">
+                      {selectedSessionModal.subject_name}
+                    </h3>
+                    <div className="text-xs text-stone-500 flex items-center space-x-2 font-medium">
+                      <span>Conducted By: <strong className="text-stone-900">{selectedSessionModal.conducted_by}</strong></span>
+                      <span>•</span>
+                      <span>{selectedSessionModal.date} ({selectedSessionModal.time})</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedSessionModal(null)}
+                    className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-900 transition"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <div className="text-xs font-bold text-stone-700">
-                  <span className="text-emerald-700">{selectedSessionModal.present_count} Present</span> / <span className="text-rose-600">{selectedSessionModal.absent_count} Absent</span>
+
+                {/* Roster Search Bar */}
+                <div className="px-6 py-3 bg-stone-50/80 border-b border-stone-200 flex justify-between items-center gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+                    <input
+                      type="text"
+                      value={rosterSearch}
+                      onChange={(e) => setRosterSearch(e.target.value)}
+                      placeholder="Search student in this session..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-2xl bg-white border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                  </div>
+                  <div className="text-xs font-bold text-stone-700">
+                    <span className="text-emerald-700">{selectedSessionModal.present_count} Present</span> / <span className="text-rose-600">{selectedSessionModal.absent_count} Absent</span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Students Roster List */}
-              <div className="p-6 overflow-y-auto space-y-2 flex-1">
-                {[...selectedSessionModal.roster]
-                  .sort((a, b) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }))
-                  .filter(st => 
-                    st.student_name.toLowerCase().includes(rosterSearch.toLowerCase()) ||
-                    st.roll_number.toLowerCase().includes(rosterSearch.toLowerCase())
-                  )
-                  .map((st) => (
-                    <div
-                      key={st.student_id}
-                      className="p-3.5 rounded-2xl bg-stone-50/70 border border-stone-200/80 flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <div className="font-bold text-stone-900">{st.student_name}</div>
-                        <div className="font-mono text-stone-500 text-[11px]">{st.roll_number}</div>
-                      </div>
+                {/* Students Roster List */}
+                <div className="p-6 overflow-y-auto space-y-2 flex-1">
+                  {[...selectedSessionModal.roster]
+                    .sort((a, b) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }))
+                    .filter(st =>
+                      st.student_name.toLowerCase().includes(rosterSearch.toLowerCase()) ||
+                      st.roll_number.toLowerCase().includes(rosterSearch.toLowerCase())
+                    )
+                    .map((st) => (
+                      <div
+                        key={st.student_id}
+                        className="p-3.5 rounded-2xl bg-stone-50/70 border border-stone-200/80 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="font-bold text-stone-900">{st.student_name}</div>
+                          <div className="font-mono text-stone-500 text-[11px]">{st.roll_number}</div>
+                        </div>
 
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${
-                          st.is_present
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${st.is_present
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             : 'bg-rose-50 text-rose-700 border-rose-200'
-                        }`}>
+                            }`}>
 
-                          {st.status_tag || (st.is_present ? 'Present' : 'Absent')}
-                        </span>
+                            {st.status_tag || (st.is_present ? 'Present' : 'Absent')}
+                          </span>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOverrideTarget({
-                              student_id: st.student_id,
-                              student_name: st.student_name,
-                              roll_number: st.roll_number,
-                              session_id: selectedSessionModal.session_id,
-                              current_status: st.status_tag || (st.is_present ? 'PRESENT' : 'ABSENT'),
-                              current_present: st.is_present
-                            });
-                            setOverrideTag(st.is_present ? 'ABSENT' : 'PRESENT');
-                            setOverrideReason('');
-                            setOverrideError(null);
-                            setOverrideSuccessMsg(null);
-                          }}
-                          className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 font-bold text-[10px] transition inline-flex items-center space-x-1 shadow-2xs"
-                          title="HOD Attendance Override / Condonation Desk"
-                        >
-                          <Edit3 className="h-3 w-3 text-stone-600" />
-                          <span>Override</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOverrideTarget({
+                                student_id: st.student_id,
+                                student_name: st.student_name,
+                                roll_number: st.roll_number,
+                                session_id: selectedSessionModal.session_id,
+                                current_status: st.status_tag || (st.is_present ? 'PRESENT' : 'ABSENT'),
+                                current_present: st.is_present
+                              });
+                              setOverrideTag(st.is_present ? 'ABSENT' : 'PRESENT');
+                              setOverrideReason('');
+                              setOverrideError(null);
+                              setOverrideSuccessMsg(null);
+                            }}
+                            className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 font-bold text-[10px] transition inline-flex items-center space-x-1 shadow-2xs"
+                            title="HOD Attendance Override / Condonation Desk"
+                          >
+                            <Edit3 className="h-3 w-3 text-stone-600" />
+                            <span>Override</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      {/* HOD Attendance Condonation & Override Modal */}
-      <AnimatePresence>
-        {overrideTarget && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-5"
-            >
-              <div className="flex justify-between items-start border-b border-stone-100 pb-4">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider">
-                      HOD Condonation Desk
-                    </span>
-                    <span className="text-xs text-stone-400 font-mono">Session #{overrideTarget.session_id}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-stone-900 mt-1">
-                    Override Attendance Status
-                  </h3>
-                  <p className="text-xs text-stone-500">
-                    Updating institutional record for <strong className="text-stone-800">{overrideTarget.student_name}</strong> ({overrideTarget.roll_number})
-                  </p>
+                    ))}
                 </div>
-                <button
-                  onClick={() => setOverrideTarget(null)}
-                  className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 transition"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {overrideSuccessMsg ? (
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  <span>{overrideSuccessMsg}</span>
-                </div>
-              ) : (
-                <form onSubmit={handleOverrideSubmit} className="space-y-4 text-xs">
-                  {overrideError && (
-                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
-                      <span>{overrideError}</span>
-                    </div>
-                  )}
-
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        {/* HOD Attendance Condonation & Override Modal */}
+        <AnimatePresence>
+          {overrideTarget && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 shadow-2xl p-6 space-y-5"
+              >
+                <div className="flex justify-between items-start border-b border-stone-100 pb-4">
                   <div>
-                    <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
-                      Select New Attendance Status
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { tag: 'PRESENT', label: 'Present', desc: 'Classroom Attended', color: 'border-emerald-300 text-emerald-800 bg-emerald-50/50' },
-                        { tag: 'DUTY_LEAVE', label: 'Duty Leave (OD)', desc: 'Official / Sports / Event', color: 'border-blue-300 text-blue-800 bg-blue-50/50' },
-                        { tag: 'MEDICAL', label: 'Medical Leave', desc: 'Approved Doctor Slip', color: 'border-purple-300 text-purple-800 bg-purple-50/50' },
-                        { tag: 'ABSENT', label: 'Absent', desc: 'Mark Absent', color: 'border-rose-300 text-rose-800 bg-rose-50/50' }
-                      ].map(opt => (
-                        <button
-                          key={opt.tag}
-                          type="button"
-                          onClick={() => setOverrideTag(opt.tag)}
-                          className={`p-3 rounded-2xl border text-left transition-all ${
-                            overrideTag === opt.tag
-                              ? `${opt.color} ring-2 ring-stone-900 border-transparent shadow-xs font-bold`
-                              : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-700'
-                          }`}
-                        >
-                          <div className="font-bold text-xs">{opt.label}</div>
-                          <div className="text-[10px] text-stone-500 font-normal">{opt.desc}</div>
-                        </button>
-                      ))}
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider">
+                        HOD Condonation Desk
+                      </span>
+                      <span className="text-xs text-stone-400 font-mono">Session #{overrideTarget.session_id}</span>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
-                      Official Justification / Reason <span className="text-rose-500">*</span>
-                    </label>
-                    <textarea
-                      rows={3}
-                      required
-                      value={overrideReason}
-                      onChange={(e) => setOverrideReason(e.target.value)}
-                      placeholder="e.g. Medical Certificate #MED-2024 verified by HOD, or University TechFest duty leave approved."
-                      className="w-full p-3 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-stone-900"
-                    />
-                    <p className="text-[10px] text-stone-400 mt-1">
-                      This reason is permanently logged in the institutional security audit trail for NAAC/NBA compliance.
+                    <h3 className="text-lg font-bold text-stone-900 mt-1">
+                      Override Attendance Status
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Updating institutional record for <strong className="text-stone-800">{overrideTarget.student_name}</strong> ({overrideTarget.roll_number})
                     </p>
                   </div>
+                  <button
+                    onClick={() => setOverrideTarget(null)}
+                    className="p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 transition"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
 
-                  <div className="flex gap-2.5 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setOverrideTarget(null)}
-                      className="flex-1 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={overrideSubmitting}
-                      className="flex-1 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold transition flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
-                    >
-                      {overrideSubmitting ? (
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      )}
-                      <span>{overrideSubmitting ? 'Submitting...' : 'Apply Condonation'}</span>
-                    </button>
+                {overrideSuccessMsg ? (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center space-x-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <span>{overrideSuccessMsg}</span>
                   </div>
-                </form>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                ) : (
+                  <form onSubmit={handleOverrideSubmit} className="space-y-4 text-xs">
+                    {overrideError && (
+                      <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium flex items-center space-x-2">
+                        <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                        <span>{overrideError}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
+                        Select New Attendance Status
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { tag: 'PRESENT', label: 'Present', desc: 'Classroom Attended', color: 'border-emerald-300 text-emerald-800 bg-emerald-50/50' },
+                          { tag: 'DUTY_LEAVE', label: 'Duty Leave (OD)', desc: 'Official / Sports / Event', color: 'border-blue-300 text-blue-800 bg-blue-50/50' },
+                          { tag: 'MEDICAL', label: 'Medical Leave', desc: 'Approved Doctor Slip', color: 'border-purple-300 text-purple-800 bg-purple-50/50' },
+                          { tag: 'ABSENT', label: 'Absent', desc: 'Mark Absent', color: 'border-rose-300 text-rose-800 bg-rose-50/50' }
+                        ].map(opt => (
+                          <button
+                            key={opt.tag}
+                            type="button"
+                            onClick={() => setOverrideTag(opt.tag)}
+                            className={`p-3 rounded-2xl border text-left transition-all ${overrideTag === opt.tag
+                              ? `${opt.color} ring-2 ring-stone-900 border-transparent shadow-xs font-bold`
+                              : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-700'
+                              }`}
+                          >
+                            <div className="font-bold text-xs">{opt.label}</div>
+                            <div className="text-[10px] text-stone-500 font-normal">{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1.5 uppercase text-[10px] tracking-wider">
+                        Official Justification / Reason <span className="text-rose-500">*</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        placeholder="e.g. Medical Certificate #MED-2024 verified by HOD, or University TechFest duty leave approved."
+                        className="w-full p-3 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-stone-900"
+                      />
+                      <p className="text-[10px] text-stone-400 mt-1">
+                        This reason is permanently logged in the institutional security audit trail for NAAC/NBA compliance.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setOverrideTarget(null)}
+                        className="flex-1 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={overrideSubmitting}
+                        className="flex-1 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold transition flex items-center justify-center space-x-1.5 shadow-sm disabled:opacity-50"
+                      >
+                        {overrideSubmitting ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        <span>{overrideSubmitting ? 'Submitting...' : 'Apply Condonation'}</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </AppleDeluxeShell>
   );

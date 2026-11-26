@@ -22,7 +22,8 @@ import {
   UserCheck,
   ScanFace,
   ShieldAlert,
-  Search
+  Search,
+  Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotlightSearch from './SpotlightSearch';
@@ -192,7 +193,9 @@ export default function AppleDeluxeShell({
 
     const fetchLiveEvents = async () => {
       try {
-        const res = await authFetch(`${API_BASE_URL}/management/telemetry/live-events?branch=Computer%20Science`);
+        const hodDept = (typeof window !== 'undefined' && (localStorage.getItem('hod_department') || localStorage.getItem('hod_dept'))) || '';
+        const branchParam = hodDept ? `?branch=${encodeURIComponent(hodDept)}` : '';
+        const res = await authFetch(`${API_BASE_URL}/management/telemetry/live-events${branchParam}`);
         if (res.ok) {
           const events: CampusAlert[] = await res.json();
           if (Array.isArray(events) && events.length > 0) {
@@ -233,6 +236,7 @@ export default function AppleDeluxeShell({
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'AI Copilot', href: '/copilot', icon: Bot },
     { label: 'Timetable', href: '/timetable', icon: Calendar },
     { label: 'Classes', href: '/classes', icon: Calendar },
     { label: 'Students', href: '/students', icon: Users },
@@ -273,7 +277,7 @@ export default function AppleDeluxeShell({
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2 }}
                 className="flex items-center space-x-2.5 py-0.5"
-                title="Dynamic Island • Click to preview latest notification"
+                title="Campus Alert Capsule • Click to preview latest notification"
               >
                 <div className="relative flex items-center justify-center">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>

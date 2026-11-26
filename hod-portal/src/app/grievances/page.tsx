@@ -46,35 +46,26 @@ export default function HODGrievanceResolution() {
       const res = await authFetch(`${API_BASE_URL}/management/grievances/resolve?ticket_id=${id}&decision=${decision}`, {
         method: 'POST'
       });
-      if (res.ok) {
-        const data = await res.json();
-        setActionNotice(data.message || `Grievance ${id} for ${student} marked as ${decision}. Student attendance record updated in database.`);
-      } else {
-        setActionNotice(`Grievance ${id} marked as ${decision}.`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setActionNotice(`Error: ${err?.detail || 'Failed to resolve grievance. Please try again.'}`);
+        setTimeout(() => setActionNotice(null), 4500);
+        return;
       }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('campus-notification', {
-          detail: {
-            type: 'grievance_alert',
-            title: decision === 'Granted' ? 'Grievance Approved' : 'Grievance Dismissed',
-            detail: `Attendance dispute ${id} for ${student} marked as ${decision}`,
-            time: 'Just now',
-            badge: decision === 'Granted' ? 'Attendance Corrected' : 'Rejected'
-          }
-        }));
-      }
+      const data = await res.json();
+      setActionNotice(data.message || `Grievance ${id} for ${student} marked as ${decision}. Student attendance record updated in database.`);
+      setGrievances(prev => prev.map(g => {
+        if (g.id === id) {
+          return { ...g, status: decision === 'Granted' ? 'Granted by HOD' : 'Rejected by HOD' };
+        }
+        return g;
+      }));
       fetchGrievances();
     } catch (e) {
       console.log("Resolve sync error:", e);
-      setActionNotice(`Grievance ${id} marked as ${decision}.`);
+      setActionNotice(`Network error: Unable to resolve grievance. Please check your connection.`);
     }
 
-    setGrievances(prev => prev.map(g => {
-      if (g.id === id) {
-        return { ...g, status: decision === 'Granted' ? 'Granted by HOD' : 'Rejected by HOD' };
-      }
-      return g;
-    }));
     setTimeout(() => setActionNotice(null), 4500);
   };
 

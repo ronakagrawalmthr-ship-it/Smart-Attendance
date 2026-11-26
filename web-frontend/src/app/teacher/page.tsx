@@ -3,21 +3,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import AppleSelect from '@/components/AppleSelect';
-import { 
-  SlidersHorizontal, 
-  FileText, 
-  ScanFace, 
-  GraduationCap, 
-  Users, 
-  CheckCircle2, 
-  XCircle, 
-  Sparkles, 
-  ArrowRight, 
-  Activity, 
-  BookOpen, 
-  UserCheck, 
-  Clock, 
-  Layers, 
+import {
+  SlidersHorizontal,
+  FileText,
+  ScanFace,
+  GraduationCap,
+  Users,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  ArrowRight,
+  Activity,
+  BookOpen,
+  UserCheck,
+  Clock,
+  Layers,
   AlertCircle,
   Building2,
   Calendar,
@@ -34,7 +34,8 @@ import {
   KeyRound,
   Settings,
   QrCode,
-  Edit3
+  Edit3,
+  Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
@@ -246,6 +247,87 @@ export default function TeacherAttendancePage() {
   const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+
+  const showToast = (message: string, type: 'error' | 'success' = 'error') => {
+    setToastNotification({ type, message });
+    setTimeout(() => setToastNotification(null), 4500);
+  };
+
+  // Teacher AI Copilot State
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [copilotMessages, setCopilotMessages] = useState<Array<{ sender: 'user' | 'assistant'; text: string; time: string }>>([
+    {
+      sender: 'assistant',
+      text: "Hello Professor! I am your AI Attendance Copilot. Ask me anything like:\n• 'Aaj kitne bache absent hain unke naam kya hain?'\n• 'List low attendance defaulters below 75%'\n• 'Summary of today's conducted lectures'\n• 'Show pending grievances'",
+      time: 'Just now'
+    }
+  ]);
+  const [copilotInput, setCopilotInput] = useState('');
+  const [copilotLoading, setCopilotLoading] = useState(false);
+
+  const handleSendCopilotMessage = async (customPrompt?: string) => {
+    const query = (customPrompt || copilotInput).trim();
+    if (!query || copilotLoading) return;
+
+    const userMsg = {
+      sender: 'user' as const,
+      text: query,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setCopilotMessages(prev => [...prev, userMsg]);
+    if (!customPrompt) setCopilotInput('');
+    setCopilotLoading(true);
+
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('access_token') || localStorage.getItem('admin_token') || localStorage.getItem('hod_token')) : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${getApiBaseUrl()}/timetable/staff-ai-chat`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message: query,
+          role: 'teacher',
+          department: selectedBranch || 'Computer Science'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCopilotMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: data.reply || 'No response generated.',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setCopilotMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: `⚠️ Query error: ${err.detail || 'Could not process query. Please retry.'}`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      }
+    } catch {
+      setCopilotMessages(prev => [
+        ...prev,
+        {
+          sender: 'assistant',
+          text: '⚠️ Unable to connect to Copilot service. Please verify server connection.',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
 
   const fetchTodaySessions = async (autoSelectSessionId?: number) => {
     try {
@@ -395,6 +477,7 @@ export default function TeacherAttendancePage() {
       if (storedDept) setSelectedBranch(storedDept);
     }
     fetchMeta();
+    fetchTodaySessions();
   }, []);
 
   // Load HOD/Admin configured default lecture & lab duration for selected branch
@@ -417,7 +500,7 @@ export default function TeacherAttendancePage() {
           );
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -425,8 +508,8 @@ export default function TeacherAttendancePage() {
 
   // Filter subjects for the selected branch and semester
   const filteredSubjects = useMemo(() => {
-    return availableSubjects.filter(s => 
-      (s.branch.toLowerCase().includes(selectedBranch.toLowerCase()) || selectedBranch.toLowerCase().includes(s.branch.toLowerCase())) && 
+    return availableSubjects.filter(s =>
+      (s.branch.toLowerCase().includes(selectedBranch.toLowerCase()) || selectedBranch.toLowerCase().includes(s.branch.toLowerCase())) &&
       (selectedSemester ? s.semester === selectedSemester : true)
     );
   }, [availableSubjects, selectedBranch, selectedSemester]);
@@ -458,7 +541,7 @@ export default function TeacherAttendancePage() {
       );
       if (res.ok) {
         const data = await res.json();
-        const roster: Student[] = (data.students || []).sort((a: Student, b: Student) => 
+        const roster: Student[] = (data.students || []).sort((a: Student, b: Student) =>
           (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true, sensitivity: 'base' })
         );
         setStudents(roster);
@@ -513,8 +596,8 @@ export default function TeacherAttendancePage() {
     return [...students]
       .sort((a, b) => a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true, sensitivity: 'base' }))
       .filter(s => {
-        const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                              s.roll_number.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.roll_number.toLowerCase().includes(searchQuery.toLowerCase());
         if (!matchesSearch) return false;
 
         const isPres = !!attendanceState[s.id];
@@ -648,9 +731,11 @@ export default function TeacherAttendancePage() {
           credit_weight: sessionCreditWeight,
           sub_batch: sessionCategory === 'practical' ? selectedSubBatch : 'All',
           conducted_by_name: conductedByName || 'Faculty Coordinator',
-          custom_subject_name: sessionCategory === 'guest' 
-            ? (customSubjectName || 'Special Guest Lecture') 
-            : (currentSubjectObj?.name || 'Classroom Lecture'),
+          custom_subject_name: (customSubjectName && customSubjectName.trim())
+            ? customSubjectName.trim()
+            : (sessionCategory === 'guest'
+              ? 'Special Guest Lecture'
+              : (currentSubjectObj?.name || 'Classroom Lecture')),
           notes: sessionNotes || undefined
         })
       });
@@ -666,10 +751,10 @@ export default function TeacherAttendancePage() {
         setIsQrModalOpen(true);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Could not initiate Dynamic QR Broadcast: ${err.detail || 'Authorization failed'}`);
+        showToast(`Could not initiate Dynamic QR Broadcast: ${err.detail || 'Authorization failed'}`);
       }
     } catch {
-      alert('Network error connecting to Dynamic QR generator.');
+      showToast('Network error connecting to Dynamic QR generator.');
     } finally {
       setIsQrStarting(false);
     }
@@ -678,8 +763,8 @@ export default function TeacherAttendancePage() {
   // Switch Class & Topic Directly Inside Live QR Modal
   const switchQrClass = async (branch: string, sem: number, sec: string, subjId: number | null) => {
     let targetSubjId = subjId;
-    const branchSemSubjects = availableSubjects.filter(s => 
-      (s.branch.toLowerCase().includes(branch.toLowerCase()) || branch.toLowerCase().includes(s.branch.toLowerCase())) && 
+    const branchSemSubjects = availableSubjects.filter(s =>
+      (s.branch.toLowerCase().includes(branch.toLowerCase()) || branch.toLowerCase().includes(s.branch.toLowerCase())) &&
       (sem ? s.semester === sem : true)
     );
     if (branchSemSubjects.length > 0 && (!targetSubjId || !branchSemSubjects.some(s => s.id === targetSubjId))) {
@@ -709,8 +794,8 @@ export default function TeacherAttendancePage() {
           credit_weight: sessionCreditWeight,
           sub_batch: sessionCategory === 'practical' ? selectedSubBatch : 'All',
           conducted_by_name: conductedByName || 'Faculty Coordinator',
-          custom_subject_name: sessionCategory === 'guest' 
-            ? (customSubjectName || 'Special Guest Lecture') 
+          custom_subject_name: sessionCategory === 'guest'
+            ? (customSubjectName || 'Special Guest Lecture')
             : (matchedSubj?.name || currentSubjectObj?.name || 'Classroom Lecture'),
           notes: sessionNotes || undefined
         })
@@ -802,11 +887,11 @@ export default function TeacherAttendancePage() {
           }));
         }
       } else {
-        const err = await res.json();
-        alert(`Error submitting attendance: ${err.detail || 'Server error'}`);
+        const err = await res.json().catch(() => ({}));
+        showToast(`Error submitting attendance: ${err.detail || 'Server error'}`);
       }
     } catch {
-      alert('Failed to connect to backend server. Please check your connection.');
+      showToast('Failed to connect to backend server. Please check your connection.');
     } finally {
       setSubmitting(false);
     }
@@ -815,7 +900,69 @@ export default function TeacherAttendancePage() {
   return (
     <AppleDeluxeShell facultyName={conductedByName || 'Faculty Conductor'}>
       <div className="w-full space-y-6">
-        
+
+        {/* Floating Toast Notification */}
+        <AnimatePresence>
+          {toastNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`p-3.5 rounded-2xl text-xs font-bold border shadow-md flex items-center justify-between ${toastNotification.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+            >
+              <span>{toastNotification.message}</span>
+              <button
+                type="button"
+                onClick={() => setToastNotification(null)}
+                className="ml-3 text-stone-400 hover:text-stone-700"
+              >
+                ✕
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Top Operational Bar: Exit Console & Today's Sessions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-stone-100/70 p-2.5 px-4 rounded-2xl border border-stone-200/70">
+          <div className="flex items-center space-x-2 text-xs text-stone-600 font-semibold">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Faculty Attendance Console Active</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setIsCopilotOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              <span>AI Copilot</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                fetchTodaySessions();
+                setIsTodaySessionsModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            >
+              <Clock className="h-3.5 w-3.5 text-stone-500" />
+              <span>Today's Sessions ({todaySessions.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRequestHomeExit}
+              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-xs"
+              title={kioskExitPin ? "Kiosk Locked • Enter PIN to Exit" : "Return to Home"}
+            >
+              <Lock className={`h-3.5 w-3.5 ${kioskExitPin ? 'text-amber-400' : 'text-stone-300'}`} />
+              <span>Exit Console</span>
+            </button>
+          </div>
+        </div>
+
         {/* Quick QR Attendance Launch Bar (Direct Mobile Access) */}
         <div className="rounded-3xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 p-4 sm:p-5 text-stone-950 shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-3.5 text-center sm:text-left">
@@ -854,9 +1001,8 @@ export default function TeacherAttendancePage() {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
                   Classroom Attendance Overview
                 </span>
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                  Number(turnoutPct) >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${Number(turnoutPct) >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
                   {Number(turnoutPct) >= 75 ? 'High Turnout' : 'Below Threshold'}
                 </span>
               </div>
@@ -928,7 +1074,7 @@ export default function TeacherAttendancePage() {
 
           {/* Right Column: 4 Colourful Pastel Squircle Tiles (Exact Image Match) */}
           <div className="lg:col-span-7 grid grid-cols-2 gap-4">
-            
+
             {/* 🪻 Lilac Squircle: Scanned Present */}
             <div className="rounded-[26px] bg-[#F3EFFE] border border-[#E5DCFA] p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition duration-200">
               <div className="flex items-center justify-between">
@@ -1037,11 +1183,10 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => { setSessionCategory('regular'); applyDurationMinutes(defaultLectureMinutes, 'regular', false); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                  sessionCategory === 'regular'
-                    ? 'bg-white text-stone-900 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${sessionCategory === 'regular'
+                  ? 'bg-white text-stone-900 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 <span>Regular ({defaultLectureMinutes}m)</span>
@@ -1049,11 +1194,10 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => { setSessionCategory('practical'); applyDurationMinutes(defaultLabMinutes, 'practical', false); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                  sessionCategory === 'practical'
-                    ? 'bg-white text-emerald-800 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${sessionCategory === 'practical'
+                  ? 'bg-white text-emerald-800 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
                 <span>Practical / Lab ({defaultLabMinutes}m)</span>
@@ -1061,11 +1205,10 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => { setSessionCategory('test'); applyDurationMinutes(defaultLectureMinutes, 'test', false); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                  sessionCategory === 'test'
-                    ? 'bg-white text-blue-800 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${sessionCategory === 'test'
+                  ? 'bg-white text-blue-800 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 <Check className="h-3.5 w-3.5 text-blue-600" />
                 <span>Class Test / Exam</span>
@@ -1073,11 +1216,10 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => { setSessionCategory('guest'); applyDurationMinutes(defaultLectureMinutes, 'guest', false); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                  sessionCategory === 'guest'
-                    ? 'bg-white text-purple-700 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${sessionCategory === 'guest'
+                  ? 'bg-white text-purple-700 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                 <span>Guest Lecture</span>
@@ -1085,11 +1227,10 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => { setSessionCategory('proxy'); applyDurationMinutes(defaultLectureMinutes, 'proxy', false); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                  sessionCategory === 'proxy'
-                    ? 'bg-white text-amber-700 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${sessionCategory === 'proxy'
+                  ? 'bg-white text-amber-700 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 <Users className="h-3.5 w-3.5" />
                 <span>Proxy Class</span>
@@ -1109,11 +1250,10 @@ export default function TeacherAttendancePage() {
                   key={mins}
                   type="button"
                   onClick={() => applyDurationMinutes(mins, sessionCategory)}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition ${
-                    sessionDurationMinutes === mins
-                      ? 'bg-stone-900 text-white shadow-sm'
-                      : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
-                  }`}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition ${sessionDurationMinutes === mins
+                    ? 'bg-stone-900 text-white shadow-sm'
+                    : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
+                    }`}
                 >
                   {mins}m
                 </button>
@@ -1145,9 +1285,8 @@ export default function TeacherAttendancePage() {
                       key={b}
                       type="button"
                       onClick={() => setSelectedSubBatch(b)}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${
-                        selectedSubBatch === b ? 'bg-emerald-800 text-white shadow-2xs' : 'bg-white text-emerald-800 border border-emerald-200'
-                      }`}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${selectedSubBatch === b ? 'bg-emerald-800 text-white shadow-2xs' : 'bg-white text-emerald-800 border border-emerald-200'
+                        }`}
                     >
                       {b}
                     </button>
@@ -1199,11 +1338,10 @@ export default function TeacherAttendancePage() {
                     key={sec}
                     type="button"
                     onClick={() => setSelectedSection(sec)}
-                    className={`flex-1 h-full rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center ${
-                      selectedSection === sec
-                        ? 'bg-stone-900 text-white shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-                    }`}
+                    className={`flex-1 h-full rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center ${selectedSection === sec
+                      ? 'bg-stone-900 text-white shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+                      }`}
                   >
                     Sec {sec}
                   </button>
@@ -1241,10 +1379,10 @@ export default function TeacherAttendancePage() {
                 options={
                   filteredSubjects.length > 0
                     ? filteredSubjects.map(subj => ({
-                        value: subj.id,
-                        label: `${subj.code} — ${subj.name}`,
-                        badge: `Sem ${subj.semester}`
-                      }))
+                      value: subj.id,
+                      label: `${subj.code} — ${subj.name}`,
+                      badge: `Sem ${subj.semester}`
+                    }))
                     : [{ value: '', label: 'Core Departmental Lecture', badge: 'General' }]
                 }
                 placeholder="Select Academic Subject..."
@@ -1261,7 +1399,7 @@ export default function TeacherAttendancePage() {
                     type="text"
                     value={customSubjectName}
                     onChange={(e) => setCustomSubjectName(e.target.value)}
-                    placeholder="e.g. Special Guest Lecture: Generative AI & Autonomous Agents"
+                    placeholder="e.g. Special Guest Lecture / Seminar Topic"
                     className="w-full h-full pl-10 pr-4 rounded-2xl bg-purple-50/40 border border-purple-200 text-stone-900 text-sm font-semibold placeholder-purple-400 focus:outline-none focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 transition-all duration-200"
                   />
                 </div>
@@ -1275,19 +1413,17 @@ export default function TeacherAttendancePage() {
                   Lecture Remarks / Slot Details
                 </label>
                 {/* Apple iOS-Style Switch */}
-                <div 
+                <div
                   onClick={() => setIsSecondLecture(!isSecondLecture)}
                   className="flex items-center space-x-2 cursor-pointer group"
                 >
                   <div
-                    className={`w-9 h-5 rounded-full transition-colors duration-200 ease-in-out relative p-0.5 ${
-                      isSecondLecture ? 'bg-stone-900' : 'bg-stone-200'
-                    }`}
+                    className={`w-9 h-5 rounded-full transition-colors duration-200 ease-in-out relative p-0.5 ${isSecondLecture ? 'bg-stone-900' : 'bg-stone-200'
+                      }`}
                   >
                     <div
-                      className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ease-in-out ${
-                        isSecondLecture ? 'translate-x-4' : 'translate-x-0'
-                      }`}
+                      className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ease-in-out ${isSecondLecture ? 'translate-x-4' : 'translate-x-0'
+                        }`}
                     />
                   </div>
                   <span className="text-[11px] font-bold text-stone-700 group-hover:text-stone-900">
@@ -1301,7 +1437,7 @@ export default function TeacherAttendancePage() {
                   type="text"
                   value={sessionNotes}
                   onChange={(e) => setSessionNotes(e.target.value)}
-                  placeholder="e.g. Extra afternoon slot, Lab practicals, Guest speaker from Google"
+                  placeholder="e.g. Extra afternoon slot, Lab practicals, Seminar session"
                   className="w-full h-full pl-10 pr-4 rounded-2xl bg-stone-50/90 border border-stone-200/90 text-stone-900 text-sm font-semibold placeholder-stone-400 focus:outline-none focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 transition-all duration-200"
                 />
               </div>
@@ -1368,25 +1504,22 @@ export default function TeacherAttendancePage() {
             <div className="flex rounded-2xl bg-stone-100 p-1 border border-stone-200/80">
               <button
                 onClick={() => setFilterTab('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                  filterTab === 'all' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${filterTab === 'all' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 All ({totalStudentsCount})
               </button>
               <button
                 onClick={() => setFilterTab('present')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                  filterTab === 'present' ? 'bg-white text-emerald-700 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${filterTab === 'present' ? 'bg-white text-emerald-700 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 Present ({presentCount})
               </button>
               <button
                 onClick={() => setFilterTab('absent')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                  filterTab === 'absent' ? 'bg-white text-rose-700 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${filterTab === 'absent' ? 'bg-white text-rose-700 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                  }`}
               >
                 Absent ({absentCount})
               </button>
@@ -1465,11 +1598,10 @@ export default function TeacherAttendancePage() {
                     key={st.id}
                     layout
                     onClick={() => toggleAttendance(st.id)}
-                    className={`cursor-pointer select-none rounded-2xl p-4 border transition-all flex items-center justify-between ${
-                      isPresent
-                        ? 'bg-emerald-50/70 border-emerald-200/80 hover:border-emerald-300 shadow-sm'
-                        : 'bg-white border-stone-200/80 hover:border-stone-300 shadow-sm opacity-90'
-                    }`}
+                    className={`cursor-pointer select-none rounded-2xl p-4 border transition-all flex items-center justify-between ${isPresent
+                      ? 'bg-emerald-50/70 border-emerald-200/80 hover:border-emerald-300 shadow-sm'
+                      : 'bg-white border-stone-200/80 hover:border-stone-300 shadow-sm opacity-90'
+                      }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
@@ -1491,17 +1623,16 @@ export default function TeacherAttendancePage() {
                       <select
                         value={studentOverrides[st.id]?.tag || 'REGULAR'}
                         onChange={(e) => handleSetOverride(st.id, e.target.value)}
-                        className={`text-[10px] font-bold px-2 py-1.5 rounded-xl border focus:outline-none transition cursor-pointer ${
-                          studentOverrides[st.id]?.tag === 'QR_VERIFIED'
-                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                            : studentOverrides[st.id]?.tag === 'DUTY_LEAVE'
+                        className={`text-[10px] font-bold px-2 py-1.5 rounded-xl border focus:outline-none transition cursor-pointer ${studentOverrides[st.id]?.tag === 'QR_VERIFIED'
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          : studentOverrides[st.id]?.tag === 'DUTY_LEAVE'
                             ? 'bg-purple-100 text-purple-900 border-purple-300'
                             : studentOverrides[st.id]?.tag === 'MEDICAL_EXCEPTION'
-                            ? 'bg-blue-100 text-blue-900 border-blue-300'
-                            : studentOverrides[st.id]?.tag === 'VERIFIED_MANUAL'
-                            ? 'bg-amber-100 text-amber-900 border-amber-300'
-                            : 'bg-stone-100/90 text-stone-600 border-stone-200/90 hover:bg-stone-200/60'
-                        }`}
+                              ? 'bg-blue-100 text-blue-900 border-blue-300'
+                              : studentOverrides[st.id]?.tag === 'VERIFIED_MANUAL'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-stone-100/90 text-stone-600 border-stone-200/90 hover:bg-stone-200/60'
+                          }`}
                         title="Mark manual attendance exception (Duty Leave / Medical / Manual / QR Verified)"
                       >
                         <option value="REGULAR">Regular</option>
@@ -1514,11 +1645,10 @@ export default function TeacherAttendancePage() {
                       <button
                         type="button"
                         onClick={() => toggleAttendance(st.id)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-sm ${
-                          isPresent
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-rose-50 border border-rose-200 text-rose-700'
-                        }`}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-sm ${isPresent
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-rose-50 border border-rose-200 text-rose-700'
+                          }`}
                       >
                         {isPresent ? (
                           <>
@@ -1562,8 +1692,8 @@ export default function TeacherAttendancePage() {
         {isReviewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
-              
-              
+
+
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-lg rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-2xl space-y-6"
             >
@@ -1589,8 +1719,8 @@ export default function TeacherAttendancePage() {
                 <div className="flex justify-between py-1 border-b border-stone-200/60">
                   <span className="text-stone-500">Subject / Topic:</span>
                   <span className="font-bold text-stone-900">
-                    {sessionCategory === 'guest' 
-                      ? (customSubjectName || 'Special Guest Lecture') 
+                    {sessionCategory === 'guest'
+                      ? (customSubjectName || 'Special Guest Lecture')
                       : (currentSubjectObj?.name || 'Core Lecture')}
                   </span>
                 </div>
@@ -1649,8 +1779,8 @@ export default function TeacherAttendancePage() {
         {submissionSuccess && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
             <motion.div
-              
-              
+
+
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-md rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-2xl text-center space-y-5"
             >
@@ -1706,9 +1836,9 @@ export default function TeacherAttendancePage() {
       <AnimatePresence>
         {isKioskModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
-            <motion.div 
-              
-              
+            <motion.div
+
+
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-md rounded-3xl bg-white border border-stone-200 p-6 sm:p-7 shadow-2xl space-y-5"
             >
@@ -1722,7 +1852,7 @@ export default function TeacherAttendancePage() {
                     <p className="text-xs text-stone-500">Teacher Protection Lock</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsKioskModalOpen(false)}
                   className="p-1.5 rounded-xl bg-stone-100 text-stone-500 hover:text-stone-800"
                 >
@@ -1732,11 +1862,10 @@ export default function TeacherAttendancePage() {
 
               <div className="flex items-center justify-between p-3 rounded-2xl bg-stone-50 border border-stone-200">
                 <span className="text-xs font-medium text-stone-500">Current Security Status:</span>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  kioskExitPin 
-                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
-                    : 'bg-amber-50 border border-amber-200 text-amber-800'
-                }`}>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${kioskExitPin
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border border-amber-200 text-amber-800'
+                  }`}>
                   {kioskExitPin ? '● PIN Protected' : '○ No PIN (Default Open)'}
                 </span>
               </div>
@@ -1764,7 +1893,7 @@ export default function TeacherAttendancePage() {
                     <label className="block text-xs font-semibold text-stone-700 mb-1">
                       Current PIN (Purani PIN)
                     </label>
-                    <input 
+                    <input
                       type="password"
                       value={currentPinInput}
                       onChange={(e) => setCurrentPinInput(e.target.value)}
@@ -1779,7 +1908,7 @@ export default function TeacherAttendancePage() {
                   <label className="block text-xs font-semibold text-stone-700 mb-1">
                     {kioskExitPin ? 'New Kiosk PIN (4 digits)' : 'Set New Kiosk PIN (4 digits)'}
                   </label>
-                  <input 
+                  <input
                     type="password"
                     value={newPinInput}
                     onChange={(e) => setNewPinInput(e.target.value)}
@@ -1793,7 +1922,7 @@ export default function TeacherAttendancePage() {
                   <label className="block text-xs font-semibold text-stone-700 mb-1">
                     Confirm New PIN
                   </label>
-                  <input 
+                  <input
                     type="password"
                     value={confirmPinInput}
                     onChange={(e) => setConfirmPinInput(e.target.value)}
@@ -1831,9 +1960,9 @@ export default function TeacherAttendancePage() {
       <AnimatePresence>
         {isExitChallengeOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-md">
-            <motion.div 
-              
-              
+            <motion.div
+
+
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-sm rounded-3xl bg-white border border-stone-200 p-6 sm:p-7 shadow-2xl space-y-5 text-center"
             >
@@ -1855,7 +1984,7 @@ export default function TeacherAttendancePage() {
               )}
 
               <div>
-                <input 
+                <input
                   type="password"
                   autoFocus
                   value={challengePinInput}
@@ -2037,11 +2166,10 @@ export default function TeacherAttendancePage() {
                           key={sem}
                           type="button"
                           onClick={() => switchQrClass(selectedBranch, sem, selectedSection, selectedSubjectId)}
-                          className={`px-2 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            selectedSemester === sem
-                              ? 'bg-amber-400 text-stone-950 shadow-sm'
-                              : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
-                          }`}
+                          className={`px-2 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${selectedSemester === sem
+                            ? 'bg-amber-400 text-stone-950 shadow-sm'
+                            : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
+                            }`}
                         >
                           Sem {sem}
                         </button>
@@ -2060,11 +2188,10 @@ export default function TeacherAttendancePage() {
                           key={sec}
                           type="button"
                           onClick={() => switchQrClass(selectedBranch, selectedSemester, sec, selectedSubjectId)}
-                          className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            selectedSection === sec
-                              ? 'bg-emerald-400 text-stone-950 shadow-sm'
-                              : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
-                          }`}
+                          className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition cursor-pointer ${selectedSection === sec
+                            ? 'bg-emerald-400 text-stone-950 shadow-sm'
+                            : 'bg-stone-900 text-stone-300 hover:bg-stone-800 border border-white/10'
+                            }`}
                         >
                           Sec {sec}
                         </button>
@@ -2137,7 +2264,7 @@ export default function TeacherAttendancePage() {
         )}
       </AnimatePresence>
 
-            {/* Today's Conducted Sessions (Same-Day Grace Corrections Desk) */}
+      {/* Today's Conducted Sessions (Same-Day Grace Corrections Desk) */}
       <AnimatePresence>
         {isTodaySessionsModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-md">
@@ -2189,20 +2316,18 @@ export default function TeacherAttendancePage() {
                       key={s.session_id}
                       type="button"
                       onClick={() => setSelectedCorrectionSession(s)}
-                      className={`px-3.5 py-2 rounded-2xl text-xs font-bold shrink-0 transition flex items-center space-x-2 border ${
-                        selectedCorrectionSession?.session_id === s.session_id
-                          ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
-                          : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
-                      }`}
+                      className={`px-3.5 py-2 rounded-2xl text-xs font-bold shrink-0 transition flex items-center space-x-2 border ${selectedCorrectionSession?.session_id === s.session_id
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
+                        : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
+                        }`}
                     >
                       <span>{s.time}</span>
                       <span className="opacity-60">•</span>
                       <span>{s.subject_name}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
-                        selectedCorrectionSession?.session_id === s.session_id
-                          ? 'bg-white/20 text-white'
-                          : 'bg-emerald-50 text-emerald-800'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${selectedCorrectionSession?.session_id === s.session_id
+                        ? 'bg-white/20 text-white'
+                        : 'bg-emerald-50 text-emerald-800'
+                        }`}>
                         {s.present_count}/{s.total_enrolled}
                       </span>
                     </button>
@@ -2232,9 +2357,8 @@ export default function TeacherAttendancePage() {
                             key={tab}
                             type="button"
                             onClick={() => setCorrectionFilter(tab)}
-                            className={`px-2.5 py-1 rounded-lg capitalize transition ${
-                              correctionFilter === tab ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-800'
-                            }`}
+                            className={`px-2.5 py-1 rounded-lg capitalize transition ${correctionFilter === tab ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-800'
+                              }`}
                           >
                             {tab === 'absent' ? `Absent (${selectedCorrectionSession.absent_count})` : tab === 'present' ? `Present (${selectedCorrectionSession.present_count})` : `All (${selectedCorrectionSession.total_enrolled})`}
                           </button>
@@ -2272,11 +2396,10 @@ export default function TeacherAttendancePage() {
                           </div>
 
                           <div className="flex items-center space-x-2">
-                            <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${
-                              st.is_present
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }`}>
+                            <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${st.is_present
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}>
                               {st.status_tag || (st.is_present ? 'Present' : 'Absent')}
                             </span>
 
@@ -2396,11 +2519,10 @@ export default function TeacherAttendancePage() {
                           key={r}
                           type="button"
                           onClick={() => setCorrectionReason(r)}
-                          className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition ${
-                            correctionReason === r
-                              ? 'bg-amber-100 text-amber-900 border-amber-300'
-                              : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-                          }`}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition ${correctionReason === r
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+                            }`}
                         >
                           {r}
                         </button>
@@ -2445,6 +2567,121 @@ export default function TeacherAttendancePage() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Teacher AI Copilot Modal */}
+      <AnimatePresence>
+        {isCopilotOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl max-w-2xl w-full h-[640px] max-h-[92vh] border border-stone-200 shadow-2xl flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 px-5 border-b border-stone-100 flex items-center justify-between bg-stone-50/70">
+                <div className="flex items-center space-x-3">
+                  <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md">
+                    <Bot className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-extrabold text-stone-900 text-sm">Faculty AI Copilot</h3>
+                      <span className="flex items-center space-x-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Live AI Intelligence</span>
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500">
+                      Instant queries for absent students, today's turnout, defaulters & roster analytics
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCopilotOpen(false)}
+                  className="h-8 w-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Quick Presets Bar */}
+              <div className="p-2.5 px-4 bg-stone-50 border-b border-stone-100 flex items-center gap-1.5 overflow-x-auto text-[11px] no-scrollbar">
+                <span className="text-stone-400 font-bold shrink-0 text-[10px] uppercase">Quick:</span>
+                {[
+                  "Aaj kitne bacche absent hain aur unke naam kya hain?",
+                  "List students below 75% attendance",
+                  "Today's conducted sessions summary",
+                  "Show pending student grievances"
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSendCopilotMessage(preset)}
+                    disabled={copilotLoading}
+                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200 border border-stone-200 text-stone-600 text-[11px] font-semibold transition shrink-0 shadow-2xs disabled:opacity-50"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+
+              {/* Chat Message History */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs bg-stone-50/30">
+                {copilotMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] p-3.5 rounded-2xl whitespace-pre-line leading-relaxed ${msg.sender === 'user'
+                        ? 'bg-purple-600 text-white shadow-sm rounded-br-xs'
+                        : 'bg-white border border-stone-200 text-stone-800 shadow-2xs rounded-bl-xs'
+                        }`}
+                    >
+                      {msg.text}
+                    </div>
+                    <span className="text-[10px] text-stone-400 mt-1 px-1">{msg.time}</span>
+                  </div>
+                ))}
+                {copilotLoading && (
+                  <div className="flex items-center space-x-2 p-3 bg-white border border-stone-200 rounded-2xl w-fit shadow-2xs">
+                    <RefreshCw className="h-3.5 w-3.5 text-purple-600 animate-spin" />
+                    <span className="text-xs text-stone-500 font-medium">Faculty Copilot is querying live data...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Input Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendCopilotMessage();
+                }}
+                className="p-3 bg-white border-t border-stone-200 flex items-center space-x-2"
+              >
+                <input
+                  type="text"
+                  value={copilotInput}
+                  onChange={(e) => setCopilotInput(e.target.value)}
+                  placeholder="Ask anything (e.g. Aaj kaunse students absent the unke naam batao)..."
+                  disabled={copilotLoading}
+                  className="flex-1 p-2.5 px-3.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 text-xs focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                />
+                <button
+                  type="submit"
+                  disabled={copilotLoading || !copilotInput.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-sm cursor-pointer"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Send</span>
+                </button>
+              </form>
             </motion.div>
           </div>
         )}

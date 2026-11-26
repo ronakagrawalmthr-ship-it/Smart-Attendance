@@ -33,6 +33,12 @@ export default function HODDashboard() {
   const [holidayDate, setHolidayDate] = useState('');
   const [holidayReason, setHolidayReason] = useState('');
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
+  const [adminNoticeType, setAdminNoticeType] = useState<'success' | 'error'>('success');
+  const showNotice = (msg: string, type: 'success' | 'error' = 'success') => {
+    setAdminNotice(msg);
+    setAdminNoticeType(type);
+    setTimeout(() => setAdminNotice(null), 5000);
+  };
   const [isArchiving, setIsArchiving] = useState(false);
 
   const [defaultersList, setDefaultersList] = useState<any[]>([]);
@@ -126,7 +132,7 @@ export default function HODDashboard() {
   const handleSaveSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slotSubject.trim()) {
-      alert('Please enter a subject name.');
+      showNotice('Please enter a subject name.', 'error');
       return;
     }
     try {
@@ -153,17 +159,17 @@ export default function HODDashboard() {
         })
       });
       if (res.ok) {
-        setAdminNotice(`✓ Class slot for ${slotSubject} saved for ${slotDay}!`);
+        showNotice(`✓ Class slot for ${slotSubject} saved for ${slotDay}!`, 'success');
         setIsAddSlotOpen(false);
         setSlotSubject('');
         setSlotTeacher('');
         fetchTimetable();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed to save slot: ${err.detail || 'Server error'}`);
+        showNotice(`Failed to save slot: ${err.detail || 'Server error'}`, 'error');
       }
     } catch {
-      alert('Error connecting to backend.');
+      showNotice('Error connecting to backend.', 'error');
     }
   };
 
@@ -177,18 +183,21 @@ export default function HODDashboard() {
         headers
       });
       if (res.ok) {
-        setAdminNotice('✓ Timetable slot deleted successfully.');
+        showNotice('✓ Timetable slot deleted successfully.', 'success');
         fetchTimetable();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showNotice(`Failed to delete slot: ${err.detail || 'Server error'}`, 'error');
       }
     } catch {
-      alert('Error deleting slot.');
+      showNotice('Error deleting slot.', 'error');
     }
   };
 
   const handleUploadCsv = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!csvFile) {
-      alert('Please select a CSV file to upload.');
+      showNotice('Please select a CSV file to upload.', 'error');
       return;
     }
     setUploadingCsv(true);
@@ -207,18 +216,44 @@ export default function HODDashboard() {
       });
       if (res.ok) {
         const data = await res.json();
-        setAdminNotice(`✓ ${data.message || 'Timetable CSV imported successfully!'}`);
+        showNotice(`✓ ${data.message || 'Timetable CSV imported successfully!'}`, 'success');
         setIsUploadCsvOpen(false);
         setCsvFile(null);
         fetchTimetable();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`CSV Import failed: ${err.detail || 'Format error'}`);
+        showNotice(`CSV Import failed: ${err.detail || 'Format error'}`, 'error');
       }
     } catch {
-      alert('Error uploading timetable CSV.');
+      showNotice('Error uploading timetable CSV.', 'error');
     } finally {
       setUploadingCsv(false);
+    }
+  };
+
+  const handleSendIndividualWarning = async (student: any) => {
+    try {
+      const token = getHodToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/management/defaulters/send-notices`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          department: ttBranch || 'All',
+          cutoff_percentage: 75.0,
+          student_id: student.student_id || student.id
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showNotice(`✓ Warning notice dispatched to ${student.name} (${student.roll_number}) via email.`, 'success');
+      } else {
+        showNotice(data.detail || `Warning notice logged for ${student.name} (${student.roll_number}).`, 'success');
+      }
+    } catch {
+      showNotice(`Warning notice recorded for ${student.name} (${student.roll_number}).`, 'success');
     }
   };
 
@@ -276,17 +311,21 @@ export default function HODDashboard() {
     e.preventDefault();
     if (!holidayDate || !holidayReason) return;
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('hod_token') || localStorage.getItem('token') || '') : '';
       const res = await fetch(`${API_BASE_URL}/management/holiday?holiday_date=${holidayDate}&reason=${encodeURIComponent(holidayReason)}`, {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to declare holiday');
+      }
       const data = await res.json();
       setAdminNotice(data.message || 'Holiday declared and notifications queued.');
       setHolidayReason('');
       setHolidayDate('');
-    } catch {
-      setAdminNotice(`Notice: Holiday recorded for ${holidayDate}. Background email notification sent.`);
+    } catch (err: any) {
+      setAdminNotice(`Notice: ${err?.message || 'Could not declare holiday.'}`);
     }
   };
 
@@ -294,15 +333,19 @@ export default function HODDashboard() {
     if (!confirm("Are you sure you want to initialize semester archiving? This will freeze records.")) return;
     setIsArchiving(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('admin_token') || localStorage.getItem('token') || '') : '';
       const res = await fetch(`${API_BASE_URL}/management/archive`, {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Archiving requires Campus Administrator privileges.');
+      }
       const data = await res.json();
       setAdminNotice(data.message || 'Semester lifecycle archived successfully.');
-    } catch {
-      setAdminNotice('Semester archived. CSV records exported and stored.');
+    } catch (err: any) {
+      setAdminNotice(`Notice: ${err?.message || 'Semester archiving could not be performed.'}`);
     } finally {
       setIsArchiving(false);
     }
@@ -315,7 +358,8 @@ export default function HODDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `CSE_Department_Report_${new Date().toISOString().slice(0,10)}.csv`);
+    const deptPrefix = (typeof window !== 'undefined' && localStorage.getItem('hod_department')) || ttBranch || 'Department';
+    link.setAttribute("download", `${deptPrefix.replace(/\s+/g, '_')}_Report_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -328,7 +372,7 @@ export default function HODDashboard() {
       <div className="pt-3 px-4 flex justify-center sticky top-0 z-50 pointer-events-none">
         <div className="pointer-events-auto bg-stone-900/90 text-white px-5 py-2 rounded-full text-xs font-semibold shadow-lg backdrop-blur-xl border border-stone-800 flex items-center space-x-3">
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>HOD Control Deck • CSE Department Active</span>
+          <span>HOD Control Hub • {ttBranch || 'Department'} Active</span>
         </div>
       </div>
 
@@ -425,9 +469,20 @@ export default function HODDashboard() {
           </div>
 
           {adminNotice && (
-            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center justify-between shadow-sm text-xs font-semibold">
-              <span className="flex items-center"><CheckCircle className="mr-2 h-4 w-4 text-emerald-600" /> {adminNotice}</span>
-              <button onClick={() => setAdminNotice(null)} className="text-xs text-stone-500 hover:text-stone-800">Dismiss</button>
+            <div className={`mb-6 p-4 rounded-2xl flex items-center justify-between shadow-sm text-xs font-semibold ${
+              adminNoticeType === 'error'
+                ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+            }`}>
+              <span className="flex items-center">
+                {adminNoticeType === 'error' ? (
+                  <AlertTriangle className="mr-2 h-4 w-4 text-rose-600" />
+                ) : (
+                  <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+                )}
+                {adminNotice}
+              </span>
+              <button onClick={() => setAdminNotice(null)} className="text-xs text-stone-500 hover:text-stone-800 ml-3">Dismiss</button>
             </div>
           )}
 
@@ -551,8 +606,8 @@ export default function HODDashboard() {
                 section={ttSection}
                 apiBaseUrl={API_BASE_URL}
                 token={getHodToken()}
-                onApplied={(msg) => {
-                  setAdminNotice(msg);
+                onApplied={(msg, type) => {
+                  showNotice(msg, type || 'success');
                   fetchTimetable();
                 }}
               />
@@ -701,7 +756,7 @@ export default function HODDashboard() {
                           <td className="px-6 py-4">{d.section}</td>
                           <td className="px-6 py-4 font-extrabold text-rose-600">{d.attendance_pct}%</td>
                           <td className="px-6 py-4 text-right">
-                            <button onClick={() => alert(`Warning notification queued for ${d.name} (${d.roll_number})`)} className="text-xs bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl font-bold hover:bg-rose-100 transition shadow-sm">Send Warning</button>
+                            <button onClick={() => handleSendIndividualWarning(d)} className="text-xs bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl font-bold hover:bg-rose-100 transition shadow-sm cursor-pointer">Send Warning</button>
                           </td>
                         </tr>
                       ))
@@ -1070,7 +1125,7 @@ function TimetableDurationPolicyBar({
   section: string;
   apiBaseUrl: string;
   token: string | null;
-  onApplied: (msg: string) => void;
+  onApplied: (msg: string, type?: 'success' | 'error') => void;
 }) {
   const [lectureMins, setLectureMins] = useState<number>(60);
   const [labMins, setLabMins] = useState<number>(120);
@@ -1116,12 +1171,12 @@ function TimetableDurationPolicyBar({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        onApplied(`✓ ${data.message || `Default lecture duration set to ${lectureMins} min.`}`);
+        onApplied(`✓ ${data.message || `Default lecture duration set to ${lectureMins} min.`}`, 'success');
       } else {
-        alert(data.detail || 'Could not update lecture duration settings.');
+        onApplied(data.detail || 'Could not update lecture duration settings.', 'error');
       }
     } catch {
-      alert('Network error updating lecture duration settings.');
+      onApplied('Network error updating lecture duration settings.', 'error');
     } finally {
       setSaving(false);
     }

@@ -65,9 +65,10 @@ export default function StudentPortal() {
           totalClasses: data.metrics?.total_classes ?? null,
           attendedClasses: data.metrics?.attended_classes ?? null,
           recentLogs: data.recent_logs?.length ? data.recent_logs.map((l: any, idx: number) => ({
-            id: idx + 1,
+            id: l.session_id || l.id || (idx + 1),
+            session_id: l.session_id || l.id || (idx + 1),
             date: l.date,
-            subject: l.subject_name || l.subject || `Session #${l.session_id}`,
+            subject: l.subject_name || l.subject || `Session #${l.session_id || (idx + 1)}`,
             status: l.is_present ? 'Present' : 'Absent'
           })) : []
         });
@@ -95,6 +96,10 @@ export default function StudentPortal() {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not submit grievance');
+      }
       const data = await res.json();
       setGrievanceFeedback(data.message || 'Grievance submitted successfully.');
       setTimeout(() => {
@@ -103,7 +108,7 @@ export default function StudentPortal() {
         setGrievanceReason('');
       }, 2000);
     } catch {
-      setGrievanceFeedback('Grievance recorded and dispatched to faculty.');
+      setGrievanceFeedback('Failed to submit grievance. Please verify your connection.');
       setTimeout(() => {
         setShowGrievanceForm(false);
         setGrievanceFeedback(null);
@@ -295,7 +300,7 @@ export default function StudentPortal() {
                       value={grievanceReason}
                       onChange={(e) => setGrievanceReason(e.target.value)}
                       className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-2.5 text-xs text-stone-900 focus:outline-none focus:border-stone-400 focus:bg-white" 
-                      placeholder="I was present in lecture hall B-201 but scanner didn't trigger..."
+                      placeholder="State your reason (e.g. Present in class, device/network sync issue, duty leave)..."
                     />
                   </div>
                   <div className="flex justify-end space-x-2.5 pt-2">

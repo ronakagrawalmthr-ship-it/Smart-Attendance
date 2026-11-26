@@ -168,7 +168,7 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        await Promise.all([
+        const [resSettings] = await Promise.all([
           authFetch(`${API_BASE_URL}/management/admin/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -180,8 +180,14 @@ export default function AdminSettingsPage() {
             body: JSON.stringify({ full_name: adminName, email: adminEmail })
           })
         ]);
-      } catch (e) {
-        console.log('Backend settings sync offline, saved locally.');
+        if (!resSettings.ok) {
+          const err = await resSettings.json().catch(() => ({}));
+          throw new Error(err.detail || 'Could not update administrative settings.');
+        }
+      } catch (e: any) {
+        setErrorMessage(e?.message || 'Failed to sync settings with backend.');
+        setTimeout(() => setErrorMessage(null), 4000);
+        return;
       }
 
       setSuccessMessage('Institutional configurations & Master Admin security saved successfully!');
@@ -191,8 +197,8 @@ export default function AdminSettingsPage() {
       
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setSuccessMessage('Institutional configuration updated in browser storage!');
-      setTimeout(() => setSuccessMessage(null), 4000);
+      setErrorMessage(err?.message || 'Failed to update administrative settings.');
+      setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setSaving(false);
     }

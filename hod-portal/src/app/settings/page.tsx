@@ -106,8 +106,8 @@ export default function HODSettingsPage() {
         setErrorMessage('New password and confirmation do not match.');
         return;
       }
-      if (newPassword.length < 6) {
-        setErrorMessage('New password must be at least 6 characters in length.');
+      if (newPassword.length < 8) {
+        setErrorMessage('New password must be at least 8 characters in length.');
         return;
       }
     }
@@ -130,6 +130,21 @@ export default function HODSettingsPage() {
       };
 
       if (newPassword) {
+        if (!currentPassword) {
+          setErrorMessage('Current password is required to set a new password.');
+          setSaving(false);
+          return;
+        }
+        if (newPassword.length < 8) {
+          setErrorMessage('New password must be at least 8 characters long.');
+          setSaving(false);
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setErrorMessage('New passwords do not match.');
+          setSaving(false);
+          return;
+        }
         payload.current_password = currentPassword;
         payload.new_password = newPassword;
       }
@@ -141,14 +156,21 @@ export default function HODSettingsPage() {
       }
 
       try {
-        await authFetch(`${API_BASE_URL}/management/hod/profile`, {
+        const res = await authFetch(`${API_BASE_URL}/management/hod/profile`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         });
-      } catch (e) {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.detail || 'Failed to save');
+        }
+      } catch (e: any) {
+        if (e?.message && e.message !== 'Failed to save' && !e.message.startsWith('Failed to fetch')) {
+          throw e;
+        }
         console.log('Backend profile sync offline, saved to local cache.');
       }
 
@@ -159,8 +181,8 @@ export default function HODSettingsPage() {
       
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setSuccessMessage('Department configuration updated in browser storage!');
-      setTimeout(() => setSuccessMessage(null), 4000);
+      setErrorMessage(err?.message || 'Failed to update department profile.');
+      setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setSaving(false);
     }

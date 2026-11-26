@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Search, 
-  X, 
-  CornerDownLeft, 
-  Compass, 
-  GraduationCap, 
-  Users, 
-  BookOpen, 
+import {
+  Search,
+  X,
+  CornerDownLeft,
+  Compass,
+  GraduationCap,
+  Users,
+  BookOpen,
   ExternalLink,
   ChevronRight,
   Sparkles,
@@ -124,7 +124,11 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
     setLoading(true);
     const fallback = getFallbackGateways();
     try {
-      const res = await fetch(`${API_BASE_URL}/management/search?q=${encodeURIComponent(q)}`);
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('teacher_token') || localStorage.getItem('hod_token') || localStorage.getItem('admin_token') || localStorage.getItem('access_token')) : '';
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/management/search?q=${encodeURIComponent(q)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (data.results && Array.isArray(data.results) && data.results.length > 0) {
@@ -138,7 +142,7 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
       // Fallback local filtering
     }
 
-    const filteredFallback = fallback.filter(item => 
+    const filteredFallback = fallback.filter(item =>
       !q || item.title.toLowerCase().includes(q.toLowerCase()) || item.subtitle.toLowerCase().includes(q.toLowerCase())
     );
     setResults(filteredFallback);
@@ -285,11 +289,10 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
                   setActiveCategory(tab.id as any);
                   setSelectedIndex(0);
                 }}
-                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                  activeCategory === tab.id
+                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === tab.id
                     ? 'bg-stone-900 text-white shadow-xs'
                     : 'bg-white text-stone-600 hover:bg-stone-200/60 border border-stone-200/60'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -313,11 +316,10 @@ export default function SpotlightSearch({ isOpen: propIsOpen, onClose: propOnClo
                     key={`${item.type}-${item.title}-${idx}`}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     onClick={() => handleSelect(item)}
-                    className={`group flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all ${
-                      isSelected 
-                        ? 'bg-stone-100/90 shadow-2xs' 
+                    className={`group flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all ${isSelected
+                        ? 'bg-stone-100/90 shadow-2xs'
                         : 'hover:bg-stone-50/80'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center space-x-3.5 min-w-0 flex-1">
                       <div className={`h-10 w-10 rounded-2xl border flex items-center justify-center shrink-0 ${getCategoryBg(item.type)}`}>

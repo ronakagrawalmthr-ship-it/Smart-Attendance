@@ -30,6 +30,7 @@ export default function GlobalSettingsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // System Configurations
   const [apiHost, setApiHost] = useState(API_BASE_URL);
@@ -38,17 +39,20 @@ export default function GlobalSettingsPage() {
   const [audioFeedback, setAudioFeedback] = useState<boolean>(true);
   const [offlineVaultSync, setOfflineVaultSync] = useState<boolean>(true);
 
-  // Live Service Ports Status
+  // System Portals
   const services = [
-    { name: 'Web Master Console', port: 3000, desc: 'Central University Entrance & Teacher Deck', status: 'Online', url: getPortalUrl(3000) },
-    { name: 'Administrator Portal', port: 3001, desc: 'Whole College Governance & Directory CRUD', status: 'Online', url: getPortalUrl(3001) },
-    { name: 'Student Academic Portal', port: 3002, desc: 'Student Attendance Gauges & Grievances', status: 'Online', url: getPortalUrl(3002) },
-    { name: 'Department HOD Deck', port: 3003, desc: 'Departmental Live Class & Faculty Attendance Deck', status: 'Online', url: getPortalUrl(3003) },
-    { name: 'Python FastAPI Engine', port: 8000, desc: 'Attendance API & Face Recognition Services', status: 'Online', url: getPortalUrl(8000, '/docs') },
-    { name: 'Metro / Expo Bundler', port: 8081, desc: 'React Native Android / iOS Kiosk App', status: 'Online', url: getPortalUrl(8081) },
+    { name: 'Teacher Attendance Console', desc: 'Classroom attendance, live QR & face scanning', url: getPortalUrl(3000, '/teacher') },
+    { name: 'Campus Admin Portal', desc: 'Master university directory, timetables & governance', url: getPortalUrl(3001) },
+    { name: 'Student Academic Portal', desc: 'Attendance percentages, threshold alerts & grievances', url: getPortalUrl(3002) },
+    { name: 'Department HOD Portal', desc: 'Departmental class monitoring, analytics & reports', url: getPortalUrl(3003) },
+    { name: 'FastAPI Backend Service', desc: 'Core attendance engine & database API', url: getPortalUrl(8000, '/docs') },
   ];
 
   useEffect(() => {
+    fetch(`${API_BASE_URL}/health`)
+      .then(res => res.ok ? setApiStatus('online') : setApiStatus('offline'))
+      .catch(() => setApiStatus('offline'));
+
     const cached = typeof window !== 'undefined' ? localStorage.getItem('global_system_settings') : null;
     if (cached) {
       try {
@@ -101,9 +105,15 @@ export default function GlobalSettingsPage() {
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Portal Directory</span>
           </Link>
-          <div className="flex items-center space-x-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full font-semibold shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>All 6 Subsystems Operational</span>
+          <div className={`flex items-center space-x-2 text-xs px-3.5 py-1.5 rounded-full font-semibold shadow-sm border ${
+            apiStatus === 'online'
+              ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+              : apiStatus === 'offline'
+              ? 'text-rose-800 bg-rose-50 border-rose-200'
+              : 'text-amber-800 bg-amber-50 border-amber-200'
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${apiStatus === 'online' ? 'bg-emerald-500 animate-pulse' : apiStatus === 'offline' ? 'bg-rose-500' : 'bg-amber-500 animate-ping'}`}></span>
+            <span>{apiStatus === 'online' ? 'Backend Services Online' : apiStatus === 'offline' ? 'Backend Offline' : 'Checking Connection...'}</span>
           </div>
         </div>
 
@@ -116,13 +126,10 @@ export default function GlobalSettingsPage() {
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900">System Settings & Infrastructure Control</h1>
-                  <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
-                    Host Deck
-                  </span>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-stone-900">System Settings & Platform Control</h1>
                 </div>
                 <p className="text-xs sm:text-sm text-stone-600 mt-1 max-w-2xl leading-relaxed">
-                  Unified configuration console for active API microservices, face biometrics matching thresholds, port routing, and kiosk defaults.
+                  Configuration console for active attendance services, biometric matching thresholds, and local device defaults.
                 </p>
               </div>
             </div>
@@ -141,29 +148,20 @@ export default function GlobalSettingsPage() {
           </motion.div>
         )}
 
-        {/* Subsystems & Active Ports Grid */}
+        {/* Active Campus Portals Grid */}
         <div className="space-y-4">
           <div className="flex justify-between items-center px-1">
             <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center space-x-2">
               <Server className="h-4 w-4 text-stone-700" />
-              <span>Multi-Portal System Status</span>
+              <span>Campus Portals & Services</span>
             </h2>
-            <span className="text-xs text-stone-500 font-mono">Ports: 3000 • 3001 • 3002 • 3003 • 8000 • 8081</span>
+            <span className="text-xs text-stone-500">Connected System Components</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {services.map((svc) => (
-              <div key={svc.port} className="rounded-3xl bg-white/90 border border-stone-200/80 p-6 space-y-4 shadow-sm backdrop-blur-sm flex flex-col justify-between hover:border-stone-300 transition">
+              <div key={svc.name} className="rounded-3xl bg-white/90 border border-stone-200/80 p-6 space-y-4 shadow-sm backdrop-blur-sm flex flex-col justify-between hover:border-stone-300 transition">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-mono text-xs font-bold text-stone-700 px-2.5 py-1 rounded-xl bg-stone-100 border border-stone-200">
-                      Port {svc.port}
-                    </span>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>{svc.status}</span>
-                    </span>
-                  </div>
                   <h3 className="text-base font-bold text-stone-900">{svc.name}</h3>
                   <p className="text-xs text-stone-500 mt-1 leading-relaxed">{svc.desc}</p>
                 </div>
@@ -174,7 +172,7 @@ export default function GlobalSettingsPage() {
                   rel="noopener noreferrer"
                   className="w-full py-2.5 px-3 rounded-2xl bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-800 border border-stone-200 transition flex items-center justify-center space-x-1.5 shadow-sm"
                 >
-                  <span>Launch Portal</span>
+                  <span>Open Portal</span>
                   <ExternalLink className="h-3.5 w-3.5 text-stone-400" />
                 </a>
               </div>
@@ -190,7 +188,7 @@ export default function GlobalSettingsPage() {
             <div className="rounded-3xl border border-stone-200/80 bg-white/90 p-7 shadow-sm backdrop-blur-sm space-y-5">
               <div className="flex items-center space-x-2.5 pb-4 border-b border-stone-100">
                 <Globe className="h-5 w-5 text-stone-700" />
-                <h2 className="text-base font-bold text-stone-900">Central API Gateway Coordinates</h2>
+                <h2 className="text-base font-bold text-stone-900">Backend API Configuration</h2>
               </div>
 
               <div className="space-y-4 text-xs">

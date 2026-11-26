@@ -178,14 +178,24 @@ export default function AdminDashboard() {
 
         if (resLive && resLive.ok) {
           const liveData = await resLive.json();
-          if (liveData.liveToday) {
-            setStats(prev => ({
-              ...prev,
-              enrolled: liveData.liveToday.total_students ?? prev.enrolled,
-              turnout: `${liveData.liveToday.turnout_pct ?? 0}%`,
-              defaulters: liveData.liveToday.absent_today ?? prev.defaulters
-            }));
+          if (liveData.live_matrices && Array.isArray(liveData.live_matrices)) {
+            const totalLogs = liveData.live_matrices.reduce((acc: number, cur: any) => acc + (cur.total_logs || 0), 0);
+            const totalPresent = liveData.live_matrices.reduce((acc: number, cur: any) => acc + (cur.present_count || 0), 0);
+            const avgTurnout = totalLogs > 0 ? (totalPresent / totalLogs * 100).toFixed(1) : '0.0';
+            setStats(prev => ({ ...prev, turnout: `${avgTurnout}%` }));
+            setMatrices(liveData.live_matrices);
           }
+        }
+
+        if (resKpi && resKpi.ok) {
+          const kpi = await resKpi.json();
+          setStats(prev => ({
+            ...prev,
+            enrolled: kpi.totalStudents ?? prev.enrolled,
+            faculty: kpi.totalFaculty ?? kpi.faculty ?? prev.faculty,
+            defaulters: kpi.criticalDefaulters ?? prev.defaulters,
+            onTime: kpi.punctualityRate ?? kpi.onTime ?? prev.onTime
+          }));
         }
 
         if (resTelemetry && resTelemetry.ok) {
@@ -194,7 +204,7 @@ export default function AdminDashboard() {
             const mapped: StudentFeedItem[] = scans.slice(0, 6).map((sc: any) => ({
               roll_number: sc.roll_number,
               name: sc.student_name,
-              department: sc.department || sc.room || 'Campus General',
+              department: sc.branch || sc.department || sc.room || 'Campus General',
               avatar: sc.avatar,
               status: 'Present',
               time: sc.timestamp

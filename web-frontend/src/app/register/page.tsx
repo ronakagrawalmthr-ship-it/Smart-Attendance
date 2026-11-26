@@ -88,7 +88,8 @@ export default function RegisterStudent() {
       }
     } catch (err) {
       console.error("Error accessing camera:", err);
-      alert("Could not access camera. Please ensure permissions are granted.");
+      setStatus('error');
+      setErrorMessage("Could not access camera. Please ensure camera permissions are granted in your browser.");
     }
   };
 
@@ -124,7 +125,8 @@ export default function RegisterStudent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capturedImage || !canvasRef.current) {
-      alert("Please capture a selfie for biometric registration.");
+      setStatus('error');
+      setErrorMessage("Please capture a live selfie for biometric registration before submitting.");
       return;
     }
 

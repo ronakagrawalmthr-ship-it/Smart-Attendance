@@ -47,6 +47,7 @@ class StudentProfileUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
+    parent_email: Optional[str] = None
     alert_threshold: Optional[int] = None
     email_alerts: Optional[bool] = None
     sms_alerts: Optional[bool] = None

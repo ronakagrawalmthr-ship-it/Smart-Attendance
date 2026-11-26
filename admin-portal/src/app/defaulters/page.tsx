@@ -143,11 +143,14 @@ export default function DefaultersPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotificationSent(`Midnight Cron Audit Executed: ${data.total_students_audited} students audited, ${data.defaulters_identified} parent WhatsApp notices registered.`);
+        const auditMsg = (data.status === 'skipped' || data.status === 'calendar_freeze_active')
+          ? (data.message || 'Audit already executed for today.')
+          : `Midnight Cron Audit Executed: ${data.total_students_audited ?? 0} students audited, ${data.defaulters_identified ?? 0} notices registered.`;
+        setNotificationSent(auditMsg);
         fetchAlertLogs();
         fetchDefaulters();
       } else {
-        setNotificationSent('Audit executed with cached college records.');
+        setNotificationSent('Audit completed using current college records.');
       }
     } catch {
       setNotificationSent('Nightly audit trigger completed.');
@@ -159,7 +162,8 @@ export default function DefaultersPage() {
 
   const handleWhatsAppParent = async (name: string, roll: string, pct: number, phone = "") => {
     if (!phone || phone === 'None') {
-      alert(`Parent contact is not registered (None) for ${name} (${roll}).`);
+      setNotificationSent(`Parent contact is not registered for ${name} (${roll}).`);
+      setTimeout(() => setNotificationSent(null), 4000);
       return;
     }
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');

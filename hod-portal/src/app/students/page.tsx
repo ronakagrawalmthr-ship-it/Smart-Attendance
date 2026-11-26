@@ -172,7 +172,7 @@ export default function HODStudentRosterPage() {
 
           <div className="rounded-3xl bg-white border border-stone-200/70 p-5 shadow-2xs space-y-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-teal-600">
-              Face ID Enrolled
+              Biometrics Enrolled
             </span>
             <div className="text-2xl font-bold text-teal-700 font-mono">
               {metrics.enrolledBio} <span className="text-xs text-stone-400 font-normal">/ {metrics.total}</span>
@@ -329,7 +329,7 @@ export default function HODStudentRosterPage() {
                     <th className="py-4 px-6">Roll Number</th>
                     <th className="py-4 px-6">Student Name</th>
                     <th className="py-4 px-6">Class & Section</th>
-                    <th className="py-4 px-6">Biometric Face ID</th>
+                    <th className="py-4 px-6">Biometric Status</th>
                     <th className="py-4 px-6 text-center">Classes Attended</th>
                     <th className="py-4 px-6 text-center">Attendance %</th>
                     <th className="py-4 px-6">Institutional Standing</th>

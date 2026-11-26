@@ -1140,6 +1140,11 @@ def campus_copilot_chat(
     """
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required for campus copilot.")
+
+    # Staff Copilot delegation for HOD, Admin, and Teacher
+    if current_user.role != models.RoleEnum.student and not payload.student_roll:
+        return handle_staff_copilot_chat(payload, current_user, db)
+
     student = None
     # Privacy safeguard: Students cannot snoop on other students' chat telemetry
     if current_user and current_user.role == models.RoleEnum.student:
@@ -1244,3 +1249,343 @@ def campus_copilot_chat(
         "source": source,
         "suggested_questions": suggested
     }
+
+
+# ==============================================================================
+# ROLE-AWARE EXECUTIVE AI COPILOT FOR HOD, ADMIN & TEACHER PORTALS
+# ==============================================================================
+
+def call_gemini_staff_chat(
+    message: str,
+    history: List[ChatMessage],
+    user_name: str,
+    role_title: str,
+    department: str,
+    today_str: str,
+    today_sessions_summary: str,
+    absent_students: List[Dict[str, Any]],
+    defaulters: List[Dict[str, Any]],
+    turnout_summary: str,
+    pending_grievances_cnt: int,
+    api_key: str
+) -> tuple:
+    # Format tables for context
+    absent_table_lines = []
+    if absent_students:
+        absent_table_lines.append("| Roll Number | Student Name | Branch & Sem | Subject | Time |")
+        absent_table_lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for s in absent_students[:35]:
+            absent_table_lines.append(f"| {s.get('roll', '-')} | {s.get('name', '-')} | {s.get('branch', '-')} Sem {s.get('semester', '-')} | {s.get('subject', '-')} | {s.get('time', '-')} |")
+    absent_text = "\n".join(absent_table_lines)
+
+    defaulters_table_lines = []
+    if defaulters:
+        defaulters_table_lines.append("| Roll Number | Student Name | Branch & Sem | Attendance % | Attended / Total |")
+        defaulters_table_lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for d in defaulters[:25]:
+            defaulters_table_lines.append(f"| {d.get('roll', '-')} | {d.get('name', '-')} | {d.get('branch', '-')} Sem {d.get('semester', '-')} | {d.get('percentage', 0.0)}% | {d.get('attended', 0)} / {d.get('total', 0)} |")
+    defaulters_text = "\n".join(defaulters_table_lines)
+
+    system_prompt = f"""You are Executive Campus AI Copilot, the intelligent institutional assistant for university administrators, HODs, and faculty members, powered by Google Gemini.
+You are assisting {user_name} ({role_title}, {department}).
+
+CURRENT LIVE CAMPUS & DEPARTMENT TELEMETRY ({today_str}):
+- Department Scope: {department}
+- Turnout Status Today: {turnout_summary}
+- Today's Classes & Sessions:
+{today_sessions_summary or 'No sessions conducted yet today.'}
+
+- ABSENT STUDENTS TODAY ({len(absent_students)} students recorded absent):
+{absent_text or 'None. All marked students are present today.'}
+
+- CRITICAL DEFAULTER STUDENTS (< 75% ATTENDANCE) ({len(defaulters)} students):
+{defaulters_text or 'None. No students currently below 75% in this scope.'}
+
+- PENDING GRIEVANCES / DISPUTES: {pending_grievances_cnt} tickets pending review.
+
+EXECUTIVE INSTRUCTIONS:
+1. If the user asks who is absent today, kitne bacche absent hain, or for names of absentees, IMMEDIATELY list their full names, roll numbers, and subjects clearly in a markdown table or bullet points.
+2. If asked about defaulters, low attendance, or who is below 75%, provide the list with student names, roll numbers, and exact attendance percentages.
+3. If asked about today's turnout, class turnout, or attendance status, give the exact numbers and percentage.
+4. If asked about pending grievances or complaints, summarize them.
+5. If asked about today's schedule or lectures, summarize today's sessions.
+6. Respond professionally, directly, and concisely using clean markdown. Natural English or Hindi/Hinglish matching user tone.
+"""
+
+    if api_key:
+        models_to_try = [
+            "gemini-3.1-flash-lite",
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest"
+        ]
+
+        contents = []
+        for h in history[-8:]:
+            role = "user" if h.role == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": h.content}]})
+        contents.append({"role": "user", "parts": [{"text": message}]})
+
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            payload = {
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": contents,
+                "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800}
+            }
+            b = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=b, headers={"Content-Type": "application/json"}, method="POST")
+
+            try:
+                with urllib.request.urlopen(req, timeout=6) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                    text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    return text, f"Google Gemini ({model})"
+            except Exception:
+                continue
+
+    # Fallback to Local Executive AI Data Engine
+    q = (message or "").lower()
+
+    if any(k in q for k in ["absent", "absentees", "anupasthit", "bache absent", "who is absent", "kitne absent", "kon absent", "kaun absent", "missing"]):
+        if not absent_students:
+            return (
+                f"### Today's Absentee Report ({today_str})\n\n"
+                f"**Status:** No students are currently marked absent in today's recorded sessions for **{department}**.\n\n"
+                f"All students marked in today's sessions attended successfully.",
+                "Executive AI Engine (Live Database)"
+            )
+        lines = [f"### Today's Absent Students ({len(absent_students)} Absentees)\n"]
+        lines.append(f"Recorded absentees for today ({today_str}) in **{department}**:\n")
+        lines.append("| Roll Number | Student Name | Branch & Sem | Subject / Lecture | Time |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for s in absent_students:
+            lines.append(f"| **{s.get('roll', '-')}** | {s.get('name', '-')} | {s.get('branch', '-')} (Sem {s.get('semester', '-')}) | {s.get('subject', '-')} | {s.get('time', '-')} |")
+        lines.append(f"\n*Summary:* Total **{len(absent_students)}** absentees recorded across today's sessions.")
+        return ("\n".join(lines), "Executive AI Engine (Live Database)")
+
+    if any(k in q for k in ["defaulter", "defaulters", "short attendance", "kam attendance", "below 75", "critical", "debar", "attendance kam"]):
+        if not defaulters:
+            return (
+                f"### Defaulters Roster (< 75%)\n\n"
+                f"Good news! Currently **no students** in **{department}** are below the mandatory 75% attendance threshold.",
+                "Executive AI Engine (Live Database)"
+            )
+        lines = [f"### Critical Defaulters Roster (< 75% Threshold)\n"]
+        lines.append(f"Found **{len(defaulters)}** students below the mandatory 75% attendance threshold in **{department}**:\n")
+        lines.append("| Roll Number | Student Name | Branch & Sem | Attendance | Classes Attended |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for d in defaulters[:25]:
+            lines.append(f"| **{d.get('roll', '-')}** | {d.get('name', '-')} | {d.get('branch', '-')} Sem {d.get('semester', '-')} | **{d.get('percentage', 0.0)}%** | {d.get('attended', 0)} / {d.get('total', 0)} |")
+        if len(defaulters) > 25:
+            lines.append(f"\n*...and {len(defaulters) - 25} more students in the full roster.*")
+        return ("\n".join(lines), "Executive AI Engine (Live Database)")
+
+    if any(k in q for k in ["turnout", "attendance", "overall", "aaj ki attendance", "percentage", "kitne present", "present count", "summary", "stats"]):
+        return (
+            f"### Today's Attendance Overview ({today_str})\n\n"
+            f"**Department Scope:** {department}\n\n"
+            f"{turnout_summary}\n\n"
+            f"**Today's Conducted Classes:**\n"
+            f"{today_sessions_summary or 'No sessions recorded yet today.'}\n\n"
+            f"- **Active Defaulters (<75%):** {len(defaulters)} students\n"
+            f"- **Pending Grievances:** {pending_grievances_cnt}",
+            "Executive AI Engine (Live Database)"
+        )
+
+    if any(k in q for k in ["grievance", "complaint", "dispute", "ticket"]):
+        return (
+            f"### Grievance & Dispute Status\n\n"
+            f"There are currently **{pending_grievances_cnt}** pending student grievances requiring review in **{department}**.\n\n"
+            f"You can review and resolve disputes directly from the **Grievances** tab.",
+            "Executive AI Engine (Live Database)"
+        )
+
+    if any(k in q for k in ["timetable", "schedule", "classes", "session", "lecture", "aaj ke lecture"]):
+        return (
+            f"### Today's Schedule & Sessions ({today_str})\n\n"
+            f"**Department:** {department}\n\n"
+            f"{today_sessions_summary or 'No lectures or sessions recorded yet today.'}",
+            "Executive AI Engine (Live Database)"
+        )
+
+    return (
+        f"### Executive AI Copilot\n\n"
+        f"Hello **{user_name}** ({role_title})! I am your real-time academic operations assistant for **{department}**.\n\n"
+        f"**Live Snapshot for Today ({today_str}):**\n"
+        f"- {turnout_summary}\n"
+        f"- **Absentees Today:** {len(absent_students)} students\n"
+        f"- **Defaulters (<75%):** {len(defaulters)} students\n"
+        f"- **Pending Grievances:** {pending_grievances_cnt}\n\n"
+        f"**You can ask me questions like:**\n"
+        f"- *\"Aaj kitne students absent hain aur unke naam kya hain?\"*\n"
+        f"- *\"Show me all defaulters below 75% attendance\"*\n"
+        f"- *\"What is today's turnout and session summary?\"*\n"
+        f"- *\"Are there any pending grievances to resolve?\"*",
+        "Executive AI Engine (Local AI)"
+    )
+
+
+def handle_staff_copilot_chat(
+    payload: AIChatRequest,
+    current_user: models.User,
+    db: Session
+) -> Dict[str, Any]:
+    role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    role_title = "Head of Department (HOD)" if role == "hod" else ("Campus Administrator" if role == "admin" else "Faculty Member")
+    user_name = current_user.full_name or (current_user.email.split("@")[0].title() if current_user.email else "Academic Officer")
+
+    # Scope
+    dept = current_user.department
+    if not dept and current_user.teacher_profile:
+        dept = current_user.teacher_profile.department
+    if role == "admin":
+        dept = "All Departments"
+    elif not dept:
+        dept = "Academic Department"
+
+    today = now_ist_naive()
+    today_str = today.strftime("%Y-%m-%d")
+    today_midnight = today.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Query today's sessions
+    sess_query = db.query(models.AcademicSession).filter(
+        models.AcademicSession.start_time >= today_midnight
+    )
+    if role == "hod" and dept and dept != "All Departments":
+        sess_query = sess_query.filter(models.AcademicSession.branch.ilike(f"%{dept}%"))
+    elif role == "teacher":
+        tp = current_user.teacher_profile
+        if tp:
+            sess_query = sess_query.filter(
+                or_(
+                    models.AcademicSession.teacher_id == tp.id,
+                    models.AcademicSession.conducted_by_name.ilike(f"%{tp.full_name}%"),
+                    models.AcademicSession.branch.ilike(f"%{dept}%")
+                )
+            )
+    today_sessions = sess_query.order_by(models.AcademicSession.start_time.asc()).all()
+
+    absent_students = []
+    present_count = 0
+    absent_count = 0
+    today_sess_lines = []
+
+    for s in today_sessions:
+        s_name = s.custom_subject_name or (s.subject.name if s.subject else "Class Session")
+        s_time = s.start_time.strftime("%I:%M %p") if s.start_time else "Scheduled"
+
+        logs = db.query(models.AttendanceLog, models.StudentProfile).join(
+            models.StudentProfile, models.AttendanceLog.student_id == models.StudentProfile.id
+        ).filter(models.AttendanceLog.session_id == s.id).all()
+
+        s_pres = sum(1 for l, st in logs if l.is_present)
+        s_abs = sum(1 for l, st in logs if not l.is_present)
+        present_count += s_pres
+        absent_count += s_abs
+
+        today_sess_lines.append(f"- **{s_name}** ({s.branch} Sem {s.semester}): {s_pres} present, {s_abs} absent (Conducted by {s.conducted_by_name or 'Faculty'}) at {s_time}")
+
+        for l, st in logs:
+            if not l.is_present:
+                absent_students.append({
+                    "roll": st.roll_number,
+                    "name": st.full_name,
+                    "branch": st.branch or s.branch,
+                    "semester": st.semester or s.semester,
+                    "subject": s_name,
+                    "time": s_time
+                })
+
+    tot_marked = present_count + absent_count
+    turnout_pct = round((present_count / tot_marked * 100), 1) if tot_marked > 0 else 0.0
+    turnout_summary = f"Total Attendance Records Marked Today: **{tot_marked}** (Present: **{present_count}**, Absent: **{absent_count}**, Overall Turnout: **{turnout_pct}%**)"
+
+    # Defaulters (< 75%)
+    st_query = db.query(models.StudentProfile)
+    if role == "hod" and dept and dept != "All Departments":
+        st_query = st_query.filter(models.StudentProfile.branch.ilike(f"%{dept}%"))
+    all_scoped_students = st_query.limit(200).all()
+
+    defaulters = []
+    st_ids = [st.id for st in all_scoped_students]
+    if st_ids:
+        from sqlalchemy import case, func
+        agg_logs = db.query(
+            models.AttendanceLog.student_id,
+            func.count(models.AttendanceLog.id).label("tot"),
+            func.sum(case((models.AttendanceLog.is_present == True, 1), else_=0)).label("pres")
+        ).filter(models.AttendanceLog.student_id.in_(st_ids)).group_by(models.AttendanceLog.student_id).all()
+        stats_dict = {sid: (tot, pres or 0) for sid, tot, pres in agg_logs}
+        for st in all_scoped_students:
+            tot, pres = stats_dict.get(st.id, (0, 0))
+            p = round((pres / tot * 100), 1) if tot > 0 else 0.0
+            if tot > 0 and p < 75.0:
+                defaulters.append({
+                    "roll": st.roll_number,
+                    "name": st.full_name,
+                    "branch": st.branch,
+                    "semester": st.semester,
+                    "percentage": p,
+                    "attended": pres,
+                    "total": tot
+                })
+        defaulters.sort(key=lambda x: x["percentage"])
+
+    # Pending grievances
+    g_query = db.query(models.Grievance).filter(models.Grievance.status == "PENDING")
+    if role == "hod" and dept and dept != "All Departments":
+        dept_st_ids = [st.id for st in all_scoped_students]
+        if dept_st_ids:
+            g_query = g_query.filter(models.Grievance.student_id.in_(dept_st_ids))
+    pending_grievances_cnt = g_query.count()
+
+    today_sessions_summary = "\n".join(today_sess_lines)
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    reply, source = call_gemini_staff_chat(
+        message=payload.message,
+        history=payload.history or [],
+        user_name=user_name,
+        role_title=role_title,
+        department=dept,
+        today_str=today_str,
+        today_sessions_summary=today_sessions_summary,
+        absent_students=absent_students,
+        defaulters=defaulters,
+        turnout_summary=turnout_summary,
+        pending_grievances_cnt=pending_grievances_cnt,
+        api_key=gemini_key
+    )
+
+    suggested = [
+        "Aaj kitne students absent hain aur unke naam kya hain?",
+        "Show me all defaulters below 75% attendance",
+        "What is today's turnout and session summary?",
+        "Are there any pending grievances to resolve?"
+    ]
+
+    return {
+        "success": True,
+        "reply": reply,
+        "source": source,
+        "suggested_questions": suggested
+    }
+
+
+@router.post("/staff-ai-chat")
+def staff_campus_copilot_chat(
+    payload: AIChatRequest,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
+    """
+    Role-aware Executive AI Copilot for HOD, Admin, and Teacher portals.
+    Answers queries about today's absentees, turnout, defaulters, timetable, and grievances.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required for staff copilot.")
+    if current_user.role == models.RoleEnum.student:
+        raise HTTPException(status_code=403, detail="Students should use the student copilot endpoint.")
+    return handle_staff_copilot_chat(payload, current_user, db)

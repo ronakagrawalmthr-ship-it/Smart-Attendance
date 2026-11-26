@@ -174,7 +174,11 @@ export default function HODDefaultersPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotificationSent(`Midnight Cron Audit Executed: ${data.total_students_audited} students audited, ${data.defaulters_identified} parent WhatsApp notices registered.`);
+        setNotificationSent(`Midnight Cron Audit Executed: ${
+            data.status === 'skipped' || data.status === 'calendar_freeze_active'
+              ? (data.message || 'Audit already run today')
+              : `Audit complete: ${data.total_students_audited ?? 0} students checked, ${data.defaulters_identified ?? 0} defaulters found`
+          }`);
         fetchAlertLogs();
         fetchDefaulters();
       } else {
@@ -340,7 +344,7 @@ export default function HODDefaultersPage() {
                     </span>
                   </td>
                   <td className="py-4 px-4 text-stone-500 font-mono text-[11px]">
-                    {d.phone ? `+91 ${d.phone.replace(/[^0-9]/g, '').slice(-10)}` : 'Unlisted'}
+                    {d.phone && d.phone !== 'None' ? `+91 ${d.phone.replace(/[^0-9]/g, '').slice(-10)}` : 'Unlisted'}
                   </td>
                   <td className="py-4 px-4">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -418,7 +422,7 @@ export default function HODDefaultersPage() {
                     <td className="py-3 px-3 font-sans font-bold text-stone-900">
                       {log.student_name} <span className="text-stone-400 font-mono text-[11px]">({log.student_roll})</span>
                     </td>
-                    <td className="py-3 px-3 text-sky-700 font-semibold">{log.parent_phone}</td>
+                    <td className="py-3 px-3 text-sky-700 font-semibold">{log.parent_phone && log.parent_phone !== 'None' ? log.parent_phone : 'Unlisted'}</td>
                     <td className="py-3 px-3">
                       <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
                         💬 {log.channel}

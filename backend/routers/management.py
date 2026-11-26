@@ -1235,6 +1235,7 @@ def get_college_kpi_stats(
 
         "totalStudents": total_students,
         "totalFaculty": total_faculty,
+        "faculty": total_faculty,
         "totalDepartments": total_departments,
         "totalSessions": total_sessions,
         "activeSessions": active_sessions,
@@ -1243,6 +1244,7 @@ def get_college_kpi_stats(
         "defaultersList": critical_defaulters_list,
         "pendingGrievances": pending_grievances,
         "punctualityRate": punctuality,
+        "onTime": punctuality,
         "riskDistribution": risk_distribution if all_students else [],
         "branchBreakdown": branch_breakdown,
         "weeklyTrajectory": real_trajectory,
@@ -1347,34 +1349,18 @@ def global_spotlight_search(
         )
     query_str = (q or "").strip().lower()
     
-    host_name = "localhost"
-    scheme = "http"
-    if request:
-        client_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-        if client_host:
-            host_name = client_host.split(":")[0]
-        if request.headers.get("x-forwarded-proto"):
-            scheme = request.headers.get("x-forwarded-proto")
-        elif request.url.scheme:
-            scheme = request.url.scheme
-
-    base_3000 = f"{scheme}://{host_name}:3000"
-    base_3001 = f"{scheme}://{host_name}:3001"
-    base_3002 = f"{scheme}://{host_name}:3002"
-    base_3003 = f"{scheme}://{host_name}:3003"
-
     results = []
 
     # 1. University Gateways & Navigation Commands
     navigation_items = [
-        {"type": "page", "title": "Teacher Attendance Terminal", "subtitle": "Live camera face-biometrics & attendance session", "url": f"{base_3000}/teacher", "category": "University Gateways"},
-        {"type": "page", "title": "Student Academic Portal", "subtitle": "Attendance percentages, threshold alerts & grievances", "url": base_3002, "category": "University Gateways"},
-        {"type": "page", "title": "HOD Command Hub", "subtitle": "Departmental attendance roster, analytics & Excel export", "url": base_3003, "category": "University Gateways"},
-        {"type": "page", "title": "College Admin Governance Portal", "subtitle": "Executive accreditation & master student/faculty directory", "url": base_3001, "category": "University Gateways"},
-        {"type": "page", "title": "Biometric Face Onboarding Kiosk", "subtitle": "AI face vector registration for new students", "url": f"{base_3000}/register", "category": "University Gateways"},
-        {"type": "page", "title": "System Settings & Hardware", "subtitle": "Camera FPS, biometric confidence & port health", "url": f"{base_3000}/settings", "category": "University Gateways"},
-        {"type": "page", "title": "Defaulters Roster (<75%)", "subtitle": "Statutory warning notices & attendance alerts", "url": f"{base_3001}/defaulters", "category": "Executive Control"},
-        {"type": "page", "title": "Academic Directory Management", "subtitle": "CRUD students, teachers, HODs and subjects", "url": f"{base_3001}/directory", "category": "Executive Control"},
+        {"type": "page", "title": "Teacher Attendance Terminal", "subtitle": "Live camera face-biometrics & attendance session", "url": "/teacher", "category": "University Gateways"},
+        {"type": "page", "title": "Student Academic Portal", "subtitle": "Attendance percentages, threshold alerts & grievances", "url": "/student", "category": "University Gateways"},
+        {"type": "page", "title": "HOD Command Hub", "subtitle": "Departmental attendance roster, analytics & Excel export", "url": "/hod", "category": "University Gateways"},
+        {"type": "page", "title": "College Admin Governance Portal", "subtitle": "Executive accreditation & master student/faculty directory", "url": "/admin", "category": "University Gateways"},
+        {"type": "page", "title": "Biometric Face Onboarding Kiosk", "subtitle": "AI face vector registration for new students", "url": "/teacher/register", "category": "University Gateways"},
+        {"type": "page", "title": "System Settings & Hardware", "subtitle": "Camera FPS, biometric confidence & port health", "url": "/teacher/settings", "category": "University Gateways"},
+        {"type": "page", "title": "Defaulters Roster (<75%)", "subtitle": "Statutory warning notices & attendance alerts", "url": "/admin/defaulters", "category": "Executive Control"},
+        {"type": "page", "title": "Academic Directory Management", "subtitle": "CRUD students, teachers, HODs and subjects", "url": "/admin/directory", "category": "Executive Control"},
     ]
 
     for item in navigation_items:
@@ -1408,7 +1394,7 @@ def global_spotlight_search(
             "type": "student",
             "title": f"{s.full_name} ({s.roll_number})",
             "subtitle": f"{s.branch} • Sem {s.semester} (Sec {s.section})",
-            "url": f"{base_3001}/directory?tab=students&search={s.roll_number}",
+            "url": f"/admin/directory?tab=students&search={s.roll_number}",
             "category": "Students",
             "meta": {"id": s.id, "roll": s.roll_number, "branch": s.branch}
         })
@@ -1428,7 +1414,7 @@ def global_spotlight_search(
             "type": "faculty",
             "title": t.full_name,
             "subtitle": f"{role_label} • {t.department}",
-            "url": f"{base_3001}/directory?tab=teachers&search={t.full_name}",
+            "url": f"/admin/directory?tab=teachers&search={t.full_name}",
             "category": "Faculty & Leadership",
             "meta": {"id": t.id, "department": t.department}
         })
@@ -1446,7 +1432,7 @@ def global_spotlight_search(
             "type": "subject",
             "title": f"{sub.code}: {sub.name}",
             "subtitle": f"{sub.branch} • Sem {sub.semester}",
-            "url": f"{base_3001}/directory?tab=subjects&search={sub.code}",
+            "url": f"/admin/directory?tab=subjects&search={sub.code}",
             "category": "Curriculum & Courses"
         })
 
@@ -1793,6 +1779,7 @@ def get_class_attendance_records(
         records.append({
             "log_id": log.id,
             "session_id": session.id,
+            "student_id": log.student_id,
             "roll_number": student.roll_number,
             "student_name": student.full_name,
             "branch": student.branch or session.branch,
@@ -2472,6 +2459,33 @@ def dispatch_defaulter_notices(
             timestamp=now_ist_naive()
         )
         db.add(notif_log)
+
+        # Dispatch real background email if guardian email exists
+        if p_email and "@" in p_email:
+            try:
+                try:
+                    from ..services.email_service import send_system_email
+                except (ImportError, ValueError):
+                    from services.email_service import send_system_email
+                
+                email_sub = f"Attendance Warning Notice - {st.full_name} ({st.roll_number})"
+                email_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #dc2626; margin-top: 0;">Academic Attendance Alert</h2>
+                    <p>Dear Parent/Guardian,</p>
+                    <p>This is to inform you that your ward, <strong>{st.full_name}</strong> (Roll: {st.roll_number}, Branch: {st.branch}), currently has an overall attendance of <strong>{pct}%</strong>, which is below the mandatory university threshold of <strong>{cutoff_val}%</strong>.</p>
+                    <div style="background-color: #fee2e2; border-left: 4px solid #dc2626; padding: 12px; margin: 16px 0; border-radius: 4px;">
+                        <strong>Current Attendance: {pct}%</strong> &nbsp;|&nbsp; <strong>Required: {cutoff_val}%</strong>
+                    </div>
+                    <p>Please advise your ward to attend all scheduled classes and laboratories regularly to prevent academic debarment from semester examinations.</p>
+                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                    <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Office of Academic Governance & Attendance Monitoring</p>
+                </div>
+                """
+                background_tasks.add_task(send_system_email, p_email, email_sub, email_html)
+            except Exception as _em_err:
+                _logging.getLogger("management").warning("Could not queue defaulter email: %s", _em_err)
+
         dispatched.append({
             "roll_number": st.roll_number,
             "name": st.full_name,
@@ -2663,6 +2677,47 @@ def trigger_lifecycle_archiving(
         "archived_sessions_count": total_sessions_cnt,
         "archived_records_count": total_logs_cnt,
         "archived_at": now_ist().isoformat()
+    }
+
+@router.post("/emergency-closure")
+def declare_emergency_closure(
+    reason: str = Query(..., description="Reason for emergency closure"),
+    department: str = Query("all", description="Target department or 'all'"),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Emergency closure trigger for HODs and Administrators.
+    Suspends classes for the current date and records an official EMERGENCY_CLOSURE event.
+    """
+    verify_hod_or_admin(current_user)
+    scope = get_user_department_scope(current_user)
+    target_dept = scope if scope else department
+    today_str = now_ist_naive().strftime("%Y-%m-%d")
+
+    holiday = models.Holiday(
+        title="Emergency Academic Closure",
+        date=today_str,
+        end_date=today_str,
+        event_type="EMERGENCY_CLOSURE",
+        department=target_dept,
+        description=f"Emergency closure declared on {today_str}. Reason: {reason}",
+        created_by=current_user.email
+    )
+    db.add(holiday)
+    db.commit()
+    db.refresh(holiday)
+
+    return {
+        "success": True,
+        "message": f"Emergency closure activated for {target_dept}. Today's classes suspended ({reason}).",
+        "holiday": {
+            "id": holiday.id,
+            "title": holiday.title,
+            "date": holiday.date,
+            "department": holiday.department,
+            "reason": reason
+        }
     }
 
 class HolidayPayload(BaseModel):
@@ -2920,8 +2975,8 @@ def resolve_grievance(
                 db=db,
                 user_id=g.student.user_id,
                 title="Grievance Decision Update",
-                body=f"Your grievance dispute #{ticket_id} was {clean_decision.lower()} by the Department HOD.",
-                data={"ticket_id": ticket_id, "type": "GRIEVANCE_RESOLVED", "decision": clean_decision}
+                body=f"Your grievance dispute #{final_ticket_id} was {clean_decision.lower()} by the Department HOD.",
+                data={"ticket_id": final_ticket_id, "type": "GRIEVANCE_RESOLVED", "decision": clean_decision}
             )
             if isinstance(delivery, dict) and not delivery.get("success", True):
                 _logging.getLogger("management").warning(
@@ -2932,8 +2987,8 @@ def resolve_grievance(
 
     return {
         "success": True,
-        "message": f"Grievance {ticket_id} marked as {clean_decision}. Student attendance record updated in SQLite database.",
-        "ticket_id": ticket_id,
+        "message": f"Grievance {final_ticket_id} marked as {clean_decision}. Student attendance record updated in SQLite database.",
+        "ticket_id": final_ticket_id,
         "decision": clean_decision
     }
 
@@ -4360,6 +4415,9 @@ def trigger_midnight_audit(
     if current_user.role not in [models.RoleEnum.admin, models.RoleEnum.hod]:
         raise HTTPException(status_code=403, detail="Administrative privileges required.")
     result = run_midnight_attendance_audit(db)
+    if result.get("status") in ("skipped", "calendar_freeze_active"):
+        result.setdefault("total_students_audited", 0)
+        result.setdefault("defaulters_identified", 0)
     return result
 
 @router.get("/alerts/logs")
